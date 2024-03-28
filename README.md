@@ -1,6 +1,6 @@
-# Berkeley Lab - UC Davis Shiny R Apps
+# INDUSTRIAL DECARBONIZATION TOOLKIT
 
-### INDUSTRIAL DECARBONIZATION TOOLKIT
+### Berkeley Lab; UC Davis 
 
 Tools in this package:
 
