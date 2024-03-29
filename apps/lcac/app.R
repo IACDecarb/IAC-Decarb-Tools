@@ -1,23 +1,6 @@
-## 
-#Delete this chuck after running once
-install.packages("ggmacc")
-install.packages("readxl")
-install.packages("janitor")
-install.packages("ggplot2")
-install.packages("scales")
-install.packages("ggrepel")
-install.packages("stringr")
-install.packages("dplyr")
-install.packages("pals")
-install.packages("gridGraphics")
-install.packages("gridExtra")
-install.packages("ggpubr")
-install.packages("shiny")
-install.packages("viridis")
-install.packages("shinythemes")
-install.packages("shinyBS")
+setwd("C:/Users/jkissock/Box/UCD-LBL Decarbonization Group/IAC Decarbonization/github repo/apps/lcac")
 
-#
+
 ##Application starts here
 library(ggmacc)
 library(readxl)
