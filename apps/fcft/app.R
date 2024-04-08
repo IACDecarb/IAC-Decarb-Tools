@@ -1,5 +1,3 @@
-setwd("C:/Users/jkissock/Box/UCD-LBL Decarbonization Group/IAC Decarbonization/github repo/apps/fcft")
-
 #Application starts here
 library(shiny)
 library(htmlwidgets)
