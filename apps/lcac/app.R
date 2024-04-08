@@ -1,6 +1,3 @@
-setwd("C:/Users/jkissock/Box/UCD-LBL Decarbonization Group/IAC Decarbonization/github repo/apps/lcac")
-
-
 ##Application starts here
 library(ggmacc)
 library(readxl)
