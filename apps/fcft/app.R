@@ -43,7 +43,8 @@ ui <- fluidPage(
       fileInput("file", "Upload \'FCFT Input Sheet\' Excel File", accept = ".xlsx"),
       textOutput('move'),
       selectInput("units", "Select Units", c("MT CO₂e/yr", "lbs. of CO₂e/yr")),
-      numericInput("precision", "Choose precision level of numeric values", 0, -20, 20, 1),
+      radioButtons("perc","Select Value Type",c("Absolute","Percentage")),
+      numericInput("precision", "Choose precision level of numeric values", 1, -20, 20, 1),
       sliderInput("vsc", "Adjust vertical scaling of the Sankey Diagram", 1, 100, 50),
       numericInput("height", "Adjust height of downloaded image (px)", 500, 500, 20000, 250),
       numericInput("width", "Adjust width of downloaded image (px)", 1000, 750, 20000, 250),
@@ -63,8 +64,8 @@ ui <- fluidPage(
         uiOutput("output_text"),
         class = "output-text"
       ),
-      tags$div(
-        style = "position: relative; width: 100%; background-color: #f8f8f8;",
+      div(
+        style = "position: relative; width: 100%; max-height: 100%; preserveAspectRatio='xMinYMin meet';  background-color: #f8f8f8;",
         uiOutput("diagram")
       ),
       br(),
@@ -75,7 +76,7 @@ ui <- fluidPage(
     
   ),
   tags$div(
-
+    
     style = "width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: space-between; align-items: flex-end;",
     tags$div(
       style = "text-align: left;",
@@ -85,7 +86,7 @@ ui <- fluidPage(
     ),
     tags$div(
       style = "text-align: left;",
-
+      
       tags$img(src = "ucdavis_logo_gold.png", style = "max-height: 50px;"),
       tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px; "),
       tags$p("jkissock@ucdavis.edu", style = "margin-top: 0.5px;")
@@ -123,7 +124,7 @@ server <- function(input, output, session) {
   # Read the uploaded nodes Excel file
   nodes_data <- reactive({
     req(input$file)
-    aa <- read_excel(input$file$datapath,sheet = 'Emissions Calculator', range = "c17:k200")
+    aa <- read_excel(input$file$datapath,sheet = 'Emissions Calculator', range = "c17:l200")
     aa <- aa[-1, ]
     aa <- clean_names(aa)
     aa <- aa %>% 
@@ -139,7 +140,7 @@ server <- function(input, output, session) {
       filter(Name != 'Electricity')
     
     if (!is_empty(non_ele$Name)) {
-    nodes.hh[2, 'Name'] <- 'Fuel'
+      nodes.hh[2, 'Name'] <- 'Fuel'
     }
     nodes.h <- rbind(nodes.hh,ene.src,end.use,em.src)
     
@@ -162,7 +163,7 @@ server <- function(input, output, session) {
   ef <- reactive({
     req(input$file)
     bb <- read_excel(input$file$datapath,sheet = 'Emission Factors', range = "b3:h20")
-    aa <- read_excel(input$file$datapath,sheet = 'Emissions Calculator', range = "c17:k200")
+    aa <- read_excel(input$file$datapath,sheet = 'Emissions Calculator', range = "c17:l200")
     aa <- aa[-1, ]
     aa <- clean_names(aa)
     aa <- aa %>% 
@@ -214,12 +215,12 @@ server <- function(input, output, session) {
   
   output$table1<- renderTable({
     # Set to 0 to always display in scientific notation
-     ef()
+    ef()
   })
   
   temp <- reactive({
     req(input$file)
-    temp <- read_excel(input$file$datapath,sheet = 'Emissions Calculator', range = "c17:k200")
+    temp <- read_excel(input$file$datapath,sheet = 'Emissions Calculator', range = "c17:l200")
     temp <- temp[-1, ]
     temp <- clean_names(temp)
     temp <- temp %>% 
@@ -228,7 +229,7 @@ server <- function(input, output, session) {
   })
   links_data <- reactive({
     req(input$file)
-    aa <- read_excel(input$file$datapath,sheet = 'Emissions Calculator', range = "c17:k200")
+    aa <- read_excel(input$file$datapath,sheet = 'Emissions Calculator', range = "c17:l200")
     aa <- aa[-1, ]
     aa <- clean_names(aa)
     aa <- aa %>% 
@@ -245,7 +246,7 @@ server <- function(input, output, session) {
       filter(Name != 'Electricity')
     
     
-      
+    
     
     if (!is_empty(non_ele$Name)) {
       nodes.hh[2, 'Name'] <- 'Fuel'
@@ -280,7 +281,13 @@ server <- function(input, output, session) {
           links.h[i,'Source'] <- nodes[[j,'No']] - 1
         }
       }
-      links.h[i,'Value'] <- aa.e[i,'co2e_emissions_mt_co2e_yr']
+      
+      if (input$perc == "Percentage") {
+        links.h[i,'Value'] <- aa.e[i,'percentage_of_total_emissions']*100
+      } else {
+        links.h[i,'Value'] <- aa.e[i,'co2e_emissions_mt_co2e_yr']
+      }
+      
     }
     
     links.hh <- links.h %>% 
@@ -292,42 +299,42 @@ server <- function(input, output, session) {
                          Value = c()
     )
     ele_link <- tibble( Source = c(),
-                       Value = c()
+                        Value = c()
     )
     ele <- nodes %>% 
       filter(Name == 'Electricity')
     
     if(!is_empty(ele$No)) {
-    ele_link_val <- as.numeric(ele$No - 1)
-    ele_link <- links.hh %>% 
-      filter(Source == ele_link_val)
-    
-    links.hh <- links.hh %>% 
-      filter(Source != ele_link_val)
-    ctr <- ctr+1
+      ele_link_val <- as.numeric(ele$No - 1)
+      ele_link <- links.hh %>% 
+        filter(Source == ele_link_val)
+      
+      links.hh <- links.hh %>% 
+        filter(Source != ele_link_val)
+      ctr <- ctr+1
     }
-
-
+    
+    
     if(!is_empty(links.hh$Source)) {
       if (!is_empty(ele$Name)){
         ctr2 <- n_src - 1
       } else {
         ctr2 <- n_src
       }
-    l <- 0
-    for (k in (nrow(links.h)+1):(nrow(links.h)+ctr2)) {
-      l <- l+1
-      links.h[k,'No'] <- k
-      links.h[k,'Target'] <- links.hh[l,'Source']
-      links.h[k,'Source'] <- 1
-      links.h[k,'Value'] <- links.hh[l,'Value']
-    }
-    
-    links.hh2 <- links.h %>% 
-      group_by(Source) %>% 
-      summarise(Value = sum(Value)) %>% 
-      filter(Source == 1)
-    ctr <- ctr+1
+      l <- 0
+      for (k in (nrow(links.h)+1):(nrow(links.h)+ctr2)) {
+        l <- l+1
+        links.h[k,'No'] <- k
+        links.h[k,'Target'] <- links.hh[l,'Source']
+        links.h[k,'Source'] <- 1
+        links.h[k,'Value'] <- links.hh[l,'Value']
+      }
+      
+      links.hh2 <- links.h %>% 
+        group_by(Source) %>% 
+        summarise(Value = sum(Value)) %>% 
+        filter(Source == 1)
+      ctr <- ctr+1
     }
     
     links.fe <- rbind(links.hh2, ele_link)
@@ -354,39 +361,43 @@ server <- function(input, output, session) {
       filter(Name == 'Process')
     pr_link_val <- numeric(0)
     if(!is_empty(pr$No)) {
-    pr_link_val <- as.numeric(pr$No - 1)
+      pr_link_val <- as.numeric(pr$No - 1)
     }
     fg_link_val <- numeric(0)
     fg <- nodes %>% 
       filter(Name == 'Fugitive')
     if(!is_empty(fg$No)) {
-    fg_link_val <- as.numeric(fg$No - 1)
+      fg_link_val <- as.numeric(fg$No - 1)
     }
     
-    if (!is_empty(aa.ne$s_no)){
-    o <- 0
-    for (q in (nrow(links.h)+1):(nrow(links.h)+nrow(aa.ne))) {
-      o <- o+1
-      links.h[q,'No'] <- q
-      for (j in 1:nrow(nodes)) {
-        if (aa.ne[o,'emission_source'] == nodes[j,'Name']){
-          links.h[q,'Target'] <- nodes[[j,'No']] - 1
+    if (!is_empty(aa.ne$emission_source)){
+      o <- 0
+      for (q in (nrow(links.h)+1):(nrow(links.h)+nrow(aa.ne))) {
+        o <- o+1
+        links.h[q,'No'] <- q
+        for (j in 1:nrow(nodes)) {
+          if (aa.ne[o,'emission_source'] == nodes[j,'Name']){
+            links.h[q,'Target'] <- nodes[[j,'No']] - 1
+          }
+        }
+        for (j in 1:nrow(nodes)) {
+          if (aa.ne[o,'emission_category'] == nodes[j,'Name']){
+            links.h[q,'Source'] <- nodes[[j,'No']] - 1
+          }
+        }
+        if (input$perc == "Percentage") {
+          links.h[q,'Value'] <- aa.ne[o,'percentage_of_total_emissions']*100
+        } else {
+          links.h[q,'Value'] <- aa.ne[o,'co2e_emissions_mt_co2e_yr']
         }
       }
-      for (j in 1:nrow(nodes)) {
-        if (aa.ne[o,'emission_category'] == nodes[j,'Name']){
-          links.h[q,'Source'] <- nodes[[j,'No']] - 1
-        }
-      }
-      links.h[q,'Value'] <- aa.ne[o,'co2e_emissions_mt_co2e_yr']
-    }
     }
     
     if (!is_empty(pr_link_val) & !is_empty(fg_link_val)) {
-    links.t <- links.h %>% 
-      filter(Source == pr_link_val | Source == ene_link_val | Source == fg_link_val) %>% 
-      group_by(Source) %>% 
-      summarise(Value = sum(Value))
+      links.t <- links.h %>% 
+        filter(Source == pr_link_val | Source == ene_link_val | Source == fg_link_val) %>% 
+        group_by(Source) %>% 
+        summarise(Value = sum(Value))
     } else if (!is_empty(pr_link_val) & is_empty(fg_link_val)){
       links.t <- links.h %>% 
         filter(Source == pr_link_val | Source == ene_link_val) %>% 
@@ -422,6 +433,7 @@ server <- function(input, output, session) {
              label = paste0(Source, " → ", Target, ": ", Value)) %>% 
       arrange(Source)
     links
+    
   })
   
   
@@ -436,6 +448,7 @@ server <- function(input, output, session) {
     links <- links_data()
     names(nodes) <- c('SN',"Name")
     names(links) <- c('SN',"Source", "Target", "Value","label")
+    
     sankey_reactive <- reactive({
       sankeyNetwork(
         Links = links, 
@@ -558,6 +571,5 @@ function(el, x) {
 
 
 shinyApp(ui, server)
-
 
 
