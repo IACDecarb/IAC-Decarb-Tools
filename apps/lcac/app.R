@@ -37,6 +37,10 @@ ui <- fluidPage(
       fileInput("file", "Upload input sheet"),
       numericInput("pem", "Enter Total Plant CO₂e Emissions ", 0),
       selectInput("type", "Choose Level of Detail", c("Individual Measures", "Summarized")),
+      selectInput('tc','Show Total Avoided CO₂e', c('Yes','No'),'Yes'),
+      selectInput('anc','Show Annualized Expenditure', c('Yes','No'),'Yes'),
+      selectInput('avc','Show Average Cost of Abatement', c('Yes','No'),'Yes'),
+      selectInput('tpc','Show Total Plant CO₂e', c('Yes','No'),'Yes'),
       numericInput("yaxmax", "Increase y-axis upper limit by", 0, -20000, 25000, 10),
       numericInput("yaxmin", "Decrease y-axis lower limit by", 0, -20000, 25000, 10),
       numericInput("xaxmax", "Increase x-axis upper limit by", 0, -20000, 25000, 10),
@@ -180,20 +184,9 @@ server <- function(input, output, session){
     s1_fig <- s1 %>% 
       mutate(assessment_recommendation = factor(assessment_recommendation, levels = assessment_recommendation[order(levelized_cost_of_avoided_co2e)])) %>% 
       ggmacc(mac = levelized_cost_of_avoided_co2e, abatement = annualized_avoided_co2e, fill=assessment_recommendation) +
-      geom_hline(yintercept = c(0,macc_average), linetype = c("solid", "dashed"), 
-                 color = c("black","black")) +
-      geom_text(data=data.frame(x=(s1_carbon_abated/2)+input$acoh,y=macc_average+input$aco), aes(x, y), 
-                label=str_wrap(paste("Average Cost = ","$",round(macc_average,digits = 1),
-                                     "/MT CO₂e",sep=""), width = 15), size =4, color = "black") +
-      geom_vline(xintercept = s1_carbon_abated,linetype = c("dashed"), color = c("black")) +
-      geom_text(data=data.frame((x=(9.2*s1_carbon_abated/10)+input$totch),y=min(s1$levelized_cost_of_avoided_co2e)+input$totc), aes(x, y), label=str_wrap(paste(
-        "Total Avoided CO₂e = ",comma(s1_carbon_abated)," MT CO₂e/yr", sep = ""), width = 11)
-        ,size = 4.5, color = "black") +
-      geom_text(data=data.frame(x=(s1_carbon_abated/20)+input$ancosth,y=max(s1$levelized_cost_of_avoided_co2e)+input$ancost), aes(x, y), label=str_wrap(paste(
-        'Annualized Expenditure = ',"$",comma(total_cost_s1),"/yr",sep=""), width = 11)
-        ,size = 4.5, color = "black") +
+      
       theme_bw() +
-      scale_x_continuous(labels = comma,limits = c(0,(max(input$pem,s1_carbon_abated)+input$xaxmax)+20), name = 
+      scale_x_continuous(labels = comma,limits = c(0,(max(s1_carbon_abated)+input$xaxmax)+20), name = 
                            "MT CO₂e/yr") +
       scale_y_continuous(name = "Levelized Cost of Avoided CO₂e ($/MT CO₂e Avoided)",
                          limits = c(y_min-50-input$yaxmin,y_max+50+input$yaxmax))  +
@@ -208,7 +201,29 @@ server <- function(input, output, session){
       ggtitle(paste0("Levelized Cost of Avoided CO₂e Curve"))+
       guides(fill=guide_legend(title="Decarbonization \nMeasures",nrow = input$rleg))
     
+    if(input$tc == 'Yes' & input$pem == 0){
+    s1_fig <- s1_fig +
+      geom_vline(xintercept = s1_carbon_abated,linetype = c("dashed"), color = c("black")) +
+    geom_text(data=data.frame((x=(9.2*s1_carbon_abated/10)+input$totch),y=min(s1$levelized_cost_of_avoided_co2e)+input$totc), aes(x, y), label=str_wrap(paste(
+      "Total Avoided CO₂e = ",comma(s1_carbon_abated)," MT CO₂e/yr", sep = ""), width = 11)
+      ,size = 4.5, color = "black")
+    }
     
+    if(input$anc == 'Yes'){
+      s1_fig <- s1_fig +
+        geom_text(data=data.frame(x=(s1_carbon_abated/20)+input$ancosth,y=max(s1$levelized_cost_of_avoided_co2e)+input$ancost), aes(x, y), label=str_wrap(paste(
+          'Annualized Expenditure = ',"$",comma(total_cost_s1),"/yr",sep=""), width = 11)
+          ,size = 4.5, color = "black")
+    }
+    
+    if(input$avc == 'Yes'){
+      s1_fig <- s1_fig +
+        geom_hline(yintercept = c(0,macc_average), linetype = c("solid", "dashed"), 
+                   color = c("black","black")) +
+        geom_text(data=data.frame(x=(s1_carbon_abated/2)+input$acoh,y=macc_average+input$aco), aes(x, y), 
+                  label=str_wrap(paste("Average Cost = ","$",round(macc_average,digits = 1),
+                                       "/MT CO₂e",sep=""), width = 15), size =4, color = "black")
+    }
     
     if(carbon_price != 0){
       s1_fig <- s1_fig +
@@ -223,8 +238,18 @@ server <- function(input, output, session){
     }
     
     if(input$pem != 0) {
+      calc_percent <-  round(s1_carbon_abated/input$pem,3)*100
+      s1_fig <- s1_fig +
+        geom_text(data=data.frame((x=(9.2*s1_carbon_abated/10)+input$totch),y=min(s1$levelized_cost_of_avoided_co2e)+input$totc), aes(x, y), label=str_wrap(paste(
+          "Total Avoided CO₂e = ",comma(s1_carbon_abated)," MT CO₂e/yr\n","(",calc_percent,"%)", sep = ""), width = 11)
+          ,size = 4.5, color = "black")
+    }
+    
+    if(input$tpc == 'Yes'){
       s1_fig <- s1_fig +
         geom_vline(xintercept = input$pem,linetype = c("dashed"), color = c("black"))+
+        scale_x_continuous(labels = comma,limits = c(0,(max(input$pem,s1_carbon_abated)+input$xaxmax)+20), name = 
+                             "MT CO₂e/yr")+
         geom_text(data=data.frame((u=(9.2*input$pem/10)+input$pemh),v=min(s1$levelized_cost_of_avoided_co2e)+input$pemv), aes(u, v), label=str_wrap(paste(
           "Total Plant CO₂e = ",comma(input$pem)," MT CO₂e/yr", sep = ""), width = 11)
           ,size = 4.25, color = "black")
