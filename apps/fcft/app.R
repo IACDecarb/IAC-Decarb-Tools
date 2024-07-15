@@ -469,17 +469,20 @@ server <- function(input, output, session) {
     sankey <- sankey_reactive()
     
     javascript_string <- 
-      'function(el, x){
-    d3.select(el).selectAll(".node text")
-      .text(function(d) { 
-        var value_str = d.value.toLocaleString();
-        if (d.dx < 20) {
-          return d.name;
-        } else {
-          return d.name + " (" + value_str + ")";
-        }
-      });
-  }'
+      'function(el, x) {
+  d3.select(el).selectAll(".node text")
+    .text(function(d) { 
+      var value_str = d.value.toLocaleString();
+      if (d.dx < 20) {
+        return d.name;
+      } else {
+        return d.name + " (" + value_str + ")";
+      }
+    });
+  
+  // Clear the viewBox attribute of the first SVG element
+  document.getElementsByTagName("svg")[0].setAttribute("viewBox", "");
+}'
     
     htmlwidgets::onRender(x = sankey, jsCode = javascript_string)
   })
@@ -518,18 +521,20 @@ server <- function(input, output, session) {
                               colourScale = JS("d3.scaleSequential(d3.interpolateViridis);"))
       
       
-      javascript_string <- '
-function(el, x) {
-  var format = d3.format(",");
+      javascript_string <- 
+        'function(el, x) {
   d3.select(el).selectAll(".node text")
     .text(function(d) { 
-      var value_str = format(d.value);
+      var value_str = d.value.toLocaleString();
       if (d.dx < 20) {
         return d.name;
       } else {
         return d.name + " (" + value_str + ")";
       }
     });
+  
+  // Clear the viewBox attribute of the first SVG element
+  document.getElementsByTagName("svg")[0].setAttribute("viewBox", "");
 }'
       sankey <- htmlwidgets::onRender(x = sankey, jsCode = javascript_string)
       # Save the widget to the temporary HTML file
