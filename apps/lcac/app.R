@@ -40,7 +40,7 @@ ui <- fluidPage(
       selectInput('tc','Show Total Avoided CO₂e', c('Yes','No'),'Yes'),
       selectInput('anc','Show Annualized Expenditure', c('Yes','No'),'Yes'),
       selectInput('avc','Show Average Cost of Abatement', c('Yes','No'),'Yes'),
-      selectInput('tpc','Show Total Plant CO₂e', c('Yes','No'),'Yes'),
+      selectInput('tpc','Show Total Plant CO₂e', c('Yes','No'),'No'),
       numericInput("yaxmax", "Increase y-axis upper limit by", 0, -20000, 25000, 10),
       numericInput("yaxmin", "Decrease y-axis lower limit by", 0, -20000, 25000, 10),
       numericInput("xaxmax", "Increase x-axis upper limit by", 0, -20000, 25000, 10),
@@ -180,7 +180,7 @@ server <- function(input, output, session){
     # Generate a color palette with the specified number of colors
     color_palette <- viridis(num_colors)
     y_max <- 1.05*(max(max(s1$levelized_cost_of_avoided_co2e), carbon_price))
-    y_min <- 1.05*(min(min(s1$levelized_cost_of_avoided_co2e), macc_average))
+    y_min <- 1.05*(min(min(s1$levelized_cost_of_avoided_co2e), macc_average,0))
     s1_fig <- s1 %>% 
       mutate(assessment_recommendation = factor(assessment_recommendation, levels = assessment_recommendation[order(levelized_cost_of_avoided_co2e)])) %>% 
       ggmacc(mac = levelized_cost_of_avoided_co2e, abatement = annualized_avoided_co2e, fill=assessment_recommendation) +
