@@ -12,7 +12,7 @@ library(janitor)
 library(reshape2)
 
 
-webshot::install_phantomjs()
+webshot::install_phantomjs(force = TRUE)
 
 ui <- fluidPage(
   theme = shinytheme("flatly"),
@@ -152,10 +152,10 @@ server <- function(input, output, session) {
   })
   
   units_conversion <- reactive({
-    if (input$units == "MT CO₂e/yr") {
-      1 # Conversion factor 
+    if (input$units == "lbs. of CO₂e/yr" & input$perc != "Percentage" ) {
+      2204.6226218 # Conversion factor 
     } else {
-      2204.6226218
+      1
     }
   })
   
@@ -498,8 +498,12 @@ server <- function(input, output, session) {
   
   output$output_text <- renderUI({
     req(input$file)
-    if (nchar(input$cname) > 0) {
+    if (nchar(input$cname) > 0 & input$perc != "Percentage") {
       paste0("Facility CO₂e Flow for ", input$cname, " (" , input$units, ")")
+    } else if (nchar(input$cname) > 0 & input$perc == "Percentage") {
+    paste0("Facility CO₂e Flow for ", input$cname," (%)")
+    } else if ( input$perc == "Percentage") {
+      paste0("Facility CO₂e Flow ", "(%)")
     } else {
       paste0("Facility CO₂e Flow ","(" ,input$units,")")
     }
