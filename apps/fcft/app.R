@@ -27,19 +27,71 @@ ui <- fluidPage(
   titlePanel(HTML("Facility Sankey Tool"), 
              windowTitle = "FST"),
   tabsetPanel(
-    
-    tabPanel("Energy Sankey",
+    tabPanel("Load Inputs",
              sidebarLayout(
                sidebarPanel(
                  tags$style(HTML("
       #downloadData1 {
         font-weight: bold;
-        font-size: 16px;
+        font-size: 18px;
       }
     ")),
                  downloadLink("downloadData1", "Download Facility Sankey Tool - Input Sheet"),
-                 textInput("cname_e", "Enter Facility Name"),
+                 br(),
+                 br(),
+                 br(),
                  fileInput("file", "Upload \'FST Input Sheet\' Excel File", accept = ".xlsx"),
+                 br(),
+                 br(),
+                 tags$style(HTML("
+      #downloadData2 {
+        font-weight: bold;
+        font-size: 18px;
+      }
+    ")),
+                 downloadLink("downloadData2", "Download Tool Documentation")
+                 
+               ),
+               mainPanel(
+                 h1("Instructions"),
+                 br(),
+                 h3("Tab 1: Load Inputs"),
+                 tags$p("1. Download and fill out Input Sheet.", style = "font-size: 18px;"),
+                 tags$p("2. Upload completed Input Sheet.", style = "font-size: 18px;"),
+                 tags$p("3. Refer to documentation if needed.", style = "font-size: 18px;"),
+                 br(),
+                 h3("Tab 2: Energy Sankey"),
+                 tags$p("1. View and customize Energy Sankey Diagram.", style = "font-size: 18px;"),
+                 tags$p("2. Download Energy Sankey Diagram.", style = "font-size: 18px;"),
+                 br(),
+                 h3("Tab 3: Emissions Sankey"),
+                 tags$p("1. View and customize Emissions Sankey Diagram.", style = "font-size: 18px;"),
+                 tags$p("2. Download Emissions Sankey Diagram.", style = "font-size: 18px;"),
+               )
+             ),
+             tags$div(
+               style = "position: fixed; bottom: 0; width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: space-between; align-items: flex-end;",
+               tags$div(
+                 style = "text-align: left;",
+                 tags$img(src = "lbnl.png", style = "max-height: 50px; margin-left: 0px;"),
+                 tags$p(tags$b("Prakash Rao"), style = "margin-top: 0.5px; margin-left: 0px;"),
+                 tags$p("prao@lbl.gov", style = "margin-top: 0.5px; margin-left: 0px;")
+               ),
+               tags$div(
+                 style = "text-align: left;",
+                 tags$img(src = "ucdavis_logo_gold.png", style = "max-height: 50px;"),
+                 tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px; "),
+                 tags$p("jkissock@ucdavis.edu", style = "margin-top: 0.5px;")
+               )
+               
+               
+             )
+             
+    ),
+    tabPanel("Energy Sankey",
+             sidebarLayout(
+               sidebarPanel(
+                 textInput("cname_e", "Enter Facility Name"),
                  textOutput('move'),
                  selectInput("units_e", "Select Units", c("MMBtu/yr", "MWh/yr")),
                  radioButtons("perc_e","Select Value Type",c("Absolute","Percentage")),
@@ -48,15 +100,7 @@ ui <- fluidPage(
                  numericInput("height_e", "Adjust height of downloaded image (px)", 500, 500, 20000, 250),
                  numericInput("width_e", "Adjust width of downloaded image (px)", 1000, 750, 20000, 250),
                  downloadButton("downloadPNG_e", "Click Here to Download plot as Image"),
-                 br(),
-                 br(),
-                 tags$style(HTML("
-      #downloadData2 {
-        font-weight: bold;
-        font-size: 16px;
-      }
-    ")),
-                 downloadLink("downloadData2", "Download Tool Documentation")
+                 
                ),
                mainPanel(
                  div(
@@ -91,15 +135,9 @@ ui <- fluidPage(
              )
              
     ),
-    tabPanel("CO₂e Sankey",
+    tabPanel("Emissions Sankey",
              sidebarLayout(
                sidebarPanel(
-                 tags$style(HTML("
-      #downloadData1 {
-        font-weight: bold;
-        font-size: 16px;
-      }
-    ")),
                  textInput("cname", "Enter Facility Name"),
                  textOutput('move'),
                  selectInput("units", "Select Units", c("MT CO₂e/yr", "lbs. of CO₂e/yr")),
@@ -645,8 +683,8 @@ server <- function(input, output, session) {
     
     links.fe <- rbind(links.hh2, ele_link)
     
-   
-  
+    
+    
     
     if (!is_empty(ele_link_val) & !is_empty(fuel_link_val)) {
       links.t <- links.h %>% 
@@ -664,7 +702,7 @@ server <- function(input, output, session) {
         group_by(Source) %>% 
         summarise(Value = sum(Value))
     } 
-   
+    
     
     total_fields <- as.numeric(!is_empty(fuel_link_val))+as.numeric(!is_empty(ele_link_val))
     
