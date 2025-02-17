@@ -11,14 +11,16 @@ library(shinythemes)
 library(janitor)
 library(reshape2)
 library(shinyWidgets)
-library(kableExtra)
 library(openxlsx)
 library(htmltools)
+library(DT)
+library(bslib)
 
 install_phantomjs(force = T)
 
 ui <- fluidPage(
   theme = shinytheme("flatly"),
+  includeCSS(system.file("css", "kable_extra.css", package = "kableExtra")),
   tags$head(tags$style(
     HTML(
       "
@@ -43,168 +45,206 @@ ui <- fluidPage(
   )),
   titlePanel(HTML("Facility Sankey Tool"), windowTitle = "FST"),
   tabsetPanel(
-    tabPanel("Load Inputs",
-             sidebarLayout(
-               sidebarPanel(
-                 tags$style(HTML("
+    id = "tabs",
+    tabPanel(
+      "Load Inputs",
+      sidebarLayout(
+        sidebarPanel(
+          tags$style(HTML(
+            "
       #downloadData1 {
         font-weight: bold;
         font-size: 18px;
       }
-    ")),
-                 downloadLink("downloadData1", "Download Facility Sankey Tool - Input Sheet"),
-                 br(),
-                 br(),
-                 br(),
-                 fileInput("file", "Upload \'FST Input Sheet\' Excel File", accept = ".xlsx"),
-                 br(),
-                 br(),
-                 tags$style(HTML("
+    "
+          )),
+          downloadLink("downloadData1", "Download Facility Sankey Tool - Input Sheet"),
+          br(),
+          br(),
+          br(),
+          fileInput("file", "Upload \'FST Input Sheet\' Excel File", accept = ".xlsx"),
+          br(),
+          br(),
+          tags$style(HTML(
+            "
       #downloadData2 {
         font-weight: bold;
         font-size: 18px;
       }
-    ")),
-                 downloadLink("downloadData2", "Download Tool Documentation")
-                 
-               ),
-               mainPanel(
-                 h1("Instructions"),
-                 br(),
-                 h3("Tab 1: Load Inputs"),
-                 tags$p("1. Download and fill out Input Sheet.", style = "font-size: 18px;"),
-                 tags$p("2. Upload completed Input Sheet.", style = "font-size: 18px;"),
-                 tags$p("3. Refer to documentation if needed.", style = "font-size: 18px;"),
-                 br(),
-                 h3("Tab 2: Energy Sankey"),
-                 tags$p("1. View and customize Energy Sankey Diagram.", style = "font-size: 18px;"),
-                 tags$p("2. Download Energy Sankey Diagram.", style = "font-size: 18px;"),
-                 br(),
-                 h3("Tab 3: Emissions Sankey"),
-                 tags$p("1. View and customize Emissions Sankey Diagram.", style = "font-size: 18px;"),
-                 tags$p("2. Download Emissions Sankey Diagram.", style = "font-size: 18px;"),
-               )
-             ),
-             tags$div(
-               style = "position: fixed; bottom: 0; width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: space-between; align-items: flex-end;",
-               tags$div(
-                 style = "text-align: left;",
-                 tags$img(src = "lbnl.png", style = "max-height: 50px; margin-left: 0px;"),
-                 tags$p(tags$b("Prakash Rao"), style = "margin-top: 0.5px; margin-left: 0px;"),
-                 tags$p("prao@lbl.gov", style = "margin-top: 0.5px; margin-left: 0px;")
-               ),
-               tags$div(
-                 style = "text-align: left;",
-                 tags$img(src = "ucdavis_logo_gold.png", style = "max-height: 50px;"),
-                 tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px; "),
-                 tags$p("jkissock@ucdavis.edu", style = "margin-top: 0.5px;")
-               )
-               
-               
-             )
-             
-    ),
-    tabPanel("Energy Sankey",
-             sidebarLayout(
-               sidebarPanel(
-                 textInput("cname_e", "Enter Facility Name"),
-                 textOutput('move'),
-                 selectInput("units_e", "Select Units", c("MMBtu/yr", "MWh/yr")),
-                 radioButtons("perc_e","Select Value Type",c("Absolute","Percentage")),
-                 numericInput("precision_e", "Choose precision level of numeric values", 1, -20, 20, 1),
-                 sliderInput("vsc_e", "Adjust vertical scaling of the Sankey Diagram", 1, 100, 50),
-                 numericInput("height_e", "Adjust height of downloaded image (px)", 500, 500, 20000, 250),
-                 numericInput("width_e", "Adjust width of downloaded image (px)", 1000, 750, 20000, 250),
-                 downloadButton("downloadPNG_e", "Click Here to Download plot as Image"),
-                 
-               ),
-               mainPanel(
-                 div(
-                   uiOutput("output_text_e"),
-                   class = "output-text"
-                 ),
-                 div(
-                   style = "position: relative; width: 100%; max-height: 100%; preserveAspectRatio='xMinYMin meet';  background-color: #f8f8f8;",
-                   uiOutput("diagram_energy")
-                 )
-               )
-               
-             ),
-             tags$div(
-               
-               style = "width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: space-between; align-items: flex-end;",
-               tags$div(
-                 style = "text-align: left;",
-                 tags$img(src = "lbnl.png", style = "max-height: 50px; margin-left: 0px;"),
-                 tags$p(tags$b("Prakash Rao"), style = "margin-top: 0.5px; margin-left: 0px;"),
-                 tags$p("prao@lbl.gov", style = "margin-top: 0.5px; margin-left: 0px;")
-               ),
-               tags$div(
-                 style = "text-align: left;",
-                 
-                 tags$img(src = "ucdavis_logo_gold.png", style = "max-height: 50px;"),
-                 tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px; "),
-                 tags$p("jkissock@ucdavis.edu", style = "margin-top: 0.5px;")
-               )
-               
-               
-             )
-             
-    ),
-    tabPanel("Emissions Sankey",
-             sidebarLayout(
-               sidebarPanel(
-                 textInput("cname", "Enter Facility Name"),
-                 textOutput('move'),
-                 selectInput("units", "Select Units", c("MT CO₂e/yr", "lbs. of CO₂e/yr")),
-                 radioButtons("perc","Select Value Type",c("Absolute","Percentage")),
-                 numericInput("precision", "Choose precision level of numeric values", 1, -20, 20, 1),
-                 sliderInput("vsc", "Adjust vertical scaling of the Sankey Diagram", 1, 100, 50),
-                 numericInput("height", "Adjust height of downloaded image (px)", 500, 500, 20000, 250),
-                 numericInput("width", "Adjust width of downloaded image (px)", 1000, 750, 20000, 250),
-                 downloadButton("downloadPNG", "Click Here to Download plot as Image"),
-                 
-               ),
-               mainPanel(
-                 div(
-                   uiOutput("output_text"),
-                   class = "output-text"
-                 ),
-                 div(
-                   style = "position: relative; width: 100%; max-height: 100%; preserveAspectRatio='xMinYMin meet';  background-color: #f8f8f8;",
-                   uiOutput("diagram")
-                 ),
-                 br(),
-                 span(textOutput("titleef"), style="font-size: 21px; margin-left: 10px;"),
-                 tableOutput("table1")
-                 
-               )
-               
-             ),
-             tags$div(
-               
-               style = "width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: space-between; align-items: flex-end;",
-               tags$div(
-                 style = "text-align: left;",
-                 tags$img(src = "lbnl.png", style = "max-height: 50px; margin-left: 0px;"),
-                 tags$p(tags$b("Prakash Rao"), style = "margin-top: 0.5px; margin-left: 0px;"),
-                 tags$p("prao@lbl.gov", style = "margin-top: 0.5px; margin-left: 0px;")
-               ),
-               tags$div(
-                 style = "text-align: left;",
-                 
-                 tags$img(src = "ucdavis_logo_gold.png", style = "max-height: 50px;"),
-                 tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px; "),
-                 tags$p("jkissock@ucdavis.edu", style = "margin-top: 0.5px;")
-               )
-               
-               
-             )
-             
-
+    "
+          )),
+          downloadLink("downloadData2", "Download Tool Documentation")
+          
+        ),
+        mainPanel(
+          h1("Instructions"),
+          br(),
+          h3("Tab 1: Load Inputs"),
+          tags$p("1. Download and fill out Input Sheet.", style = "font-size: 18px;"),
+          tags$p("2. Upload completed Input Sheet.", style = "font-size: 18px;"),
+          tags$p("3. Refer to documentation if needed.", style = "font-size: 18px;"),
+          br(),
+          h3("Tab 2: Energy Sankey"),
+          tags$p("1. View and customize Energy Sankey Diagram.", style = "font-size: 18px;"),
+          tags$p("2. Download Energy Sankey Diagram.", style = "font-size: 18px;"),
+          br(),
+          h3("Tab 3: Emissions Sankey"),
+          tags$p("1. View and customize Emissions Sankey Diagram.", style = "font-size: 18px;"),
+          tags$p("2. Download Emissions Sankey Diagram.", style = "font-size: 18px;"),
+          br(),
+          h3("Tab 4: Product Emissions Intensity"),
+          tags$p(
+            "1. Estimate Product Emissions Intensity (e.g., Product Carbon Footprint).",
+            style = "font-size: 18px;"
+          )
+        )
+      ),
+      tags$div(
+        style = "position: fixed; bottom: 0; width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: space-between; align-items: flex-end;",
+        tags$div(
+          style = "text-align: left;",
+          tags$img(src = "lbnl.png", style = "max-height: 50px; margin-left: 0px;"),
+          tags$p(tags$b("Prakash Rao"), style = "margin-top: 0.5px; margin-left: 0px;"),
+          tags$p("prao@lbl.gov", style = "margin-top: 0.5px; margin-left: 0px;")
+        ),
+        tags$div(
+          style = "text-align: left;",
+          tags$img(src = "ucdavis_logo_gold.png", style = "max-height: 50px;"),
+          tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px; "),
+          tags$p("jkissock@ucdavis.edu", style = "margin-top: 0.5px;")
+        )
+        
+        
+      )
+      
     ),
     tabPanel(
-      "Emissions Intensity",
+      "Energy Sankey",
+      sidebarLayout(
+        sidebarPanel(
+          textInput("cname_e", "Enter Facility Name"),
+          textOutput('move'),
+          selectInput("units_e", "Select Units", c("MMBtu/yr", "MWh/yr")),
+          radioButtons("perc_e", "Select Value Type", c("Absolute", "Percentage")),
+          numericInput(
+            "precision_e",
+            "Choose precision level of numeric values",
+            1,
+            -20,
+            20,
+            1
+          ),
+          sliderInput("vsc_e", "Adjust vertical scaling of the Sankey Diagram", 1, 100, 50),
+          numericInput(
+            "height_e",
+            "Adjust height of downloaded image (px)",
+            500,
+            500,
+            20000,
+            250
+          ),
+          numericInput(
+            "width_e",
+            "Adjust width of downloaded image (px)",
+            1000,
+            750,
+            20000,
+            250
+          ),
+          downloadButton("downloadPNG_e", "Click Here to Download plot as Image"),
+          
+        ),
+        mainPanel(
+          div(uiOutput("output_text_e"), class = "output-text"),
+          div(style = "position: relative; width: 100%; max-height: 100%; preserveAspectRatio='xMinYMin meet';  background-color: #f8f8f8;", uiOutput("diagram_energy"))
+        )
+        
+      ),
+      tags$div(
+        style = "width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: space-between; align-items: flex-end;",
+        tags$div(
+          style = "text-align: left;",
+          tags$img(src = "lbnl.png", style = "max-height: 50px; margin-left: 0px;"),
+          tags$p(tags$b("Prakash Rao"), style = "margin-top: 0.5px; margin-left: 0px;"),
+          tags$p("prao@lbl.gov", style = "margin-top: 0.5px; margin-left: 0px;")
+        ),
+        tags$div(
+          style = "text-align: left;",
+          
+          tags$img(src = "ucdavis_logo_gold.png", style = "max-height: 50px;"),
+          tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px; "),
+          tags$p("jkissock@ucdavis.edu", style = "margin-top: 0.5px;")
+        )
+        
+        
+      )
+      
+    ),
+    tabPanel(
+      "Emissions Sankey",
+      sidebarLayout(
+        sidebarPanel(
+          textInput("cname", "Enter Facility Name"),
+          textOutput('move'),
+          selectInput("units", "Select Units", c("MT CO₂e/yr", "lbs. of CO₂e/yr")),
+          radioButtons("perc", "Select Value Type", c("Absolute", "Percentage")),
+          numericInput(
+            "precision",
+            "Choose precision level of numeric values",
+            1,
+            -20,
+            20,
+            1
+          ),
+          sliderInput("vsc", "Adjust vertical scaling of the Sankey Diagram", 1, 100, 50),
+          numericInput(
+            "height",
+            "Adjust height of downloaded image (px)",
+            500,
+            500,
+            20000,
+            250
+          ),
+          numericInput(
+            "width",
+            "Adjust width of downloaded image (px)",
+            1000,
+            750,
+            20000,
+            250
+          ),
+          downloadButton("downloadPNG", "Click Here to Download plot as Image"),
+          
+        ),
+        mainPanel(
+          div(uiOutput("output_text"), class = "output-text"),
+          div(style = "position: relative; width: 100%; max-height: 100%; preserveAspectRatio='xMinYMin meet';  background-color: #f8f8f8;", uiOutput("diagram")),
+          br(),
+          span(textOutput("titleef"), style = "font-size: 21px; margin-left: 10px;"),
+          tableOutput("table1")
+          
+        )
+        
+      ),
+      tags$div(
+        style = "width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: space-between; align-items: flex-end;",
+        tags$div(
+          style = "text-align: left;",
+          tags$img(src = "lbnl.png", style = "max-height: 50px; margin-left: 0px;"),
+          tags$p(tags$b("Prakash Rao"), style = "margin-top: 0.5px; margin-left: 0px;"),
+          tags$p("prao@lbl.gov", style = "margin-top: 0.5px; margin-left: 0px;")
+        ),
+        tags$div(
+          style = "text-align: left;",
+          
+          tags$img(src = "ucdavis_logo_gold.png", style = "max-height: 50px;"),
+          tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px; "),
+          tags$p("jkissock@ucdavis.edu", style = "margin-top: 0.5px;")
+        )
+      )
+    ),
+    tabPanel(
+      "Product Emissions Intensity",
       sidebarLayout(
         sidebarPanel(
           tags$style(HTML("
@@ -214,20 +254,22 @@ ui <- fluidPage(
           width = 3,
           selectInput(
             "products_num",
-            "Number of Products:",
+            "Enter Number of Products:",
             choices = c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10")
           ),
           uiOutput("product_inputs"),
           actionButton("calc_int", "Calculate Product Intensity")
         ),
         mainPanel(
-          tableOutput("intensity_table"),
-          downloadButton("download_all_data", "Download Plot Data (.XLSX)")
+          div(
+            style = "position: relative; width: 100%; padding-bottom: 5%;",
+            div(style = "display: flex; justify-content: center; align-items: center;", DTOutput("intensity_table")),
+            div(style = "position: relative; bottom: 30%; right: -90%;", uiOutput("show_dl_link"))
+          )
         )
       ),
       tags$div(
-        style = "width:100%
-  background - color:#f8f8f8; text-align: center; display: flex; justify-content: space-between; align-items: flex-end;",
+        style = "width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: space-between; align-items: flex-end;",
         tags$div(
           style = "text-align: left;",
           tags$img(src = "lbnl.png", style = "max-height: 50px; margin-left: 0px;"),
@@ -252,6 +294,10 @@ server <- function(input, output, session) {
   
   docFilePath <- 'User Guide for Facility CO2e Flow Tool.pdf'
   
+  observeEvent(input$file, {
+    updateTabsetPanel(session, "tabs", selected = "Energy Sankey")
+  })
+  
   output$downloadData1 <- downloadHandler(
     filename = function() {
       basename(excelFilePath)
@@ -270,8 +316,6 @@ server <- function(input, output, session) {
     }
   )
   
-  end_use <- reactiveValues(measures = NULL)
-  
   # Read the uploaded nodes Excel file
   nodes_data <- reactive({
     req(input$file)
@@ -283,7 +327,6 @@ server <- function(input, output, session) {
     aa <- aa %>%
       filter(!is.na(source))
     end.use <- tibble('Name' = aa$`source`)
-    end_use$measures <- end.use
     ene.src <- tibble('Name' = unique(aa$`energy_source`))
     em.src <- tibble('Name' = unique(aa$`emission_category`))
     ene.src <- na.omit(ene.src)
@@ -335,53 +378,26 @@ server <- function(input, output, session) {
     nodes
   })
   
-  output$product_inputs <- renderUI({
-    num <- input$products_num
-    
-    lapply(1:num, function(i) {
-      tagList(fluidRow(
-        column(width = 6, numericInput(
-          paste0("mass_", i),
-          paste("Product ", i, " Mass (Tons/yr):"),
-          value = 0,
-          min = 0
-        )),
-        column(
-          width = 6,
-          autonumericInput(
-            paste0("revenue_", i),
-            paste("Product ", i, " Revenue %:"),
-            value = 0,
-            decimalPlaces = 0,
-            currencySymbol = "%",
-            currencySymbolPlacement = "s",
-            minimumValue = "0",
-            maximumValue = "100",
-            align = "left"
-          )
-        ),
-        column(
-          width = 12,
-          selectInput(
-            paste0("process_", i),
-            paste("Select Product ", i, "-based Processes:"),
-            choices = end_use$measures,
-            multiple = TRUE
-          )
-        )
-      ), br())
-    })
-    
-  })
+  end_use <- reactiveValues(measures = NULL)
   
   output$product_inputs <- renderUI({
+    req(input$file)
     num <- input$products_num
+    
+    aa <<- read_excel(input$file$datapath, sheet = 'Calculator', range = "c17:o200") %>%
+      clean_names()
+    
+    aa <- aa[-1, ]
+    aa <- aa %>%
+      filter(!is.na(source))
+    end.use <- tibble('Name' = aa$`source`)
+    end_use$measures <- end.use
     
     lapply(1:num, function(i) {
       tagList(fluidRow(
         column(width = 6, numericInput(
           paste0("mass_", i),
-          paste("Product ", i, " Mass (Tons/yr):"),
+          paste("Enter Product ", i, " Mass (Tons/yr):"),
           value = 0,
           min = 0
         )),
@@ -389,7 +405,7 @@ server <- function(input, output, session) {
           width = 6,
           autonumericInput(
             paste0("revenue_", i),
-            paste("Product ", i, " Revenue %:"),
+            paste("Enter Product ", i, " Revenue %:"),
             value = 0,
             decimalPlaces = 0,
             currencySymbol = "%",
@@ -410,6 +426,7 @@ server <- function(input, output, session) {
         )
       ), br())
     })
+    
   })
   
   units_conversion <- reactive({
@@ -868,9 +885,9 @@ server <- function(input, output, session) {
         filter(Source == fuel_link_val) %>%
         group_by(Source) %>%
         summarise(Value = sum(Value))
-
+      
     }
-
+    
     
     total_fields <- as.numeric(!is_empty(fuel_link_val)) + as.numeric(!is_empty(ele_link_val))
     
@@ -1213,9 +1230,6 @@ server <- function(input, output, session) {
     }
   )
   
-  
-  
-  
   observeEvent(input$calc_int, {
     req(input$file)
     num <- input$products_num
@@ -1313,10 +1327,12 @@ server <- function(input, output, session) {
     }
     
     # Function to calculate proportions
-    calculate_proportion <- function(presence, values) {######
+    calculate_proportion <- function(presence, values) {
+      ######
       present <- as.numeric(strsplit(as.character(presence), " and ")[[1]])######
       present_values <- values[present]######
-      if (length(present_values) == 1) {######
+      if (length(present_values) == 1) {
+        ######
         return(1)  # If only one value, return 1 as the proportion######
       }######
       present_values / sum(present_values)######
@@ -1385,7 +1401,7 @@ server <- function(input, output, session) {
     
     if (exists("all_products_breakdown")) {
       all_products_breakdown <- `rownames<-`(all_products_breakdown, NULL)
-      all_products_summarized <<- all_products_breakdown %>%######
+      all_products_summarized <<- all_products_breakdown %>%
         group_by(product_number) %>%
         summarise(
           total_emissions_mass_based_mtco2e_yr = sum(mass_based_emissions),
@@ -1393,58 +1409,133 @@ server <- function(input, output, session) {
           total_emissions_revenue_based_mtco2e_yr = sum(revenue_based_emissions),
           revenue_based_emission_intensity_mtco2e_ton = sum(revenue_based_intensity)
         )
-    }
-    
-    output$intensity_table <-  function() {######
-      colnames(all_products_summarized) <-  c(######
+      
+      colnames(all_products_summarized) <-  c(
         "Product",
-        "Mass-based Emissions<br>(MTCO2e)",
-        "Mass-based Emissions Intensity<br>(MTCO2e/Ton of Product)",
-        "Revenue-based Emissions<br>(MTCO2e)",
-        "Revenue-based Emissions Intensity<br>(MTCO2e/Ton of Product)"
+        "Mass-based Emissions\n(MTCO2e)",
+        "Mass-based Emissions Intensity\n(MTCO2e/Ton of Product)",
+        "Revenue-based Emissions\n(MTCO2e)",
+        "Revenue-based Emissions Intensity\n(MTCO2e/Ton of Product)"
       )
       
-      all_products_summarized  %>%
-        kbl(align = "c",
-            format = "html",
-            escape = F,
-            digits = c(0,0,2,0,2)) %>%
-        kable_classic("striped") %>%
-        row_spec(0, bold = T) %>%
-        column_spec(1,
-                    width = "1in"
-                    ) %>%
-        column_spec(2, 
-                    width = "2in") %>%
-        column_spec(
-          3,
-          color = "white",
-          width = "3in",
-          background = spec_color(
-            all_products_summarized$`Mass-based Emissions<br>(MTCO2e)`,
-            end = 0.5,
-            direction = -1
+      names(all_products_breakdown)
+      
+      download_excel_file <- all_products_breakdown %>%
+        rename(
+          associated_products = presence,
+          all_products_co2e_emissions_mt_co2e_yr = co2e_emissions_mt_co2e_yr,
+          mass_based_emissions_mt_co2e_yr = mass_based_emissions,
+          mass_based_ei_mt_co2e_per_mt = mass_based_intensity,
+          revenue_based_emissions_mt_co2e_yr = revenue_based_emissions,
+          revenue_based_ei_mt_co2e_per_mt = revenue_based_intensity,
+        ) %>%
+        relocate(mass_based_ei_mt_co2e_per_mt, .after = mass_based_emissions_mt_co2e_yr)
+    }
+    
+    output$intensity_table <- renderDataTable({
+      all_products_summarized %>%
+        DT::datatable(
+          class = 'cell-border stripe hover',
+          filter = "none",
+          style = "default",
+          fillContainer = F,
+          rownames = F,
+          selection = "single",
+          options = list(
+            columnDefs = list(list(
+              className = 'dt-center', targets = 0:4
+            )),
+            dom = 't',
+            autoWidth = TRUE
           )
         ) %>%
-        column_spec(4, width = "2in") %>%
-        column_spec(
-          5,
-          color = "white",
-          width = "3in",
-          background = spec_color(
-            all_products_summarized$`Revenue-based Emissions Intensity<br>(MTCO2e/Ton of Product)`,
-            end = 0.5,
-            direction = -1
-          )
-        )
-    }
+        formatRound(columns = c(2, 4), digits = 0) %>%
+        formatRound(columns = c(3, 5), digits = 2)
+    })
+    
+    output$show_dl_link <- renderUI({
+      downloadLink("download_all_data", "Download Plot Data (.XLSX)", style = "font-size: 14px; text-decoration: underline;")
+    })
+    
+    # output$download_all_data <- downloadHandler(
+    #   filename = function() {
+    #     "all_data.xlsx"
+    #   },
+    #   content = function(file) {
+    #     write.xlsx(all_products_breakdown, file)
+    #   }
+    # )
     
     output$download_all_data <- downloadHandler(
       filename = function() {
         "all_data.xlsx"
       },
       content = function(file) {
-        write.xlsx(all_products_breakdown, file)
+        # Create the custom header style
+        hs1 <- createStyle(
+          fontColour = "black",
+          fgFill = "#e0e0e0",
+          halign = "center",
+          valign = "center",
+          textDecoration = "bold",
+          border = "TopBottomLeftRight",
+          wrapText = TRUE,
+          fontSize = 12
+        )
+        
+        # Create styles for different decimal places
+        style_1_decimal <- createStyle(numFmt = "0.0")
+        style_3_decimals <- createStyle(numFmt = "0.00")
+        
+        # Define columns for different decimal places
+        cols_1_decimals <- c(4, 5,7)  # columns for 1 decimal place
+        cols_3_decimals <- c(6,8)    # columns for 3 decimal places
+        
+        # Create a workbook and add a worksheet
+        wb <- createWorkbook()
+        addWorksheet(wb, "Sheet1")
+        
+        # Write data to the worksheet
+        writeData(wb, "Sheet1", download_excel_file, headerStyle = hs1)
+        
+        # Apply decimal formatting to specific columns
+        addStyle(
+          wb,
+          "Sheet1",
+          style_1_decimal,
+          rows = 2:(nrow(download_excel_file) + 1),
+          cols = cols_1_decimals,
+          gridExpand = TRUE
+        )
+        addStyle(
+          wb,
+          "Sheet1",
+          style_3_decimals,
+          rows = 2:(nrow(download_excel_file) + 1),
+          cols = cols_3_decimals,
+          gridExpand = TRUE
+        )
+        
+        # Set column widths to auto
+        setColWidths(
+          wb,
+          "Sheet1",
+          cols = 1:ncol(download_excel_file),
+          widths = "auto"
+        )
+        
+        # Add borders to all columns
+        addStyle(
+          wb,
+          "Sheet1",
+          createStyle(border = "TopBottomLeftRight"),
+          rows = 1:(nrow(download_excel_file) + 1),
+          cols = 1:ncol(download_excel_file),
+          gridExpand = TRUE
+        )
+        
+        # Save the workbook
+        saveWorkbook(wb, file, overwrite = TRUE)
       }
     )
   })
