@@ -320,7 +320,7 @@ server <- function(input, output, session) {
   nodes_data <- reactive({
     req(input$file)
     
-    aa <- read_excel(input$file$datapath, sheet = 'Calculator', range = "c17:o200")
+    aa <- read_excel(input$file$datapath, sheet = 'Calculator', range = "a6:m190")
     
     aa <- aa[-1, ]
     aa <- clean_names(aa)
@@ -352,7 +352,7 @@ server <- function(input, output, session) {
   
   nodes_data_energy <- reactive({
     req(input$file)
-    aa <- read_excel(input$file$datapath, sheet = 'Calculator', range = "c17:o200")
+    aa <- read_excel(input$file$datapath, sheet = 'Calculator', range = "a6:m190")
     aa <- aa[-1, ]
     aa <- clean_names(aa)
     aa <- aa %>%
@@ -384,7 +384,7 @@ server <- function(input, output, session) {
     req(input$file)
     num <- input$products_num
     
-    aa <<- read_excel(input$file$datapath, sheet = 'Calculator', range = "c17:o200") %>%
+    aa <<- read_excel(input$file$datapath, sheet = 'Calculator', range = "a6:m190") %>%
       clean_names()
     
     aa <- aa[-1, ]
@@ -452,8 +452,8 @@ server <- function(input, output, session) {
     req(input$file)
     
     
-    bb <- read_excel(input$file$datapath, sheet = 'Emission Factors', range = "b3:h20")
-    aa <- read_excel(input$file$datapath, sheet = 'Calculator', range = "c17:o200")
+    bb <- read_excel(input$file$datapath, sheet = 'Emission Inputs', range = "f10:l27")
+    aa <- read_excel(input$file$datapath, sheet = 'Calculator', range = "a6:m190")
     
     aa <- aa[-1, ]
     aa <- clean_names(aa)
@@ -526,7 +526,7 @@ server <- function(input, output, session) {
     req(input$file)
     
     
-    temp <- read_excel(input$file$datapath, sheet = 'Calculator', range = "c17:o200")
+    temp <- read_excel(input$file$datapath, sheet = 'Calculator', range = "a6:m190")
     
     temp <- temp[-1, ]
     temp <- clean_names(temp)
@@ -537,7 +537,7 @@ server <- function(input, output, session) {
   
   temp_e <- reactive({
     req(input$file)
-    temp_e <- read_excel(input$file$datapath, sheet = 'Calculator', range = "c17:o200")
+    temp_e <- read_excel(input$file$datapath, sheet = 'Calculator', range = "a6:m190")
     temp_e <- temp_e[-1, ]
     temp_e <- clean_names(temp_e)
     temp_e <- temp_e %>%
@@ -548,7 +548,7 @@ server <- function(input, output, session) {
   
   links_data <- reactive({
     req(input$file)
-    aa <- read_excel(input$file$datapath, sheet = 'Calculator', range = "c17:o200")
+    aa <- read_excel(input$file$datapath, sheet = 'Calculator', range = "a6:m190")
     
     aa <- aa[-1, ]
     aa <- clean_names(aa)
@@ -761,7 +761,7 @@ server <- function(input, output, session) {
   
   links_data_energy <- reactive({
     req(input$file)
-    aa <- read_excel(input$file$datapath, sheet = 'Calculator', range = "c17:o200")
+    aa <- read_excel(input$file$datapath, sheet = 'Calculator', range = "a6:m190")
     aa <- aa[-1, ]
     aa <- clean_names(aa)
     aa <- aa %>%
@@ -1031,18 +1031,18 @@ server <- function(input, output, session) {
   output$output_text <- renderUI({
     req(input$file)
     if (nchar(input$cname) > 0 & input$perc != "Percentage") {
-      paste0("Facility CO₂e Flow for ",
+      paste0("CO₂e Flow for ",
              input$cname,
              " (" ,
              input$units,
              ")")
     } else if (nchar(input$cname) > 0 &
                input$perc == "Percentage") {
-      paste0("Facility CO₂e Flow for ", input$cname, " (%)")
+      paste0("CO₂e Flow for ", input$cname, " (%)")
     } else if (input$perc == "Percentage") {
-      paste0("Facility CO₂e Flow ", "(%)")
+      paste0("CO₂e Flow ", "(%)")
     } else {
-      paste0("Facility CO₂e Flow ", "(" , input$units, ")")
+      paste0("CO₂e Flow ", "(" , input$units, ")")
     }
   })
   
@@ -1050,23 +1050,23 @@ server <- function(input, output, session) {
   output$output_text_e <- renderUI({
     req(input$file)
     if (nchar(input$cname_e) > 0 & input$perc_e != "Percentage") {
-      paste0("Facility Energy Flow for ",
+      paste0("Energy Flow for ",
              input$cname_e,
              " (" ,
              input$units_e,
              ")")
     } else if (nchar(input$cname_e) > 0 &
                input$perc_e == "Percentage") {
-      paste0("Facility Energy Flow for ", input$cname_e, " (%)")
+      paste0("Energy Flow for ", input$cname_e, " (%)")
     } else if (input$perc == "Percentage") {
-      paste0("Facility Energy Flow ", "(%)")
+      paste0("Energy Flow ", "(%)")
     } else {
-      paste0("Facility Energy Flow ", "(" , input$units_e, ")")
+      paste0("Energy Flow ", "(" , input$units_e, ")")
     }
   })
   
   output$downloadPNG <- downloadHandler(
-    filename = "Facility CO2e Flow.png",
+    filename = "CO2e Flow.png",
     content = function(file) {
       # Create a temporary HTML file to save the widget in
       tmp_file <- tempfile(fileext = ".html")
@@ -1128,9 +1128,9 @@ server <- function(input, output, session) {
       }
       
       if (nchar(input$cname) > 0) {
-        caption <- paste0("Facility CO2e Flow for ", input$cname, "(" , un, ")")
+        caption <- paste0("CO2e Flow for ", input$cname, "(" , un, ")")
       } else {
-        caption <- paste0("Facility CO2e Flow ", "(" , un, ")")
+        caption <- paste0("CO2e Flow ", "(" , un, ")")
       }
       img <- image_annotate(
         img1,
@@ -1149,7 +1149,7 @@ server <- function(input, output, session) {
   )
   
   output$downloadPNG_e <- downloadHandler(
-    filename = "Facility Energy Flow.png",
+    filename = "Energy Flow.png",
     content = function(file) {
       # Create a temporary HTML file to save the widget in
       tmp_file <- tempfile(fileext = ".html")
@@ -1206,13 +1206,13 @@ server <- function(input, output, session) {
       # add the user's caption as a text label
       
       if (nchar(input$cname) > 0) {
-        caption <- paste0("Facility Energy Flow for ",
+        caption <- paste0("Energy Flow for ",
                           input$cname_e,
                           "(" ,
                           input$units_e,
                           ")")
       } else {
-        caption <- paste0("Facility Energy Flow ", "(" , input$units_e, ")")
+        caption <- paste0("Energy Flow ", "(" , input$units_e, ")")
       }
       img <- image_annotate(
         img1,
@@ -1235,7 +1235,7 @@ server <- function(input, output, session) {
     num <- input$products_num
     end.use <- end_use$measures
     
-    aa <- read_excel(input$file$datapath, sheet = 'Calculator', range = "c17:o200")
+    aa <- read_excel(input$file$datapath, sheet = 'Calculator', range = "a6:m190")
     aa <- aa[-1, ]
     aa <- clean_names(aa)
     aa <- aa %>%
@@ -1541,7 +1541,7 @@ server <- function(input, output, session) {
   })
   
   output$downloadPNG <- downloadHandler(
-    filename = "Facility CO2e Flow.png",
+    filename = "CO2e Flow.png",
     content = function(file) {
       # Create a temporary HTML file to save the widget in
       tmp_file <- tempfile(fileext = ".html")
@@ -1603,9 +1603,9 @@ server <- function(input, output, session) {
       }
       
       if (nchar(input$cname) > 0) {
-        caption <- paste0("Facility CO2e Flow for ", input$cname, "(" , un, ")")
+        caption <- paste0("CO2e Flow for ", input$cname, "(" , un, ")")
       } else {
-        caption <- paste0("Facility CO2e Flow ", "(" , un, ")")
+        caption <- paste0("CO2e Flow ", "(" , un, ")")
       }
       img <- image_annotate(
         img1,
@@ -1626,7 +1626,7 @@ server <- function(input, output, session) {
   
   
   output$downloadPNG_e <- downloadHandler(
-    filename = "Facility Energy Flow.png",
+    filename = "Energy Flow.png",
     content = function(file) {
       # Create a temporary HTML file to save the widget in
       tmp_file <- tempfile(fileext = ".html")
@@ -1651,7 +1651,7 @@ server <- function(input, output, session) {
   )
   
   output$downloadPNG <- downloadHandler(
-    filename = "Facility CO2e Flow.png",
+    filename = "CO2e Flow.png",
     content = function(file)
     {
       # Create a temporary HTML file to save the widget in
@@ -1711,14 +1711,14 @@ server <- function(input, output, session) {
       
       if (nchar(input$cname) > 0)
       {
-        caption <- paste0("Facility Energy Flow for ",
+        caption <- paste0("Energy Flow for ",
                           input$cname_e,
                           "(" ,
                           input$units_e,
                           ")")
       } else
       {
-        caption <- paste0("Facility Energy Flow ", "(" , input$units_e, ")")
+        caption <- paste0("Energy Flow ", "(" , input$units_e, ")")
       }
       img <- image_annotate(
         img1,

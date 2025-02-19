@@ -23,8 +23,72 @@ ui <- fluidPage(
              windowTitle = "LCT"),
   #  downloadButton("download", "Download"),
   tabsetPanel(
-    
-    tabPanel("LCCE",
+    id = "tabs",
+    tabPanel(
+      "Load Inputs",
+      sidebarLayout(
+        sidebarPanel(
+          tags$style(HTML(
+            "
+      #downloadData1 {
+        font-weight: bold;
+        font-size: 18px;
+      }
+    "
+          )),
+          downloadLink("downloadData1", "Download LC - Input Sheet"),
+          br(),
+          br(),
+          br(),
+          fileInput("file", "Upload \'LC - Input Sheet\' Excel File", accept = ".xlsx"),
+          br(),
+          br(),
+          tags$style(HTML("
+      #downloadData2 {
+        font-weight: bold;
+        font-size: 18px;
+      }
+    ")),
+          downloadLink("downloadData2", "Download Tool Documentation")
+          
+        ),
+        mainPanel(
+          h1("Instructions"),
+          br(),
+          h3("Tab 1: Load Inputs"),
+          tags$p("1. Download and fill out Input Sheet.", style = "font-size: 18px;"),
+          tags$p("2. Upload completed Input Sheet.", style = "font-size: 18px;"),
+          tags$p("3. Refer to documentation if needed.", style = "font-size: 18px;"),
+          br(),
+          h3("Tab 2: Energy"),
+          tags$p("1. View and customize Levelized Cost of Conserved Energy (LCCE) Diagram.", style = "font-size: 18px;"),
+          tags$p("2. Download LCCE Diagram.", style = "font-size: 18px;"),
+          br(),
+          h3("Tab 3: Emissions"),
+          tags$p("1. View and customize Levelized Cost of Avoided CO₂e (LCAC) Diagram.", style = "font-size: 18px;"),
+          tags$p("2. Download LCAC Diagram.", style = "font-size: 18px;"),
+        )
+      ),
+      tags$div(
+        style = "position: fixed; bottom: 0; width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: space-between; align-items: flex-end;",
+        tags$div(
+          style = "text-align: left;",
+          tags$img(src = "lbnl.png", style = "max-height: 50px; margin-left: 0px;"),
+          tags$p(tags$b("Prakash Rao"), style = "margin-top: 0.5px; margin-left: 0px;"),
+          tags$p("prao@lbl.gov", style = "margin-top: 0.5px; margin-left: 0px;")
+        ),
+        tags$div(
+          style = "text-align: left;",
+          tags$img(src = "ucdavis_logo_gold.png", style = "max-height: 50px;"),
+          tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px; "),
+          tags$p("jkissock@ucdavis.edu", style = "margin-top: 0.5px;")
+        )
+        
+        
+      )
+      
+    ),
+    tabPanel("Energy",
              sidebarLayout(
                sidebarPanel(
                  tags$style(HTML("
@@ -33,11 +97,8 @@ ui <- fluidPage(
         font-size: 18px;
       }
     ")),
-                 downloadLink("downloadData1", "Download LC - Input Sheet"),
-                 br(),
-                 br(),
+                 
                  textInput("cname_e", "Enter Facility Name"),
-                 fileInput("file", "Upload input sheet"),
                  selectInput('unit_e',"Select Units", c("MMBtu","MWh"),"MMBtu"),
                  numericInput("pem_e", "Enter Total Plant Energy ", 0),
                  selectInput("type_e", "Choose Level of Detail", c("Individual Measures", "Summarized")),
@@ -61,16 +122,7 @@ ui <- fluidPage(
                                             numericInput("pemv_e", "Adjust vertical position of \'Total Plant Energy\' label", 0, -200000, 250000, 10)
                             )
                  ),
-                 downloadButton("downloadPNG_e", "Click Here to Download plot as Image"),
-                 br(),
-                 br(),
-                 tags$style(HTML("
-      #downloadData2 {
-        font-weight: bold;
-        font-size: 18px;
-      }
-    ")),
-                 downloadLink("downloadData2", "Download Tool Documentation")
+                 downloadButton("downloadPNG_e", "Click Here to Download plot as Image")
                ),
                mainPanel(
                  
@@ -102,7 +154,7 @@ ui <- fluidPage(
                
              )
     ),
-    tabPanel("LCAC",
+    tabPanel("Emissions",
              sidebarLayout(
                sidebarPanel(
                  tags$style(HTML("
@@ -179,6 +231,10 @@ server <- function(input, output, session){
   observeEvent(input$toggleBtn, ({
     updateCollapse(session, "collapsePanel")
   }))
+  
+  observeEvent(input$file, {
+    updateTabsetPanel(session, "tabs", selected = "Energy")
+  })
   
   output$downloadData1 <- downloadHandler(
     filename = function() {
@@ -464,7 +520,7 @@ server <- function(input, output, session){
              units = "cm", dpi= 400)
     })
   
-  output$downloadPNG <- downloadHandler(
+  output$downloadPNG_e <- downloadHandler(
     filename = "LCCE.png",
     content = function(file) {
       ggsave(file, plot = sen1_energy(), device = "png", height = 30, width = 45,
