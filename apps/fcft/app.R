@@ -18,6 +18,42 @@ library(bslib)
 
 install_phantomjs(force = T)
 
+# Function to check presence of an entry in other dataframes
+check_presence <- function(entry, dataframes, current_index) {
+  presence <- c()
+  for (i in seq_along(dataframes)) {
+    if (i != current_index) {
+      if (entry %in% dataframes[[i]]$source) {
+        presence <- c(presence, i)
+      }
+    }
+  }
+  if (length(presence) == 0) {
+    return(current_index)
+  } else {
+    return(paste(current_index, "and", paste(presence, collapse = " and ")))
+  }
+}
+
+# Function to calculate proportions
+calculate_proportion <- function(presence, values) {
+  ######
+  present <- as.numeric(strsplit(as.character(presence), " and ")[[1]])######
+  present_values <- values[present]######
+  if (length(present_values) == 1) {
+    ######
+    return(1)  # If only one value, return 1 as the proportion######
+  }######
+  present_values / sum(present_values)######
+}######
+
+
+# Function to apply proportions to emissions
+apply_proportions <- function(presence, emissions, values) {
+  props <- calculate_proportion(presence, values)
+  emissions * props[1]  # We take the first proportion as we're calculating for product 1
+}
+
 ui <- fluidPage(
   theme = shinytheme("flatly"),
   includeCSS(system.file("css", "kable_extra.css", package = "kableExtra")),
@@ -129,8 +165,7 @@ ui <- fluidPage(
           numericInput(
             "precision_e",
             "Choose precision level of numeric values",
-            1,
-            -20,
+            1,-20,
             20,
             1
           ),
@@ -191,8 +226,7 @@ ui <- fluidPage(
           numericInput(
             "precision",
             "Choose precision level of numeric values",
-            1,
-            -20,
+            1,-20,
             20,
             1
           ),
@@ -252,12 +286,27 @@ ui <- fluidPage(
         font-size: 16px;
       ")),
           width = 3,
-          selectInput(
-            "products_num",
-            "Enter Number of Products:",
-            choices = c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10")
+          fluidRow(
+            h4("Step 1: Select Methods", style = "font-weight: bold; font-size: 18px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;float: left;"),
+            br(),
+            column(12),
+            wellPanel(
+              style = "border: 0px solid #ccc; padding: 1px; border-radius: 2px;",
+              selectInput(
+                "products_num",
+                "Enter Number of Products:",
+                choices = c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10")
+              ),
+              radioButtons(
+                "selected_method",
+                "Select Allocation Approach:",
+                choices = c("Quantity-based", "Revenue-based", "Both"),
+                selected = "Quantity-based"
+              ),
+              uiOutput("qty_unit")
+            )
           ),
-          uiOutput("product_inputs"),
+          fluidRow(column(12, uiOutput("product_inputs"))),
           actionButton("calc_int", "Calculate Product Intensity")
         ),
         mainPanel(
@@ -378,13 +427,47 @@ server <- function(input, output, session) {
     nodes
   })
   
+  output$qty_unit <- renderUI({
+    req(input$file)
+    if (input$selected_method == "Quantity-based") {
+      fluidRow(column(
+        6,
+        textInput("units_name", "Enter Units of Quantity", value = "metric Tons/yr")
+      ))
+    } else if (input$selected_method == "Both" ||
+               input$selected_method == "Revenue-based") {
+      fluidRow(column(
+        6,
+        textInput("units_name", "Enter Units of Quantity", value = "metric Tons/yr")
+      ), uiOutput("dynamic_revenue"))
+    }
+  })
+  
+  output$dynamic_revenue <- renderUI({
+    if (input$selected_method == "Both" ||
+        input$selected_method == "Revenue-based") {
+      column(
+        6,
+        selectInput(
+          "revenue_name",
+          "Select Revenue Calculation Method:",
+          choices = c(
+            paste0("$/", input$units_name),
+            "Total product revenue ($)",
+            "Revenue %"
+          )
+        )
+      )
+    }
+  })
+  
   end_use <- reactiveValues(measures = NULL)
   
   output$product_inputs <- renderUI({
     req(input$file)
     num <- input$products_num
     
-    aa <<- read_excel(input$file$datapath, sheet = 'Calculator', range = "a6:m190") %>%
+    aa <- read_excel(input$file$datapath, sheet = 'Calculator', range = "a6:m190") %>%
       clean_names()
     
     aa <- aa[-1, ]
@@ -393,40 +476,136 @@ server <- function(input, output, session) {
     end.use <- tibble('Name' = aa$`source`)
     end_use$measures <- end.use
     
-    lapply(1:num, function(i) {
-      tagList(fluidRow(
-        column(width = 6, numericInput(
-          paste0("mass_", i),
-          paste("Enter Product ", i, " Mass (Tons/yr):"),
-          value = 0,
-          min = 0
-        )),
-        column(
-          width = 6,
-          autonumericInput(
-            paste0("revenue_", i),
-            paste("Enter Product ", i, " Revenue %:"),
-            value = 0,
-            decimalPlaces = 0,
-            currencySymbol = "%",
-            currencySymbolPlacement = "s",
-            minimumValue = "0",
-            maximumValue = "100",
-            align = "left"
+    if (input$selected_method == "Quantity-based") {
+      lapply(1:num, function(i) {
+        tagList(fluidRow(
+          h4("Step 2: Enter Quantity-based Inputs", style = "font-weight: bold; font-size: 18px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;float: left;"),
+          wellPanel(
+            column(width = 6, numericInput(
+              paste0("qty_", i),
+              paste("Enter Product ", i, " Quantity (", input$units_name, "):"),
+              value = 0,
+              min = 0
+            )),
+            column(
+              width = 12,
+              selectInput(
+                paste0("process_", i),
+                paste("Select Product ", i, "-based Processes:"),
+                choices = end_use$measures,
+                multiple = TRUE
+              )
+            )
           )
-        ),
-        column(
-          width = 12,
-          selectInput(
-            paste0("process_", i),
-            paste("Select Product ", i, "-based Processes:"),
-            choices = end_use$measures,
-            multiple = TRUE
-          )
-        )
-      ), br())
-    })
-    
+        ), br())
+      })
+      
+    } else {
+      if (input$revenue_name == "Revenue %") {
+        lapply(1:num, function(i) {
+          tagList(fluidRow(
+            h4(
+              "Step 2: Enter Quantity- and Revenue-based Inputs",
+              style = "font-weight: bold; font-size: 18px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;float: left;"
+            ),
+            wellPanel(
+              column(
+                width = 6,
+                numericInput(
+                  paste0("qty_", i),
+                  paste(
+                    "Enter Product ",
+                    i,
+                    " Quantity (",
+                    input$units_name,
+                    "):"
+                  ),
+                  value = 0,
+                  min = 0
+                )
+              ),
+              column(
+                width = 6,
+                autonumericInput(
+                  inputId =   paste0("revenue_", i),
+                  label =  paste("Enter Product ", i, " Revenue %:"),
+                  value = 0,
+                  decimalPlaces = 0,
+                  currencySymbol = "%",
+                  currencySymbolPlacement = "s",
+                  minimumValue = "0",
+                  maximumValue = "100",
+                  align = "left"
+                )
+              ),
+              column(
+                width = 12,
+                selectInput(
+                  paste0("process_", i),
+                  paste("Select Product ", i, "-based Processes:"),
+                  choices = end_use$measures,
+                  multiple = TRUE
+                )
+              )
+            )
+          ), br())
+        })
+      } else {
+        lapply(1:num, function(i) {
+          tagList(fluidRow(
+            h4(
+              "Step 2: Enter Quantity- and Revenue-based Inputs",
+              style = "font-weight: bold; font-size: 18px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;float: left;"
+            ),
+            wellPanel(
+              column(
+                width = 6,
+                numericInput(
+                  paste0("qty_", i),
+                  paste(
+                    "Enter Product ",
+                    i,
+                    " Quantity (",
+                    input$units_name,
+                    "):"
+                  ),
+                  value = 0,
+                  min = 0
+                )
+              ),
+              column(
+                width = 6,
+                autonumericInput(
+                  inputId =   paste0("revenue_", i),
+                  label =  if_else(
+                    input$revenue_name == "Total product revenue ($)",
+                    paste("Enter Product ", i, " Revenue ($):"),
+                    paste("Enter Product ", i, " Revenue per Unit:")
+                  ),
+                  value = 0,
+                  decimalPlaces = 0,
+                  currencySymbol = "$",
+                  currencySymbolPlacement = "p",
+                  minimumValue = "0",
+                  maximumValue = "10000000000000000000",
+                  align = "left"
+                )
+              ),
+              column(
+                width = 12,
+                selectInput(
+                  paste0("process_", i),
+                  paste("Select Product ", i, "-based Processes:"),
+                  choices = end_use$measures,
+                  multiple = TRUE
+                )
+              )
+            ),
+            br()
+          ))
+        })
+      }
+    }
   })
   
   units_conversion <- reactive({
@@ -564,9 +743,6 @@ server <- function(input, output, session) {
     nodes.hh[1, 'Name'] <- 'Total'
     non_ele <- ene.src %>%
       filter(Name != 'Electricity')
-    
-    
-    
     
     if (!is_empty(non_ele$Name)) {
       nodes.hh[2, 'Name'] <- 'Fuel'
@@ -1031,11 +1207,7 @@ server <- function(input, output, session) {
   output$output_text <- renderUI({
     req(input$file)
     if (nchar(input$cname) > 0 & input$perc != "Percentage") {
-      paste0("CO₂e Flow for ",
-             input$cname,
-             " (" ,
-             input$units,
-             ")")
+      paste0("CO₂e Flow for ", input$cname, " (" , input$units, ")")
     } else if (nchar(input$cname) > 0 &
                input$perc == "Percentage") {
       paste0("CO₂e Flow for ", input$cname, " (%)")
@@ -1050,11 +1222,7 @@ server <- function(input, output, session) {
   output$output_text_e <- renderUI({
     req(input$file)
     if (nchar(input$cname_e) > 0 & input$perc_e != "Percentage") {
-      paste0("Energy Flow for ",
-             input$cname_e,
-             " (" ,
-             input$units_e,
-             ")")
+      paste0("Energy Flow for ", input$cname_e, " (" , input$units_e, ")")
     } else if (nchar(input$cname_e) > 0 &
                input$perc_e == "Percentage") {
       paste0("Energy Flow for ", input$cname_e, " (%)")
@@ -1206,11 +1374,7 @@ server <- function(input, output, session) {
       # add the user's caption as a text label
       
       if (nchar(input$cname) > 0) {
-        caption <- paste0("Energy Flow for ",
-                          input$cname_e,
-                          "(" ,
-                          input$units_e,
-                          ")")
+        caption <- paste0("Energy Flow for ", input$cname_e, "(" , input$units_e, ")")
       } else {
         caption <- paste0("Energy Flow ", "(" , input$units_e, ")")
       }
@@ -1249,190 +1413,367 @@ server <- function(input, output, session) {
       return(product_data)
     }
     
-    all_product_dfs <- list()
-    mass_values <- numeric(num)
-    revenue_values <- numeric(num)
-    
-    for (i in 1:num) {
-      df_name <- paste0("product_data_", i, "_df")
-      df <- product_dataframe(i)
+    if (input$selected_method == "Quantity-based") {
+      all_product_dfs <- list()
+      qty_values <- numeric(num)
       
-      assign(df_name, df, envir = .GlobalEnv)
+      for (i in 1:num) {
+        df_name <- paste0("product_data_", i, "_df")
+        df <- product_dataframe(i)
+        
+        assign(df_name, df, envir = .GlobalEnv)
+        
+        all_product_dfs[[df_name]] <- df
+        
+        ##quantity
+        df_qty <- paste0("product_", i, "_qty")
+        qty_value <- input[[paste0("qty_", i)]]
+        assign(df_qty, qty_value, envir = .GlobalEnv)
+      }
       
-      all_product_dfs[[df_name]] <- df
+      assign("dataframes", all_product_dfs, envir = .GlobalEnv)
       
+      qty_vector <- numeric(num)
       
-      ##Mass
-      df_mass <- paste0("product_", i, "_mass")
-      mass_value <- input[[paste0("mass_", i)]]
-      assign(df_mass, mass_value, envir = .GlobalEnv)
+      # Calculate process percentages
+      for (i in 1:num) {
+        df_name <- paste0("product_data_", i, "_df")
+        df <- product_dataframe(i)
+        
+        assign(df_name, df, envir = .GlobalEnv)
+        
+        all_product_dfs[[df_name]] <- df
+        
+        
+        ##quantity
+        df_qty <- paste0("product_", i, "_qty")
+        qty_value <- input[[paste0("qty_", i)]]
+        assign(df_qty, qty_value, envir = .GlobalEnv)
+        qty_vector[i] <- qty_value
+      }
       
-      ##Revenue
-      df_revenue <- paste0("product_", i, "_revenue")
-      rev_value <- input[[paste0("revenue_", i)]] / 100
-      assign(df_revenue, rev_value , envir = .GlobalEnv)
-    }
-    
-    assign("dataframes", all_product_dfs, envir = .GlobalEnv)
-    
-    mass_vector <- numeric(num)
-    revenue_vector <- numeric(num)
-    
-    # Calculate process percentages
-    for (i in 1:num) {
-      df_name <- paste0("product_data_", i, "_df")
-      df <- product_dataframe(i)
+      # Create named vectors
+      names(qty_vector) <- paste0("product_", 1:num, "_qty")
       
-      assign(df_name, df, envir = .GlobalEnv)
+      # Assign vectors to global environment
+      assign("product_qties", qty_vector, envir = .GlobalEnv)
       
-      all_product_dfs[[df_name]] <- df
+      # Initialize an empty list to store individual product dataframes
+      product_breakdowns <- list()
       
-      
-      ##Mass
-      df_mass <- paste0("product_", i, "_mass")
-      mass_value <- input[[paste0("mass_", i)]]
-      assign(df_mass, mass_value, envir = .GlobalEnv)
-      mass_vector[i] <- mass_value
-      
-      ##Revenue
-      df_revenue <- paste0("product_", i, "_revenue")
-      rev_value <- input[[paste0("revenue_", i)]] / 100
-      assign(df_revenue, rev_value , envir = .GlobalEnv)
-      revenue_vector[i] <- rev_value
-    }
-    
-    # Create named vectors
-    names(mass_vector) <- paste0("product_", 1:num, "_mass")
-    names(revenue_vector) <- paste0("product_", 1:num, "_revenue")
-    
-    # Assign vectors to global environment
-    assign("product_masses", mass_vector, envir = .GlobalEnv)
-    assign("product_revenues", revenue_vector, envir = .GlobalEnv)
-    
-    # Function to check presence of an entry in other dataframes
-    check_presence <- function(entry, dataframes, current_index) {
-      presence <- c()
       for (i in seq_along(dataframes)) {
-        if (i != current_index) {
-          if (entry %in% dataframes[[i]]$source) {
-            presence <- c(presence, i)
-          }
+        df <- dataframes[[i]]
+        
+        results <- sapply(
+          df$source,
+          check_presence,
+          dataframes = dataframes,
+          current_index = i
+        )
+        
+        product_df <- data.frame(
+          product_number = i,
+          source = df$source,
+          presence = results,
+          co2e_emissions_mt_co2e_yr = df$co2e_emissions_mt_co2e_yr,
+          stringsAsFactors = FALSE
+        )
+        
+        product_df <- product_df############################
+        
+        # Calculate quantity-based and revenue-based emissions
+        product_df$qty_based_emissions <- mapply(
+          apply_proportions,
+          product_df$presence,
+          product_df$co2e_emissions_mt_co2e_yr,
+          MoreArgs = list(values = product_qties)
+        )
+        
+        # Calculate emissions intensities
+        product_df$qty_based_intensity <- product_df$qty_based_emissions / product_qties[i]
+        
+        # Store the dataframe in the list
+        product_breakdowns[[i]] <- product_df
+        
+        # Assign individual dataframe to global environment
+        assign(paste0("product_", i, "_breakdown"),
+               product_df,
+               envir = .GlobalEnv)
+      }
+      
+      # Combine all product dataframes into a single dataframe
+      all_products_breakdown <- do.call(rbind, product_breakdowns)
+      
+      # Assign the combined dataframe to the global environment
+      assign("all_products_breakdown",
+             all_products_breakdown,
+             envir = .GlobalEnv)
+      
+      if (exists("all_products_breakdown")) {
+        all_products_breakdown <- `rownames<-`(all_products_breakdown, NULL)
+        all_products_summarized <- all_products_breakdown %>%
+          group_by(product_number) %>%
+          summarise(
+            total_emissions_qty_based_mtco2e_yr = sum(qty_based_emissions),
+            qty_based_emission_intensity_mtco2e_ton = sum(qty_based_intensity)
+          )
+        
+        colnames(all_products_summarized) <-  c(
+          "Product",
+          "Quantity-based Emissions\n(MTCO2e)",
+          "Quantity-based Emissions Intensity\n(MTCO2e/Ton of Product)"
+        )
+        
+        download_excel_file <- all_products_breakdown %>%
+          mutate(qty_weight = qty_based_emissions/co2e_emissions_mt_co2e_yr) %>% 
+          rename(
+            associated_products = presence,
+            all_products_co2e_emissions_mt_co2e_yr = co2e_emissions_mt_co2e_yr,
+            qty_based_emissions_mt_co2e_yr = qty_based_emissions,
+            qty_based_ei_mt_co2e_per_mt = qty_based_intensity
+          ) %>%
+          relocate(qty_based_ei_mt_co2e_per_mt, .after = qty_based_emissions_mt_co2e_yr) %>% 
+          relocate(qty_weight, .after = all_products_co2e_emissions_mt_co2e_yr)
+      }
+    } else  {
+      #Revenue or Both based approach
+      
+      all_product_dfs <- list()
+      qty_values <- numeric(num)
+      revenue_values <- numeric(num)
+      
+      for (i in 1:num) {
+        df_name <- paste0("product_data_", i, "_df")
+        df <- product_dataframe(i)
+        
+        assign(df_name, df, envir = .GlobalEnv)
+        all_product_dfs[[df_name]] <- df
+        
+        
+        ##Quantity
+        df_qty <- paste0("product_", i, "_qty")
+        qty_value <- input[[paste0("qty_", i)]]
+        assign(df_qty, qty_value, envir = .GlobalEnv)
+        
+        ##Revenue
+        df_revenue <- paste0("product_", i, "_revenue")
+        rev_value <- if_else(
+          input$revenue_name == "Revenue %",
+          input[[paste0("revenue_", i)]] / 100,
+          if_else(
+            input$revenue_name == "Total product revenue ($)",
+            input[[paste0("revenue_", i)]],
+            input[[paste0("revenue_", i)]] * qty_value
+          )
+        )
+        assign(df_revenue, rev_value , envir = .GlobalEnv)
+      }
+      
+      assign("dataframes", all_product_dfs, envir = .GlobalEnv)
+      
+      qty_vector <- numeric(num)
+      revenue_vector <- numeric(num)
+      
+      # Calculate process percentages
+      for (i in 1:num) {
+        df_name <- paste0("product_data_", i, "_df")
+        df <- product_dataframe(i)
+        
+        assign(df_name, df, envir = .GlobalEnv)
+        all_product_dfs[[df_name]] <- df
+        
+        
+        ##qty
+        df_qty <- paste0("product_", i, "_qty")
+        qty_value <- input[[paste0("qty_", i)]]
+        assign(df_qty, qty_value, envir = .GlobalEnv)
+        qty_vector[i] <- qty_value
+        
+        ##Revenue
+        df_revenue <- paste0("product_", i, "_revenue")
+        rev_value <- if_else(
+          input$revenue_name == "Revenue %",
+          input[[paste0("revenue_", i)]] / 100,
+          if_else(
+            input$revenue_name == "Total product revenue ($)",
+            input[[paste0("revenue_", i)]],
+            input[[paste0("revenue_", i)]] * qty_value
+          )
+        )
+        assign(df_revenue, rev_value , envir = .GlobalEnv)
+        revenue_vector[i] <- rev_value
+      }
+      
+      # Create named vectors
+      names(qty_vector) <- paste0("product_", 1:num, "_qty")
+      names(revenue_vector) <- paste0("product_", 1:num, "_revenue")
+      
+      # Assign vectors to global environment
+      assign("product_qties", qty_vector, envir = .GlobalEnv)
+      assign("product_revenues", revenue_vector, envir = .GlobalEnv)
+      
+      # Initialize an empty list to store individual product dataframes
+      product_breakdowns <- list()
+      
+      for (i in seq_along(dataframes)) {
+        df <- dataframes[[i]]
+        
+        results <- sapply(
+          df$source,
+          check_presence,
+          dataframes = dataframes,
+          current_index = i
+        )
+        
+        product_df <- data.frame(
+          product_number = i,
+          source = df$source,
+          presence = results,
+          co2e_emissions_mt_co2e_yr = df$co2e_emissions_mt_co2e_yr,
+          stringsAsFactors = FALSE
+        )
+        
+        product_df <- product_df
+        
+        # Calculate qty-based and revenue-based emissions
+        product_df$qty_based_emissions <- mapply(
+          apply_proportions,
+          product_df$presence,
+          product_df$co2e_emissions_mt_co2e_yr,
+          MoreArgs = list(values = product_qties)
+        )
+        
+        
+        product_df$revenue_based_emissions <- mapply(
+          apply_proportions,
+          product_df$presence,
+          product_df$co2e_emissions_mt_co2e_yr,
+          MoreArgs = list(values = product_revenues)
+        )
+        
+
+        # Calculate emissions intensities
+        product_df$qty_based_intensity <- product_df$qty_based_emissions / product_qties[i]
+        product_df$revenue_based_intensity_qty <- product_df$revenue_based_emissions / product_qties[i]
+        
+        if (input$revenue_name != "Revenue %") {
+          product_df$revenue_based_intensity_dollar <- product_df$revenue_based_emissions / product_revenues[i]
+        }
+        
+        # Store the dataframe in the list
+        product_breakdowns[[i]] <- product_df
+        
+        # Assign individual dataframe to global environment
+        assign(paste0("product_", i, "_breakdown"),
+               product_df,
+               envir = .GlobalEnv)
+      }
+      
+      # Combine all product dataframes into a single dataframe
+      all_products_breakdown <- do.call(rbind, product_breakdowns)
+      
+      # Assign the combined dataframe to the global environment
+      assign("all_products_breakdown",
+             all_products_breakdown,
+             envir = .GlobalEnv)
+      
+      if (exists("all_products_breakdown")) {
+        all_products_breakdown <- `rownames<-`(all_products_breakdown, NULL)
+        
+        if (input$revenue_name == "Revenue %") {
+          all_products_summarized <- all_products_breakdown %>%
+            group_by(product_number) %>%
+            summarise(
+              total_emissions_revenue_based_mtco2e_yr = sum(revenue_based_emissions),
+              revenue_based_emission_intensity_mtco2e_qty = sum(revenue_based_intensity_qty)
+            )
+          
+          colnames(all_products_summarized) <-  c(
+            "Product",
+            "Revenue-based Emissions\n(MTCO2e)",
+            "Revenue-based Emissions Intensity\n(MTCO2e/unit of Product)"
+          )
+          
+          download_excel_file <- all_products_breakdown %>%
+            mutate(qty_weight = qty_based_emissions/co2e_emissions_mt_co2e_yr,
+                   revenue_weight = revenue_based_emissions/co2e_emissions_mt_co2e_yr) %>% 
+            rename(
+              associated_products = presence,
+              all_products_co2e_emissions_mt_co2e_yr = co2e_emissions_mt_co2e_yr,
+              qty_based_emissions_mt_co2e_yr = qty_based_emissions,
+              qty_based_ei_mt_co2e_per_mt = qty_based_intensity,
+              revenue_based_emissions_mt_co2e_yr = revenue_based_emissions,
+              revenue_based_ei_mt_co2e_per_mt_qty = revenue_based_intensity_qty,
+            ) %>%
+            relocate(qty_based_ei_mt_co2e_per_mt, .after = qty_based_emissions_mt_co2e_yr) %>% 
+            relocate(qty_weight,.after = all_products_co2e_emissions_mt_co2e_yr) %>% 
+            relocate(revenue_weight, .after = qty_based_emissions_mt_co2e_yr)
+          
+        } else {
+          all_products_summarized <- all_products_breakdown %>%
+            group_by(product_number) %>%
+            summarise(
+              total_emissions_qty_based_mtco2e_yr = sum(qty_based_emissions),
+              qty_based_emission_intensity_mtco2e_ton = sum(qty_based_intensity),
+              total_emissions_revenue_based_mtco2e_yr = sum(revenue_based_emissions),
+              revenue_based_emission_intensity_mtco2e_dollar = sum(revenue_based_intensity_dollar),
+              revenue_based_emission_intensity_mtco2e_qty = sum(revenue_based_intensity_qty)
+            )
+          
+          colnames(all_products_summarized) <-  c(
+            "Product",
+            "Quantity-based Emissions\n(MTCO2e)",
+            "Quantity-based Emissions Intensity\n(MTCO2e/Ton of Product)",
+            "Revenue-based Emissions\n(MTCO2e)",
+            "Revenue-based Emissions Intensity\n(MTCO2e/$ Revenue)",
+            "Revenue-based Emissions Intensity\n(MTCO2e/unit of Product)"
+          )
+          
+          download_excel_file <- all_products_breakdown %>%
+            mutate(qty_weight = qty_based_emissions/co2e_emissions_mt_co2e_yr,
+                   revenue_weight = revenue_based_emissions/co2e_emissions_mt_co2e_yr) %>% 
+            rename(
+              associated_products = presence,
+              all_products_co2e_emissions_mt_co2e_yr = co2e_emissions_mt_co2e_yr,
+              qty_based_emissions_mt_co2e_yr = qty_based_emissions,
+              qty_based_ei_mt_co2e_per_mt = qty_based_intensity,
+              revenue_based_emissions_mt_co2e_yr = revenue_based_emissions,
+              revenue_based_ei_mt_co2e_per_mt_dollar = revenue_based_intensity_dollar,
+              revenue_based_ei_mt_co2e_per_mt_qty = revenue_based_intensity_qty
+            ) %>%
+            relocate(qty_based_ei_mt_co2e_per_mt, .after = qty_based_emissions_mt_co2e_yr)%>% 
+            relocate(qty_weight,.after = all_products_co2e_emissions_mt_co2e_yr) %>% 
+            relocate(revenue_weight, .after = qty_based_emissions_mt_co2e_yr)
         }
       }
-      if (length(presence) == 0) {
-        return(current_index)
-      } else {
-        return(paste(current_index, "and", paste(presence, collapse = " and ")))
-      }
     }
     
-    # Function to calculate proportions
-    calculate_proportion <- function(presence, values) {
-      ######
-      present <- as.numeric(strsplit(as.character(presence), " and ")[[1]])######
-      present_values <- values[present]######
-      if (length(present_values) == 1) {
-        ######
-        return(1)  # If only one value, return 1 as the proportion######
-      }######
-      present_values / sum(present_values)######
-    }######
-    
-    
-    # Function to apply proportions to emissions
-    apply_proportions <- function(presence, emissions, values) {
-      props <- calculate_proportion(presence, values)
-      emissions * props[1]  # We take the first proportion as we're calculating for product 1
-    }
-    
-    # Initialize an empty list to store individual product dataframes
-    product_breakdowns <- list()
-    
-    for (i in seq_along(dataframes)) {
-      df <- dataframes[[i]]
-      
-      results <- sapply(df$source,
-                        check_presence,
-                        dataframes = dataframes,
-                        current_index = i)
-      
-      product_df <- data.frame(
-        product_number = i,
-        source = df$source,
-        presence = results,
-        co2e_emissions_mt_co2e_yr = df$co2e_emissions_mt_co2e_yr,
-        stringsAsFactors = FALSE
-      )
-      
-      product_df <- product_df############################
-      
-      # Calculate mass-based and revenue-based emissions
-      product_df$mass_based_emissions <- mapply(
-        apply_proportions,
-        product_df$presence,
-        product_df$co2e_emissions_mt_co2e_yr,
-        MoreArgs = list(values = product_masses)
-      )
-      
-      
-      product_df$revenue_based_emissions <- mapply(
-        apply_proportions,
-        product_df$presence,
-        product_df$co2e_emissions_mt_co2e_yr,
-        MoreArgs = list(values = product_revenues)
-      )
-      
-      # Calculate emissions intensities
-      product_df$mass_based_intensity <- product_df$mass_based_emissions / product_masses[i]
-      product_df$revenue_based_intensity <- product_df$revenue_based_emissions / product_masses[i]
-      
-      # Store the dataframe in the list
-      product_breakdowns[[i]] <- product_df
-      
-      # Assign individual dataframe to global environment
-      assign(paste0("product_", i, "_breakdown"), product_df, envir = .GlobalEnv)
-    }
-    
-    # Combine all product dataframes into a single dataframe
-    all_products_breakdown <- do.call(rbind, product_breakdowns)
-    
-    # Assign the combined dataframe to the global environment
-    assign("all_products_breakdown", all_products_breakdown, envir = .GlobalEnv)
-    
-    if (exists("all_products_breakdown")) {
-      all_products_breakdown <- `rownames<-`(all_products_breakdown, NULL)
-      all_products_summarized <<- all_products_breakdown %>%
-        group_by(product_number) %>%
-        summarise(
-          total_emissions_mass_based_mtco2e_yr = sum(mass_based_emissions),
-          mass_based_emission_intensity_mtco2e_ton = sum(mass_based_intensity),
-          total_emissions_revenue_based_mtco2e_yr = sum(revenue_based_emissions),
-          revenue_based_emission_intensity_mtco2e_ton = sum(revenue_based_intensity)
-        )
-      
-      colnames(all_products_summarized) <-  c(
-        "Product",
-        "Mass-based Emissions\n(MTCO2e)",
-        "Mass-based Emissions Intensity\n(MTCO2e/Ton of Product)",
-        "Revenue-based Emissions\n(MTCO2e)",
-        "Revenue-based Emissions Intensity\n(MTCO2e/Ton of Product)"
-      )
-      
-      names(all_products_breakdown)
-      
-      download_excel_file <- all_products_breakdown %>%
-        rename(
-          associated_products = presence,
-          all_products_co2e_emissions_mt_co2e_yr = co2e_emissions_mt_co2e_yr,
-          mass_based_emissions_mt_co2e_yr = mass_based_emissions,
-          mass_based_ei_mt_co2e_per_mt = mass_based_intensity,
-          revenue_based_emissions_mt_co2e_yr = revenue_based_emissions,
-          revenue_based_ei_mt_co2e_per_mt = revenue_based_intensity,
-        ) %>%
-        relocate(mass_based_ei_mt_co2e_per_mt, .after = mass_based_emissions_mt_co2e_yr)
-    }
     
     output$intensity_table <- renderDataTable({
+      
+      if(input$selected_method == "Both") {
+        
+        if(input$revenue_name == "Revenue %") {
+          all_products_summarized %>%
+            DT::datatable(
+              class = 'cell-border stripe hover',
+              filter = "none",
+              style = "default",
+              fillContainer = F,
+              rownames = F,
+              selection = "single",
+              options = list(
+                columnDefs = list(list(
+                  className = 'dt-center', targets = 0:2
+                )),
+                dom = 't',
+                autoWidth = TRUE
+              )
+            ) %>%
+            formatRound(columns = c(2), digits = 0) %>%
+            formatRound(columns = c(3), digits = 2)
+        } else {
+      
       all_products_summarized %>%
         DT::datatable(
           class = 'cell-border stripe hover',
@@ -1443,28 +1784,84 @@ server <- function(input, output, session) {
           selection = "single",
           options = list(
             columnDefs = list(list(
-              className = 'dt-center', targets = 0:4
+              className = 'dt-center', targets = 0:2
             )),
             dom = 't',
             autoWidth = TRUE
           )
         ) %>%
-        formatRound(columns = c(2, 4), digits = 0) %>%
-        formatRound(columns = c(3, 5), digits = 2)
+        formatRound(columns = c(2,4), digits = 0) %>%
+        formatRound(columns = c(3,5,6), digits = 2)
+        }
+        
+      } else if (input$selected_method == "Quantity-based") {
+        all_products_summarized %>%
+          DT::datatable(
+            class = 'cell-border stripe hover',
+            filter = "none",
+            style = "default",
+            fillContainer = F,
+            rownames = F,
+            selection = "single",
+            options = list(
+              columnDefs = list(list(
+                className = 'dt-center', targets = 0:2
+              )),
+              dom = 't',
+              autoWidth = TRUE
+            )
+          ) %>%
+          formatRound(columns = c(2), digits = 0) %>%
+          formatRound(columns = c(3), digits = 2)
+      } else if (input$selected_method == "Revenue-based") {
+        
+        if(input$revenue_name == "Revenue %") {
+        
+        all_products_summarized  %>% 
+          DT::datatable(
+            class = 'cell-border stripe hover',
+            filter = "none",
+            style = "default",
+            fillContainer = F,
+            rownames = F,
+            selection = "single",
+            options = list(
+              columnDefs = list(list(
+                className = 'dt-center', targets = 0:2
+              )),
+              dom = 't',
+              autoWidth = TRUE
+            )
+          ) %>%
+          formatRound(columns = c(2), digits = 0) %>%
+          formatRound(columns = c(3), digits = 2)
+        } else {
+          all_products_summarized %>% 
+            DT::datatable(
+              class = 'cell-border stripe hover',
+              filter = "none",
+              style = "default",
+              fillContainer = F,
+              rownames = F,
+              selection = "single",
+              options = list(
+                columnDefs = list(list(
+                  className = 'dt-center', targets = 0:2
+                )),
+                dom = 't',
+                autoWidth = TRUE
+              )
+            ) %>%
+            formatRound(columns = c(2,4), digits = 0) %>%
+            formatRound(columns = c(3,5,6), digits = 2)
+        }
+      }
     })
     
     output$show_dl_link <- renderUI({
       downloadLink("download_all_data", "Download Plot Data (.XLSX)", style = "font-size: 14px; text-decoration: underline;")
     })
     
-    # output$download_all_data <- downloadHandler(
-    #   filename = function() {
-    #     "all_data.xlsx"
-    #   },
-    #   content = function(file) {
-    #     write.xlsx(all_products_breakdown, file)
-    #   }
-    # )
     
     output$download_all_data <- downloadHandler(
       filename = function() {
@@ -1488,8 +1885,8 @@ server <- function(input, output, session) {
         style_3_decimals <- createStyle(numFmt = "0.00")
         
         # Define columns for different decimal places
-        cols_1_decimals <- c(4, 5,7)  # columns for 1 decimal place
-        cols_3_decimals <- c(6,8)    # columns for 3 decimal places
+        cols_1_decimals <- c(4, 5, 7)  # columns for 1 decimal place
+        cols_3_decimals <- c(6, 8)    # columns for 3 decimal places
         
         # Create a workbook and add a worksheet
         wb <- createWorkbook()
@@ -1517,12 +1914,10 @@ server <- function(input, output, session) {
         )
         
         # Set column widths to auto
-        setColWidths(
-          wb,
-          "Sheet1",
-          cols = 1:ncol(download_excel_file),
-          widths = "auto"
-        )
+        setColWidths(wb,
+                     "Sheet1",
+                     cols = 1:ncol(download_excel_file),
+                     widths = "auto")
         
         # Add borders to all columns
         addStyle(
@@ -1538,7 +1933,10 @@ server <- function(input, output, session) {
         saveWorkbook(wb, file, overwrite = TRUE)
       }
     )
+    
   })
+  
+  
   
   output$downloadPNG <- downloadHandler(
     filename = "CO2e Flow.png",
@@ -1711,11 +2109,7 @@ server <- function(input, output, session) {
       
       if (nchar(input$cname) > 0)
       {
-        caption <- paste0("Energy Flow for ",
-                          input$cname_e,
-                          "(" ,
-                          input$units_e,
-                          ")")
+        caption <- paste0("Energy Flow for ", input$cname_e, "(" , input$units_e, ")")
       } else
       {
         caption <- paste0("Energy Flow ", "(" , input$units_e, ")")
