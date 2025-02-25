@@ -95,11 +95,10 @@ ui <- fluidPage(
     "
           )),
           downloadLink("downloadData1", "Download Facility Sankey Tool - Input Sheet"),
-          br(),
+          textInput("cname", "Enter Facility Name"),
           br(),
           br(),
           fileInput("file", "Upload \'FST Input Sheet\' Excel File", accept = ".xlsx"),
-          br(),
           br(),
           tags$style(HTML(
             "
@@ -136,21 +135,19 @@ ui <- fluidPage(
         )
       ),
       tags$div(
-        style = "position: fixed; bottom: 0; width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: space-between; align-items: flex-end;",
+        style = "position: fixed; bottom: 0; width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: center; align-items: flex-end; padding: 10px 0;", # Center the container
         tags$div(
-          style = "text-align: left;",
+          style = "text-align: left; margin-right: 150px;", # Left-align content and add spacing
           tags$img(src = "lbnl.png", style = "max-height: 50px; margin-left: 0px;"),
           tags$p(tags$b("Prakash Rao"), style = "margin-top: 0.5px; margin-left: 0px;"),
           tags$p("prao@lbl.gov", style = "margin-top: 0.5px; margin-left: 0px;")
         ),
         tags$div(
-          style = "text-align: left;",
+          style = "text-align: left;", # Left-align content
           tags$img(src = "ucdavis_logo_gold.png", style = "max-height: 50px;"),
-          tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px; "),
+          tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px;"),
           tags$p("jkissock@ucdavis.edu", style = "margin-top: 0.5px;")
         )
-        
-        
       )
       
     ),
@@ -158,9 +155,10 @@ ui <- fluidPage(
       "Energy Sankey",
       sidebarLayout(
         sidebarPanel(
-          textInput("cname_e", "Enter Facility Name"),
-          textOutput('move'),
+          
+         
           selectInput("units_e", "Select Units", c("MMBtu/yr", "MWh/yr")),
+          textOutput('move'),
           radioButtons("perc_e", "Select Value Type", c("Absolute", "Percentage")),
           numericInput(
             "precision_e",
@@ -191,27 +189,24 @@ ui <- fluidPage(
         ),
         mainPanel(
           div(uiOutput("output_text_e"), class = "output-text"),
-          div(style = "position: relative; width: 100%; max-height: 100%; preserveAspectRatio='xMinYMin meet';  background-color: #f8f8f8;", uiOutput("diagram_energy"))
+          div(style = "position: relative; padding-bottom: 100px; width: 100%; max-height: 100%; preserveAspectRatio='xMinYMin meet';  background-color: #f8f8f8;", uiOutput("diagram_energy"))
         )
         
       ),
       tags$div(
-        style = "width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: space-between; align-items: flex-end;",
+        style = "bottom: 0; width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: center; align-items: flex-end; padding: 10px 0;", # Center the container
         tags$div(
-          style = "text-align: left;",
+          style = "text-align: left; margin-right: 150px;", # Left-align content and add spacing
           tags$img(src = "lbnl.png", style = "max-height: 50px; margin-left: 0px;"),
           tags$p(tags$b("Prakash Rao"), style = "margin-top: 0.5px; margin-left: 0px;"),
           tags$p("prao@lbl.gov", style = "margin-top: 0.5px; margin-left: 0px;")
         ),
         tags$div(
-          style = "text-align: left;",
-          
+          style = "text-align: left;", # Left-align content
           tags$img(src = "ucdavis_logo_gold.png", style = "max-height: 50px;"),
-          tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px; "),
+          tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px;"),
           tags$p("jkissock@ucdavis.edu", style = "margin-top: 0.5px;")
         )
-        
-        
       )
       
     ),
@@ -219,9 +214,9 @@ ui <- fluidPage(
       "Emissions Sankey",
       sidebarLayout(
         sidebarPanel(
-          textInput("cname", "Enter Facility Name"),
-          textOutput('move'),
+          
           selectInput("units", "Select Units", c("MT CO₂e/yr", "lbs. of CO₂e/yr")),
+          textOutput('move'),
           radioButtons("perc", "Select Value Type", c("Absolute", "Percentage")),
           numericInput(
             "precision",
@@ -255,24 +250,23 @@ ui <- fluidPage(
           div(style = "position: relative; width: 100%; max-height: 100%; preserveAspectRatio='xMinYMin meet';  background-color: #f8f8f8;", uiOutput("diagram")),
           br(),
           span(textOutput("titleef"), style = "font-size: 21px; margin-left: 10px;"),
-          tableOutput("table1")
+          div(style = "padding-bottom: 100px;", tableOutput("table1"))
           
         )
         
       ),
       tags$div(
-        style = "width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: space-between; align-items: flex-end;",
+        style = "width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: center; align-items: flex-end; padding: 10px 0;", # Center the container
         tags$div(
-          style = "text-align: left;",
+          style = "text-align: left; margin-right: 150px;", # Left-align content and add spacing
           tags$img(src = "lbnl.png", style = "max-height: 50px; margin-left: 0px;"),
           tags$p(tags$b("Prakash Rao"), style = "margin-top: 0.5px; margin-left: 0px;"),
           tags$p("prao@lbl.gov", style = "margin-top: 0.5px; margin-left: 0px;")
         ),
         tags$div(
-          style = "text-align: left;",
-          
+          style = "text-align: left;", # Left-align content
           tags$img(src = "ucdavis_logo_gold.png", style = "max-height: 50px;"),
-          tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px; "),
+          tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px;"),
           tags$p("jkissock@ucdavis.edu", style = "margin-top: 0.5px;")
         )
       )
@@ -318,18 +312,17 @@ ui <- fluidPage(
         )
       ),
       tags$div(
-        style = "width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: space-between; align-items: flex-end;",
+        style = "bottom: 0; width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: center; align-items: flex-end; padding: 10px 0;", # Center the container
         tags$div(
-          style = "text-align: left;",
+          style = "text-align: left; margin-right: 150px;", # Left-align content and add spacing
           tags$img(src = "lbnl.png", style = "max-height: 50px; margin-left: 0px;"),
           tags$p(tags$b("Prakash Rao"), style = "margin-top: 0.5px; margin-left: 0px;"),
           tags$p("prao@lbl.gov", style = "margin-top: 0.5px; margin-left: 0px;")
         ),
         tags$div(
-          style = "text-align: left;",
-          
+          style = "text-align: left;", # Left-align content
           tags$img(src = "ucdavis_logo_gold.png", style = "max-height: 50px;"),
-          tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px; "),
+          tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px;"),
           tags$p("jkissock@ucdavis.edu", style = "margin-top: 0.5px;")
         )
       )
@@ -631,7 +624,7 @@ server <- function(input, output, session) {
     req(input$file)
     
     
-    bb <- read_excel(input$file$datapath, sheet = 'Emission Inputs', range = "f10:l27")
+    bb <- read_excel(input$file$datapath, sheet = 'Emission Inputs (Optional)', range = "f10:l27")
     aa <- read_excel(input$file$datapath, sheet = 'Calculator', range = "a6:m190")
     
     aa <- aa[-1, ]
@@ -1221,11 +1214,11 @@ server <- function(input, output, session) {
   
   output$output_text_e <- renderUI({
     req(input$file)
-    if (nchar(input$cname_e) > 0 & input$perc_e != "Percentage") {
-      paste0("Energy Flow for ", input$cname_e, " (" , input$units_e, ")")
-    } else if (nchar(input$cname_e) > 0 &
+    if (nchar(input$cname) > 0 & input$perc_e != "Percentage") {
+      paste0("Energy Flow for ", input$cname, " (" , input$units_e, ")")
+    } else if (nchar(input$cname) > 0 &
                input$perc_e == "Percentage") {
-      paste0("Energy Flow for ", input$cname_e, " (%)")
+      paste0("Energy Flow for ", input$cname, " (%)")
     } else if (input$perc == "Percentage") {
       paste0("Energy Flow ", "(%)")
     } else {
@@ -1374,7 +1367,7 @@ server <- function(input, output, session) {
       # add the user's caption as a text label
       
       if (nchar(input$cname) > 0) {
-        caption <- paste0("Energy Flow for ", input$cname_e, "(" , input$units_e, ")")
+        caption <- paste0("Energy Flow for ", input$cname, "(" , input$units_e, ")")
       } else {
         caption <- paste0("Energy Flow ", "(" , input$units_e, ")")
       }
@@ -2109,7 +2102,7 @@ server <- function(input, output, session) {
       
       if (nchar(input$cname) > 0)
       {
-        caption <- paste0("Energy Flow for ", input$cname_e, "(" , input$units_e, ")")
+        caption <- paste0("Energy Flow for ", input$cname, "(" , input$units_e, ")")
       } else
       {
         caption <- paste0("Energy Flow ", "(" , input$units_e, ")")
