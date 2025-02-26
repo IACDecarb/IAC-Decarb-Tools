@@ -17,6 +17,7 @@ library(DT)
 library(bslib)
 
 install_phantomjs(force = T)
+linebreaks <- function(n){HTML(strrep(br(), n))}
 
 # Function to check presence of an entry in other dataframes
 check_presence <- function(entry, dataframes, current_index) {
@@ -165,7 +166,8 @@ ui <- fluidPage(
           numericInput(
             "precision_e",
             "Choose precision level of numeric values",
-            1,-20,
+            1,
+            -20,
             20,
             1
           ),
@@ -226,7 +228,8 @@ ui <- fluidPage(
           numericInput(
             "precision",
             "Choose precision level of numeric values",
-            1,-20,
+            1,
+            -20,
             20,
             1
           ),
@@ -287,27 +290,31 @@ ui <- fluidPage(
       ")),
           width = 3,
           fluidRow(
-            h4("Step 1: Select Methods", style = "font-weight: bold; font-size: 18px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;float: left;"),
-            br(),
-            column(12),
+            column(
+              12,
+              h4("Step 1: Select Methods", style = "font-weight: bold; font-size: 18px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;float: left;")
+            ),
             wellPanel(
-              style = "border: 0px solid #ccc; padding: 1px; border-radius: 2px;",
+              style = "border: 2px solid #ccc; padding: 15px; border-radius: 5px; margin-bottom: 20px;",
               selectInput(
                 "products_num",
                 "Enter Number of Products:",
-                choices = c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10")
+                choices = c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10"),
+                width = "95%"
               ),
               radioButtons(
                 "selected_method",
                 "Select Allocation Approach:",
                 choices = c("Quantity-based", "Revenue-based", "Both"),
-                selected = "Quantity-based"
+                selected = "Quantity-based",
+                width = "95%"
               ),
               uiOutput("qty_unit")
             )
           ),
           fluidRow(column(12, uiOutput("product_inputs"))),
-          actionButton("calc_int", "Calculate Product Intensity")
+          actionButton("calc_int", "Calculate Product Intensity",
+                    width = "95%")
         ),
         mainPanel(
           div(
@@ -430,15 +437,17 @@ server <- function(input, output, session) {
   output$qty_unit <- renderUI({
     req(input$file)
     if (input$selected_method == "Quantity-based") {
-      fluidRow(column(
-        6,
-        textInput("units_name", "Enter Units of Quantity", value = "metric Tons/yr")
+      fluidRow(style = "display:flex;align-items:flex-end",
+               column(6,
+        textInput("units_name", "Enter Units of Quantity:",value = "Metric Tons/yr",
+                  width = "95%")
       ))
     } else if (input$selected_method == "Both" ||
                input$selected_method == "Revenue-based") {
-      fluidRow(column(
-        6,
-        textInput("units_name", "Enter Units of Quantity", value = "metric Tons/yr")
+      fluidRow(style = "display:flex;align-items:flex-end",
+               column(6,
+        textInput("units_name", "Enter Units of Quantity:",value = "Metric Tons/yr",
+                  width = "95%")
       ), uiOutput("dynamic_revenue"))
     }
   })
@@ -446,15 +455,17 @@ server <- function(input, output, session) {
   output$dynamic_revenue <- renderUI({
     if (input$selected_method == "Both" ||
         input$selected_method == "Revenue-based") {
-      column(
-        6,
-        selectInput(
-          "revenue_name",
-          "Select Revenue Calculation Method:",
-          choices = c(
-            paste0("$/", input$units_name),
-            "Total product revenue ($)",
-            "Revenue %"
+      fluidRow(style = "display:flex;align-items:flex-end",
+        column(12,
+              selectInput(
+                "revenue_name",
+                "Select Revenue Calculation Method:",
+                choices = c(
+                  paste0("$/", input$units_name),
+                  "Total product revenue ($)",
+                  "Revenue %"
+                ),
+                width = "100%"
           )
         )
       )
@@ -479,41 +490,50 @@ server <- function(input, output, session) {
     if (input$selected_method == "Quantity-based") {
       lapply(1:num, function(i) {
         tagList(fluidRow(
-          h4("Step 2: Enter Quantity-based Inputs", style = "font-weight: bold; font-size: 18px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;float: left;"),
-          wellPanel(
-            column(width = 6, numericInput(
+          if(i == 1) { column(
+            12,
+            h4("Step 2: Enter Quantity-based Inputs", style = "font-weight: bold; font-size: 18px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; margin-bottom: 15px;")
+          )
+            },
+          div(
+            style = "border: 2px solid #ccc; padding: 15px; border-radius: 5px; margin-bottom: 20px;",
+            
+            numericInput(
               paste0("qty_", i),
-              paste("Enter Product ", i, " Quantity (", input$units_name, "):"),
+              paste0("Enter Product ", i, " Quantity (",input$units_name, "):"),
               value = 0,
-              min = 0
-            )),
-            column(
-              width = 12,
-              selectInput(
-                paste0("process_", i),
-                paste("Select Product ", i, "-based Processes:"),
-                choices = end_use$measures,
-                multiple = TRUE
-              )
+              min = 0,
+              width = "60%"
+            ),
+            selectInput(
+              paste0("process_", i),
+              paste("Select Product ", i, "-based Processes:"),
+              choices = end_use$measures,
+              multiple = TRUE,
+              width = "95%"
             )
           )
-        ), br())
+        ))
       })
       
     } else {
       if (input$revenue_name == "Revenue %") {
         lapply(1:num, function(i) {
           tagList(fluidRow(
-            h4(
-              "Step 2: Enter Quantity- and Revenue-based Inputs",
-              style = "font-weight: bold; font-size: 18px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;float: left;"
-            ),
-            wellPanel(
-              column(
-                width = 6,
-                numericInput(
+            if(i == 1) { column(
+              12,
+              h4(
+                "Step 2: Enter Quantity- and Revenue-based Inputs",
+                style = "font-weight: bold; font-size: 18px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;float: left;"
+              )
+            )
+              },
+            div(
+              style = "border: 2px solid #ccc; padding: 15px; border-radius: 5px; margin-bottom: 20px;",
+              fluidRow(
+                column(6, numericInput(
                   paste0("qty_", i),
-                  paste(
+                  paste0(
                     "Enter Product ",
                     i,
                     " Quantity (",
@@ -521,87 +541,97 @@ server <- function(input, output, session) {
                     "):"
                   ),
                   value = 0,
-                  min = 0
-                )
-              ),
-              column(
-                width = 6,
-                autonumericInput(
-                  inputId =   paste0("revenue_", i),
-                  label =  paste("Enter Product ", i, " Revenue %:"),
-                  value = 0,
-                  decimalPlaces = 0,
-                  currencySymbol = "%",
-                  currencySymbolPlacement = "s",
-                  minimumValue = "0",
-                  maximumValue = "100",
-                  align = "left"
-                )
-              ),
-              column(
-                width = 12,
-                selectInput(
-                  paste0("process_", i),
-                  paste("Select Product ", i, "-based Processes:"),
-                  choices = end_use$measures,
-                  multiple = TRUE
+                  min = 0,
+                  width = "95%"
+                )),
+                column(
+                  6,
+                  br(),
+                  autonumericInput(
+                    inputId =   paste0("revenue_", i),
+                    label =  paste("Enter Product ", i, " Revenue %:"),
+                    value = 0,
+                    decimalPlaces = 0,
+                    currencySymbol = "%",
+                    currencySymbolPlacement = "s",
+                    minimumValue = "0",
+                    maximumValue = "100",
+                    align = "left",
+                    width = "95%"
+                  )
                 )
               )
+              ,
+              selectInput(
+                paste0("process_", i),
+                paste("Select Product ", i, "-based Processes:"),
+                choices = end_use$measures,
+                multiple = TRUE,
+                width = "95%"
+              )
+              
             )
-          ), br())
+          ))
         })
       } else {
         lapply(1:num, function(i) {
           tagList(fluidRow(
-            h4(
-              "Step 2: Enter Quantity- and Revenue-based Inputs",
-              style = "font-weight: bold; font-size: 18px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;float: left;"
-            ),
-            wellPanel(
-              column(
-                width = 6,
-                numericInput(
-                  paste0("qty_", i),
-                  paste(
-                    "Enter Product ",
-                    i,
-                    " Quantity (",
-                    input$units_name,
-                    "):"
-                  ),
-                  value = 0,
-                  min = 0
-                )
-              ),
-              column(
-                width = 6,
-                autonumericInput(
-                  inputId =   paste0("revenue_", i),
-                  label =  if_else(
-                    input$revenue_name == "Total product revenue ($)",
-                    paste("Enter Product ", i, " Revenue ($):"),
-                    paste("Enter Product ", i, " Revenue per Unit:")
-                  ),
-                  value = 0,
-                  decimalPlaces = 0,
-                  currencySymbol = "$",
-                  currencySymbolPlacement = "p",
-                  minimumValue = "0",
-                  maximumValue = "10000000000000000000",
-                  align = "left"
-                )
-              ),
-              column(
-                width = 12,
-                selectInput(
-                  paste0("process_", i),
-                  paste("Select Product ", i, "-based Processes:"),
-                  choices = end_use$measures,
-                  multiple = TRUE
-                )
+            if(i == 1) {column(
+              12,
+              h4(
+                "Step 2: Enter Quantity- and Revenue-based Inputs",
+                style = "font-weight: bold; font-size: 18px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;float: left;"
               )
-            ),
-            br()
+            )
+              },
+            div(
+              style = "border: 2px solid #ccc; padding: 15px; border-radius: 5px; margin-bottom: 20px;",
+              fluidRow(
+                column(
+                  6,
+                  numericInput(
+                    paste0("qty_", i),
+                    paste0(
+                      "Enter Product ",
+                      i,
+                      " Quantity (",
+                      input$units_name,
+                      "):"
+                    ),
+                    value = 0,
+                    min = 0,
+                    width = "95%"
+                  )
+                ),
+                column(
+                  6,
+                  br(),
+                  autonumericInput(
+                    inputId =   paste0("revenue_", i),
+                    label =  if_else(
+                      input$revenue_name == "Total product revenue ($)",
+                      paste("Enter Product ", i, " Revenue ($):"),
+                      paste("Enter Product ", i, " Revenue per Unit:")
+                    ),
+                    value = 0,
+                    decimalPlaces = 0,
+                    currencySymbol = "$",
+                    currencySymbolPlacement = "p",
+                    minimumValue = "0",
+                    maximumValue = "10000000000000000000",
+                    align = "left",
+                    width = "95%"
+                  )
+                )
+              ),
+              selectInput(
+                paste0("process_", i),
+                paste("Select Product ", i, "-based Processes:"),
+                choices = end_use$measures,
+                multiple = TRUE,
+                width = "95%"
+              )
+            )
           ))
         })
       }
@@ -1525,14 +1555,14 @@ server <- function(input, output, session) {
         )
         
         download_excel_file <- all_products_breakdown %>%
-          mutate(qty_weight = qty_based_emissions/co2e_emissions_mt_co2e_yr) %>% 
+          mutate(qty_weight = qty_based_emissions / co2e_emissions_mt_co2e_yr) %>%
           rename(
             associated_products = presence,
             all_products_co2e_emissions_mt_co2e_yr = co2e_emissions_mt_co2e_yr,
             qty_based_emissions_mt_co2e_yr = qty_based_emissions,
             qty_based_ei_mt_co2e_per_mt = qty_based_intensity
           ) %>%
-          relocate(qty_based_ei_mt_co2e_per_mt, .after = qty_based_emissions_mt_co2e_yr) %>% 
+          relocate(qty_based_ei_mt_co2e_per_mt, .after = qty_based_emissions_mt_co2e_yr) %>%
           relocate(qty_weight, .after = all_products_co2e_emissions_mt_co2e_yr)
       }
     } else  {
@@ -1651,7 +1681,7 @@ server <- function(input, output, session) {
           MoreArgs = list(values = product_revenues)
         )
         
-
+        
         # Calculate emissions intensities
         product_df$qty_based_intensity <- product_df$qty_based_emissions / product_qties[i]
         product_df$revenue_based_intensity_qty <- product_df$revenue_based_emissions / product_qties[i]
@@ -1695,8 +1725,10 @@ server <- function(input, output, session) {
           )
           
           download_excel_file <- all_products_breakdown %>%
-            mutate(qty_weight = qty_based_emissions/co2e_emissions_mt_co2e_yr,
-                   revenue_weight = revenue_based_emissions/co2e_emissions_mt_co2e_yr) %>% 
+            mutate(
+              qty_weight = qty_based_emissions / co2e_emissions_mt_co2e_yr,
+              revenue_weight = revenue_based_emissions / co2e_emissions_mt_co2e_yr
+            ) %>%
             rename(
               associated_products = presence,
               all_products_co2e_emissions_mt_co2e_yr = co2e_emissions_mt_co2e_yr,
@@ -1705,8 +1737,8 @@ server <- function(input, output, session) {
               revenue_based_emissions_mt_co2e_yr = revenue_based_emissions,
               revenue_based_ei_mt_co2e_per_mt_qty = revenue_based_intensity_qty,
             ) %>%
-            relocate(qty_based_ei_mt_co2e_per_mt, .after = qty_based_emissions_mt_co2e_yr) %>% 
-            relocate(qty_weight,.after = all_products_co2e_emissions_mt_co2e_yr) %>% 
+            relocate(qty_based_ei_mt_co2e_per_mt, .after = qty_based_emissions_mt_co2e_yr) %>%
+            relocate(qty_weight, .after = all_products_co2e_emissions_mt_co2e_yr) %>%
             relocate(revenue_weight, .after = qty_based_emissions_mt_co2e_yr)
           
         } else {
@@ -1730,8 +1762,10 @@ server <- function(input, output, session) {
           )
           
           download_excel_file <- all_products_breakdown %>%
-            mutate(qty_weight = qty_based_emissions/co2e_emissions_mt_co2e_yr,
-                   revenue_weight = revenue_based_emissions/co2e_emissions_mt_co2e_yr) %>% 
+            mutate(
+              qty_weight = qty_based_emissions / co2e_emissions_mt_co2e_yr,
+              revenue_weight = revenue_based_emissions / co2e_emissions_mt_co2e_yr
+            ) %>%
             rename(
               associated_products = presence,
               all_products_co2e_emissions_mt_co2e_yr = co2e_emissions_mt_co2e_yr,
@@ -1741,8 +1775,8 @@ server <- function(input, output, session) {
               revenue_based_ei_mt_co2e_per_mt_dollar = revenue_based_intensity_dollar,
               revenue_based_ei_mt_co2e_per_mt_qty = revenue_based_intensity_qty
             ) %>%
-            relocate(qty_based_ei_mt_co2e_per_mt, .after = qty_based_emissions_mt_co2e_yr)%>% 
-            relocate(qty_weight,.after = all_products_co2e_emissions_mt_co2e_yr) %>% 
+            relocate(qty_based_ei_mt_co2e_per_mt, .after = qty_based_emissions_mt_co2e_yr) %>%
+            relocate(qty_weight, .after = all_products_co2e_emissions_mt_co2e_yr) %>%
             relocate(revenue_weight, .after = qty_based_emissions_mt_co2e_yr)
         }
       }
@@ -1750,10 +1784,8 @@ server <- function(input, output, session) {
     
     
     output$intensity_table <- renderDataTable({
-      
-      if(input$selected_method == "Both") {
-        
-        if(input$revenue_name == "Revenue %") {
+      if (input$selected_method == "Both") {
+        if (input$revenue_name == "Revenue %") {
           all_products_summarized %>%
             DT::datatable(
               class = 'cell-border stripe hover',
@@ -1773,25 +1805,24 @@ server <- function(input, output, session) {
             formatRound(columns = c(2), digits = 0) %>%
             formatRound(columns = c(3), digits = 2)
         } else {
-      
-      all_products_summarized %>%
-        DT::datatable(
-          class = 'cell-border stripe hover',
-          filter = "none",
-          style = "default",
-          fillContainer = F,
-          rownames = F,
-          selection = "single",
-          options = list(
-            columnDefs = list(list(
-              className = 'dt-center', targets = 0:2
-            )),
-            dom = 't',
-            autoWidth = TRUE
-          )
-        ) %>%
-        formatRound(columns = c(2,4), digits = 0) %>%
-        formatRound(columns = c(3,5,6), digits = 2)
+          all_products_summarized %>%
+            DT::datatable(
+              class = 'cell-border stripe hover',
+              filter = "none",
+              style = "default",
+              fillContainer = F,
+              rownames = F,
+              selection = "single",
+              options = list(
+                columnDefs = list(list(
+                  className = 'dt-center', targets = 0:2
+                )),
+                dom = 't',
+                autoWidth = TRUE
+              )
+            ) %>%
+            formatRound(columns = c(2, 4), digits = 0) %>%
+            formatRound(columns = c(3, 5, 6), digits = 2)
         }
         
       } else if (input$selected_method == "Quantity-based") {
@@ -1814,29 +1845,8 @@ server <- function(input, output, session) {
           formatRound(columns = c(2), digits = 0) %>%
           formatRound(columns = c(3), digits = 2)
       } else if (input$selected_method == "Revenue-based") {
-        
-        if(input$revenue_name == "Revenue %") {
-        
-        all_products_summarized  %>% 
-          DT::datatable(
-            class = 'cell-border stripe hover',
-            filter = "none",
-            style = "default",
-            fillContainer = F,
-            rownames = F,
-            selection = "single",
-            options = list(
-              columnDefs = list(list(
-                className = 'dt-center', targets = 0:2
-              )),
-              dom = 't',
-              autoWidth = TRUE
-            )
-          ) %>%
-          formatRound(columns = c(2), digits = 0) %>%
-          formatRound(columns = c(3), digits = 2)
-        } else {
-          all_products_summarized %>% 
+        if (input$revenue_name == "Revenue %") {
+          all_products_summarized  %>%
             DT::datatable(
               class = 'cell-border stripe hover',
               filter = "none",
@@ -1852,8 +1862,27 @@ server <- function(input, output, session) {
                 autoWidth = TRUE
               )
             ) %>%
-            formatRound(columns = c(2,4), digits = 0) %>%
-            formatRound(columns = c(3,5,6), digits = 2)
+            formatRound(columns = c(2), digits = 0) %>%
+            formatRound(columns = c(3), digits = 2)
+        } else {
+          all_products_summarized %>%
+            DT::datatable(
+              class = 'cell-border stripe hover',
+              filter = "none",
+              style = "default",
+              fillContainer = F,
+              rownames = F,
+              selection = "single",
+              options = list(
+                columnDefs = list(list(
+                  className = 'dt-center', targets = 0:2
+                )),
+                dom = 't',
+                autoWidth = TRUE
+              )
+            ) %>%
+            formatRound(columns = c(2, 4), digits = 0) %>%
+            formatRound(columns = c(3, 5, 6), digits = 2)
         }
       }
     })
@@ -1881,12 +1910,15 @@ server <- function(input, output, session) {
         )
         
         # Create styles for different decimal places
-        style_1_decimal <- createStyle(numFmt = "0.0")
-        style_3_decimals <- createStyle(numFmt = "0.00")
+        style_1_decimal <- createStyle(numFmt = "#,##0.0")
+        style_3_decimals <- createStyle(numFmt = "#,##0.000")
         
         # Define columns for different decimal places
         cols_1_decimals <- c(4, 5, 7)  # columns for 1 decimal place
         cols_3_decimals <- c(6, 8)    # columns for 3 decimal places
+        
+        download_excel_file[, cols_1_decimals] <- round(download_excel_file[, cols_1_decimals], 1)
+        download_excel_file[, cols_3_decimals] <- round(download_excel_file[, cols_3_decimals], 3)
         
         # Create a workbook and add a worksheet
         wb <- createWorkbook()
@@ -1895,7 +1927,7 @@ server <- function(input, output, session) {
         # Write data to the worksheet
         writeData(wb, "Sheet1", download_excel_file, headerStyle = hs1)
         
-        # Apply decimal formatting to specific columns
+                # Apply decimal formatting to specific columns
         addStyle(
           wb,
           "Sheet1",
