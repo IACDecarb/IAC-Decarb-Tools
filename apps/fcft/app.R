@@ -167,7 +167,8 @@ ui <- fluidPage(
           numericInput(
             "precision_e",
             "Choose precision level of numeric values",
-            1,-20,
+            1,
+            -20,
             20,
             1
           ),
@@ -227,7 +228,8 @@ ui <- fluidPage(
           numericInput(
             "precision",
             "Choose precision level of numeric values",
-            1,-20,
+            1,
+            -20,
             20,
             1
           ),
@@ -541,6 +543,7 @@ server <- function(input, output, session) {
             div(
               style = "border: 2px solid #ccc; padding: 15px; border-radius: 5px; margin-bottom: 20px;",
               fluidRow(
+                style = "display:flex;align-items:flex-end;",
                 column(
                   6,
                   numericInput(
@@ -559,7 +562,6 @@ server <- function(input, output, session) {
                 ),
                 column(
                   6,
-                  br(),
                   autonumericInput(
                     inputId =   paste0("revenue_", i),
                     label =  paste("Enter Product ", i, " Revenue %:"),
@@ -601,6 +603,7 @@ server <- function(input, output, session) {
             div(
               style = "border: 2px solid #ccc; padding: 15px; border-radius: 5px; margin-bottom: 20px;",
               fluidRow(
+                style = "display:flex;align-items:flex-end;",
                 column(
                   6,
                   numericInput(
@@ -619,13 +622,18 @@ server <- function(input, output, session) {
                 ),
                 column(
                   6,
-                  br(),
                   autonumericInput(
                     inputId =   paste0("revenue_", i),
                     label =  if_else(
                       input$revenue_name == "Gross product revenue ($)",
                       paste("Enter Product ", i, " Gross Revenue ($):"),
-                      paste("Enter Product ", i, " Revenue per Unit:")
+                      paste(
+                        "Enter Product ",
+                        i,
+                        " Revenue per ",
+                        input$units_name,
+                        ":"
+                      )
                     ),
                     value = 0,
                     decimalPlaces = 0,
@@ -1755,16 +1763,14 @@ server <- function(input, output, session) {
           )
           
           download_excel_file <- all_products_breakdown %>%
-            select(-c(qty_based_emissions,qty_based_intensity)) %>% 
-            mutate(
-              revenue_weight_proportion = revenue_based_emissions / co2e_emissions_mt_co2e_yr
-            ) %>%
+            select(-c(qty_based_emissions, qty_based_intensity)) %>%
+            mutate(revenue_weight_proportion = revenue_based_emissions / co2e_emissions_mt_co2e_yr) %>%
             rename(
               associated_products = presence,
               all_products_co2e_emissions_mt_co2e_yr = co2e_emissions_mt_co2e_yr,
               revenue_based_emissions_mt_co2e_yr = revenue_based_emissions,
               revenue_based_ei_mt_co2e_per_mt_qty = revenue_based_intensity_qty,
-            ) %>% 
+            ) %>%
             relocate(revenue_weight_proportion, .before = revenue_based_emissions_mt_co2e_yr)
           
         } else {
@@ -1798,10 +1804,8 @@ server <- function(input, output, session) {
           names(all_products_breakdown)
           
           download_excel_file <- all_products_breakdown %>%
-            select(-c(qty_based_emissions,qty_based_intensity)) %>% 
-            mutate(
-              revenue_weight_proportion = revenue_based_emissions / co2e_emissions_mt_co2e_yr
-            ) %>%
+            select(-c(qty_based_emissions, qty_based_intensity)) %>%
+            mutate(revenue_weight_proportion = revenue_based_emissions / co2e_emissions_mt_co2e_yr) %>%
             rename(
               associated_products = presence,
               all_products_co2e_emissions_mt_co2e_yr = co2e_emissions_mt_co2e_yr,
@@ -1880,7 +1884,9 @@ server <- function(input, output, session) {
     })
     
     output$show_dl_link <- renderUI({
-      downloadLink("download_all_data", "Download Plot Data (.XLSX)", style = "font-size: 14px; text-decoration: underline;")
+      downloadLink("download_all_data",
+                   "Download Table Data (.xlsx)",
+                   style = "font-size: 14px; text-decoration: underline;")
     })
     
     
@@ -1914,15 +1920,60 @@ server <- function(input, output, session) {
                      cols = 1:ncol(download_excel_file),
                      widths = "auto")
         
-        # Add borders to all columns
+        # Create styles for different decimal places
+        no_decimal_style <- createStyle(numFmt = "0")
+        two_decimal_style <- createStyle(numFmt = "0.00")
+        three_decimal_style <- createStyle(numFmt = "0.000")
+        
+        # Define which columns should have which decimal places
+        no_decimal_cols <- c(2, 5, 7)
+        two_decimal_cols <- c(6)
+        
+        
+        # Apply styles to specific columns
         addStyle(
           wb,
           "Sheet1",
-          createStyle(border = "TopBottomLeftRight"),
-          rows = 1:(nrow(download_excel_file) + 1),
-          cols = 1:ncol(download_excel_file),
+          no_decimal_style,
+          rows = 2:(nrow(download_excel_file) + 1),
+          cols = no_decimal_cols,
           gridExpand = TRUE
         )
+        
+        addStyle(
+          wb,
+          "Sheet1",
+          two_decimal_style,
+          rows = 2:(nrow(download_excel_file) + 1),
+          cols = two_decimal_cols,
+          gridExpand = TRUE
+        )
+        
+        if (input$selected_method == "Quantity-based" ||
+            input$revenue_name == "Revenue %") {
+          three_decimal_cols <- c(8)
+          
+          addStyle(
+            wb,
+            "Sheet1",
+            three_decimal_style,
+            rows = 2:(nrow(download_excel_file) + 1),
+            cols = three_decimal_cols,
+            gridExpand = TRUE
+          )
+        } else {
+          three_decimal_cols <- c(8, 9)
+          
+          addStyle(
+            wb,
+            "Sheet1",
+            three_decimal_style,
+            rows = 2:(nrow(download_excel_file) + 1),
+            cols = three_decimal_cols,
+            gridExpand = TRUE
+          )
+        }
+        
         
         # Save the workbook
         saveWorkbook(wb, file, overwrite = TRUE)
