@@ -96,11 +96,10 @@ ui <- fluidPage(
     "
           )),
           downloadLink("downloadData1", "Download Facility Sankey Tool - Input Sheet"),
-          br(),
+          textInput("cname", "Enter Facility Name"),
           br(),
           br(),
           fileInput("file", "Upload \'FST Input Sheet\' Excel File", accept = ".xlsx"),
-          br(),
           br(),
           tags$style(HTML(
             "
@@ -137,21 +136,19 @@ ui <- fluidPage(
         )
       ),
       tags$div(
-        style = "position: fixed; bottom: 0; width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: space-between; align-items: flex-end;",
+        style = "position: fixed; bottom: 0; width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: center; align-items: flex-end; padding: 10px 0;", # Center the container
         tags$div(
-          style = "text-align: left;",
+          style = "text-align: left; margin-right: 150px;", # Left-align content and add spacing
           tags$img(src = "lbnl.png", style = "max-height: 50px; margin-left: 0px;"),
           tags$p(tags$b("Prakash Rao"), style = "margin-top: 0.5px; margin-left: 0px;"),
           tags$p("prao@lbl.gov", style = "margin-top: 0.5px; margin-left: 0px;")
         ),
         tags$div(
-          style = "text-align: left;",
+          style = "text-align: left;", # Left-align content
           tags$img(src = "ucdavis_logo_gold.png", style = "max-height: 50px;"),
-          tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px; "),
+          tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px;"),
           tags$p("jkissock@ucdavis.edu", style = "margin-top: 0.5px;")
         )
-        
-        
       )
       
     ),
@@ -159,9 +156,10 @@ ui <- fluidPage(
       "Energy Sankey",
       sidebarLayout(
         sidebarPanel(
-          textInput("cname_e", "Enter Facility Name"),
-          textOutput('move'),
+          
+         
           selectInput("units_e", "Select Units", c("MMBtu/yr", "MWh/yr")),
+          textOutput('move'),
           radioButtons("perc_e", "Select Value Type", c("Absolute", "Percentage")),
           numericInput(
             "precision_e",
@@ -193,27 +191,24 @@ ui <- fluidPage(
         ),
         mainPanel(
           div(uiOutput("output_text_e"), class = "output-text"),
-          div(style = "position: relative; width: 100%; max-height: 100%; preserveAspectRatio='xMinYMin meet';  background-color: #f8f8f8;", uiOutput("diagram_energy"))
+          div(style = "position: relative; padding-bottom: 100px; width: 100%; max-height: 100%; preserveAspectRatio='xMinYMin meet';  background-color: #f8f8f8;", uiOutput("diagram_energy"))
         )
         
       ),
       tags$div(
-        style = "width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: space-between; align-items: flex-end;",
+        style = "bottom: 0; width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: center; align-items: flex-end; padding: 10px 0;", # Center the container
         tags$div(
-          style = "text-align: left;",
+          style = "text-align: left; margin-right: 150px;", # Left-align content and add spacing
           tags$img(src = "lbnl.png", style = "max-height: 50px; margin-left: 0px;"),
           tags$p(tags$b("Prakash Rao"), style = "margin-top: 0.5px; margin-left: 0px;"),
           tags$p("prao@lbl.gov", style = "margin-top: 0.5px; margin-left: 0px;")
         ),
         tags$div(
-          style = "text-align: left;",
-          
+          style = "text-align: left;", # Left-align content
           tags$img(src = "ucdavis_logo_gold.png", style = "max-height: 50px;"),
-          tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px; "),
+          tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px;"),
           tags$p("jkissock@ucdavis.edu", style = "margin-top: 0.5px;")
         )
-        
-        
       )
       
     ),
@@ -221,9 +216,9 @@ ui <- fluidPage(
       "Emissions Sankey",
       sidebarLayout(
         sidebarPanel(
-          textInput("cname", "Enter Facility Name"),
-          textOutput('move'),
+          
           selectInput("units", "Select Units", c("MT CO₂e/yr", "lbs. of CO₂e/yr")),
+          textOutput('move'),
           radioButtons("perc", "Select Value Type", c("Absolute", "Percentage")),
           numericInput(
             "precision",
@@ -258,24 +253,23 @@ ui <- fluidPage(
           div(style = "position: relative; width: 100%; max-height: 100%; preserveAspectRatio='xMinYMin meet';  background-color: #f8f8f8;", uiOutput("diagram")),
           br(),
           span(textOutput("titleef"), style = "font-size: 21px; margin-left: 10px;"),
-          tableOutput("table1")
+          div(style = "padding-bottom: 100px;", tableOutput("table1"))
           
         )
         
       ),
       tags$div(
-        style = "width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: space-between; align-items: flex-end;",
+        style = "width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: center; align-items: flex-end; padding: 10px 0;", # Center the container
         tags$div(
-          style = "text-align: left;",
+          style = "text-align: left; margin-right: 150px;", # Left-align content and add spacing
           tags$img(src = "lbnl.png", style = "max-height: 50px; margin-left: 0px;"),
           tags$p(tags$b("Prakash Rao"), style = "margin-top: 0.5px; margin-left: 0px;"),
           tags$p("prao@lbl.gov", style = "margin-top: 0.5px; margin-left: 0px;")
         ),
         tags$div(
-          style = "text-align: left;",
-          
+          style = "text-align: left;", # Left-align content
           tags$img(src = "ucdavis_logo_gold.png", style = "max-height: 50px;"),
-          tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px; "),
+          tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px;"),
           tags$p("jkissock@ucdavis.edu", style = "margin-top: 0.5px;")
         )
       )
@@ -325,18 +319,17 @@ ui <- fluidPage(
         )
       ),
       tags$div(
-        style = "width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: space-between; align-items: flex-end;",
+        style = "bottom: 0; width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: center; align-items: flex-end; padding: 10px 0;", # Center the container
         tags$div(
-          style = "text-align: left;",
+          style = "text-align: left; margin-right: 150px;", # Left-align content and add spacing
           tags$img(src = "lbnl.png", style = "max-height: 50px; margin-left: 0px;"),
           tags$p(tags$b("Prakash Rao"), style = "margin-top: 0.5px; margin-left: 0px;"),
           tags$p("prao@lbl.gov", style = "margin-top: 0.5px; margin-left: 0px;")
         ),
         tags$div(
-          style = "text-align: left;",
-          
+          style = "text-align: left;", # Left-align content
           tags$img(src = "ucdavis_logo_gold.png", style = "max-height: 50px;"),
-          tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px; "),
+          tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px;"),
           tags$p("jkissock@ucdavis.edu", style = "margin-top: 0.5px;")
         )
       )
@@ -661,7 +654,7 @@ server <- function(input, output, session) {
     req(input$file)
     
     
-    bb <- read_excel(input$file$datapath, sheet = 'Emission Inputs', range = "f10:l27")
+    bb <- read_excel(input$file$datapath, sheet = 'Emission Inputs (Optional)', range = "f10:l27")
     aa <- read_excel(input$file$datapath, sheet = 'Calculator', range = "a6:m190")
     
     aa <- aa[-1, ]
@@ -1251,11 +1244,11 @@ server <- function(input, output, session) {
   
   output$output_text_e <- renderUI({
     req(input$file)
-    if (nchar(input$cname_e) > 0 & input$perc_e != "Percentage") {
-      paste0("Energy Flow for ", input$cname_e, " (" , input$units_e, ")")
-    } else if (nchar(input$cname_e) > 0 &
+    if (nchar(input$cname) > 0 & input$perc_e != "Percentage") {
+      paste0("Energy Flow for ", input$cname, " (" , input$units_e, ")")
+    } else if (nchar(input$cname) > 0 &
                input$perc_e == "Percentage") {
-      paste0("Energy Flow for ", input$cname_e, " (%)")
+      paste0("Energy Flow for ", input$cname, " (%)")
     } else if (input$perc == "Percentage") {
       paste0("Energy Flow ", "(%)")
     } else {
@@ -1404,7 +1397,7 @@ server <- function(input, output, session) {
       # add the user's caption as a text label
       
       if (nchar(input$cname) > 0) {
-        caption <- paste0("Energy Flow for ", input$cname_e, "(" , input$units_e, ")")
+        caption <- paste0("Energy Flow for ", input$cname, "(" , input$units_e, ")")
       } else {
         caption <- paste0("Energy Flow ", "(" , input$units_e, ")")
       }
@@ -1968,199 +1961,6 @@ server <- function(input, output, session) {
     
   })
   
-  
-  
-  output$downloadPNG <- downloadHandler(
-    filename = "CO2e Flow.png",
-    content = function(file) {
-      # Create a temporary HTML file to save the widget in
-      tmp_file <- tempfile(fileext = ".html")
-      nodes <- nodes_data()
-      links <- links_data()
-      names(nodes) <- c("SN", "Name")
-      names(links) <- c("SN", "Source", "Target", "Value", "label")
-      sankey <- sankeyNetwork(
-        Links = links,
-        Nodes = nodes,
-        Source = "Source",
-        Target = "Target",
-        Value = "Value",
-        NodeID = "Name",
-        LinkGroup = "label",
-        sinksRight = F,
-        fontSize = 14,
-        nodeWidth = 30,
-        colourScale = JS("d3.scaleSequential(d3.interpolateViridis);")
-      )
-      
-      
-      javascript_string <-
-        'function(el, x) {
-  d3.select(el).selectAll(".node text")
-    .text(function(d) {
-      var value_str = d.value.toLocaleString();
-      if (d.dx < 20) {
-        return d.name;
-      } else {
-        return d.name + " (" + value_str + ")";
-      }
-    });
-
-  // Clear the viewBox attribute of the first SVG element
-  document.getElementsByTagName("svg")[0].setAttribute("viewBox", "");
-}'
-      sankey <- htmlwidgets::onRender(x = sankey, jsCode = javascript_string)
-      # Save the widget to the temporary HTML file
-      saveWidget(sankey, tmp_file)
-      
-      # Take a screenshot of the HTML file and save it to the output file
-      x <- tempfile(fileext = ".png")
-      webshot(
-        tmp_file,
-        x,
-        zoom = 5,
-        vwidth = input$width,
-        vheight = input$height,
-        delay = 0.2
-      )
-      # 1read the image file into R
-      img1 <- image_read(x)
-      # add the user's caption as a text label
-      if (input$units == "MT CO₂e/yr") {
-        un <- "MT CO2e/yr" # Conversion factor
-      } else {
-        un <- "lbs. of CO2e/yr"
-      }
-      
-      if (nchar(input$cname) > 0) {
-        caption <- paste0("CO2e Flow for ", input$cname, "(" , un, ")")
-      } else {
-        caption <- paste0("CO2e Flow ", "(" , un, ")")
-      }
-      img <- image_annotate(
-        img1,
-        caption,
-        size = 100,
-        color = "black",
-        gravity = "North",
-        location = "+0+10%"
-      )
-      # write the annotated image to file
-      image_write(img, path = file)
-      # Delete the temporary file
-      unlink(tmp_file)
-      unlink(x)
-    }
-  )
-  
-  
-  
-  output$downloadPNG_e <- downloadHandler(
-    filename = "Energy Flow.png",
-    content = function(file) {
-      # Create a temporary HTML file to save the widget in
-      tmp_file <- tempfile(fileext = ".html")
-      nodes <- nodes_data_energy()
-      links <- links_data_energy()
-      names(nodes) <- c("SN", "Name")
-      names(links) <- c("SN", "Source", "Target", "Value", "label")
-      sankey <- sankeyNetwork(
-        Links = links,
-        Nodes = nodes,
-        Source = "Source",
-        Target = "Target",
-        Value = "Value",
-        NodeID = "Name",
-        LinkGroup = "label",
-        sinksRight = F,
-        fontSize = 14,
-        nodeWidth = 30,
-        colourScale = JS("d3.scaleSequential(d3.interpolateViridis);")
-      )
-    }
-  )
-  
-  output$downloadPNG <- downloadHandler(
-    filename = "CO2e Flow.png",
-    content = function(file)
-    {
-      # Create a temporary HTML file to save the widget in
-      tmp_file <- tempfile(fileext = ".html")
-      nodes <- nodes_data()
-      links <- links_data()
-      names(nodes) <- c("SN", "Name")
-      names(links) <- c("SN", "Source", "Target", "Value", "label")
-      sankey <- sankeyNetwork(
-        Links = links,
-        Nodes = nodes,
-        Source = "Source",
-        Target = "Target",
-        Value = "Value",
-        NodeID = "Name",
-        LinkGroup = "label",
-        sinksRight = F,
-        fontSize = 14,
-        nodeWidth = 30,
-        colourScale = JS("d3.scaleSequential(d3.interpolateViridis);")
-      )
-      
-      
-      javascript_string <-
-        'function(el, x) {
-  d3.select(el).selectAll(".node text")
-    .text(function(d) {
-      var value_str = d.value.toLocaleString();
-      if (d.dx < 20) {
-        return d.name;
-      } else {
-        return d.name + " (" + value_str + ")";
-      }
-    });
-
-  // Clear the viewBox attribute of the first SVG element
-  document.getElementsByTagName("svg")[0].setAttribute("viewBox", "");
-}'
-      
-      sankey <- htmlwidgets::onRender(x = sankey, jsCode = javascript_string)
-      # Save the widget to the temporary HTML file
-      saveWidget(sankey, tmp_file)
-      
-      # Take a screenshot of the HTML file and save it to the output file
-      x <- tempfile(fileext = ".png")
-      webshot(
-        tmp_file,
-        x,
-        zoom = 5,
-        vwidth = input$width,
-        vheight = input$height,
-        delay = 0.2
-      )
-      # 1read the image file into R
-      img1 <- image_read(x)
-      # add the user's caption as a text label
-      
-      if (nchar(input$cname) > 0)
-      {
-        caption <- paste0("Energy Flow for ", input$cname_e, "(" , input$units_e, ")")
-      } else
-      {
-        caption <- paste0("Energy Flow ", "(" , input$units_e, ")")
-      }
-      img <- image_annotate(
-        img1,
-        caption,
-        size = 100,
-        color = "black",
-        gravity = "North",
-        location = "+0+10%"
-      )
-      # write the annotated image to file
-      image_write(img, path = file)
-      # Delete the temporary file
-      unlink(tmp_file)
-      unlink(x)
-    }
-  )
 }
 
 shinyApp(ui, server)
