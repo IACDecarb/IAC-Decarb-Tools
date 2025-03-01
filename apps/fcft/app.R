@@ -16,7 +16,12 @@ library(htmltools)
 library(DT)
 library(bslib)
 
-# install_phantomjs(force = T)
+
+install_phantomjs(force = T)
+linebreaks <- function(n) {
+  HTML(strrep(br(), n))
+}
+
 
 # Function to check presence of an entry in other dataframes
 check_presence <- function(entry, dataframes, current_index) {
@@ -135,15 +140,18 @@ ui <- fluidPage(
         )
       ),
       tags$div(
-        style = "position: fixed; bottom: 0; width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: center; align-items: flex-end; padding: 10px 0;", # Center the container
+        style = "position: fixed; bottom: 0; width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: center; align-items: flex-end; padding: 10px 0;",
+        # Center the container
         tags$div(
-          style = "text-align: left; margin-right: 150px;", # Left-align content and add spacing
+          style = "text-align: left; margin-right: 150px;",
+          # Left-align content and add spacing
           tags$img(src = "lbnl.png", style = "max-height: 50px; margin-left: 0px;"),
           tags$p(tags$b("Prakash Rao"), style = "margin-top: 0.5px; margin-left: 0px;"),
           tags$p("prao@lbl.gov", style = "margin-top: 0.5px; margin-left: 0px;")
         ),
         tags$div(
-          style = "text-align: left;", # Left-align content
+          style = "text-align: left;",
+          # Left-align content
           tags$img(src = "ucdavis_logo_gold.png", style = "max-height: 50px;"),
           tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px;"),
           tags$p("jkissock@ucdavis.edu", style = "margin-top: 0.5px;")
@@ -155,15 +163,14 @@ ui <- fluidPage(
       "Energy Sankey",
       sidebarLayout(
         sidebarPanel(
-          
-         
           selectInput("units_e", "Select Units", c("MMBtu/yr", "MWh/yr")),
           textOutput('move'),
           radioButtons("perc_e", "Select Value Type", c("Absolute", "Percentage")),
           numericInput(
             "precision_e",
             "Choose precision level of numeric values",
-            1,-20,
+            1,
+            -20,
             20,
             1
           ),
@@ -194,15 +201,18 @@ ui <- fluidPage(
         
       ),
       tags$div(
-        style = "bottom: 0; width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: center; align-items: flex-end; padding: 10px 0;", # Center the container
+        style = "bottom: 0; width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: center; align-items: flex-end; padding: 10px 0;",
+        # Center the container
         tags$div(
-          style = "text-align: left; margin-right: 150px;", # Left-align content and add spacing
+          style = "text-align: left; margin-right: 150px;",
+          # Left-align content and add spacing
           tags$img(src = "lbnl.png", style = "max-height: 50px; margin-left: 0px;"),
           tags$p(tags$b("Prakash Rao"), style = "margin-top: 0.5px; margin-left: 0px;"),
           tags$p("prao@lbl.gov", style = "margin-top: 0.5px; margin-left: 0px;")
         ),
         tags$div(
-          style = "text-align: left;", # Left-align content
+          style = "text-align: left;",
+          # Left-align content
           tags$img(src = "ucdavis_logo_gold.png", style = "max-height: 50px;"),
           tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px;"),
           tags$p("jkissock@ucdavis.edu", style = "margin-top: 0.5px;")
@@ -214,14 +224,14 @@ ui <- fluidPage(
       "Emissions Sankey",
       sidebarLayout(
         sidebarPanel(
-          
           selectInput("units", "Select Units", c("MT CO₂e/yr", "lbs. of CO₂e/yr")),
           textOutput('move'),
           radioButtons("perc", "Select Value Type", c("Absolute", "Percentage")),
           numericInput(
             "precision",
             "Choose precision level of numeric values",
-            1,-20,
+            1,
+            -20,
             20,
             1
           ),
@@ -256,15 +266,18 @@ ui <- fluidPage(
         
       ),
       tags$div(
-        style = "width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: center; align-items: flex-end; padding: 10px 0;", # Center the container
+        style = "width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: center; align-items: flex-end; padding: 10px 0;",
+        # Center the container
         tags$div(
-          style = "text-align: left; margin-right: 150px;", # Left-align content and add spacing
+          style = "text-align: left; margin-right: 150px;",
+          # Left-align content and add spacing
           tags$img(src = "lbnl.png", style = "max-height: 50px; margin-left: 0px;"),
           tags$p(tags$b("Prakash Rao"), style = "margin-top: 0.5px; margin-left: 0px;"),
           tags$p("prao@lbl.gov", style = "margin-top: 0.5px; margin-left: 0px;")
         ),
         tags$div(
-          style = "text-align: left;", # Left-align content
+          style = "text-align: left;",
+          # Left-align content
           tags$img(src = "ucdavis_logo_gold.png", style = "max-height: 50px;"),
           tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px;"),
           tags$p("jkissock@ucdavis.edu", style = "margin-top: 0.5px;")
@@ -281,27 +294,30 @@ ui <- fluidPage(
       ")),
           width = 3,
           fluidRow(
-            h4("Step 1: Select Methods", style = "font-weight: bold; font-size: 18px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;float: left;"),
-            br(),
-            column(12),
+            column(
+              12,
+              h4("Step 1: Select Methods", style = "font-weight: bold; font-size: 18px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;float: left;")
+            ),
             wellPanel(
-              style = "border: 0px solid #ccc; padding: 1px; border-radius: 2px;",
+              style = "border: 2px solid #ccc; padding: 15px; border-radius: 5px; margin-bottom: 20px;",
               selectInput(
                 "products_num",
                 "Enter Number of Products:",
-                choices = c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10")
+                choices = c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10"),
+                width = "95%"
               ),
               radioButtons(
                 "selected_method",
                 "Select Allocation Approach:",
-                choices = c("Quantity-based", "Revenue-based", "Both"),
-                selected = "Quantity-based"
+                choices = c("Quantity-based", "Revenue-based"),
+                selected = "Quantity-based",
+                width = "95%"
               ),
               uiOutput("qty_unit")
             )
           ),
           fluidRow(column(12, uiOutput("product_inputs"))),
-          actionButton("calc_int", "Calculate Product Intensity")
+          actionButton("calc_int", "Calculate Product Intensity", width = "95%")
         ),
         mainPanel(
           div(
@@ -312,15 +328,18 @@ ui <- fluidPage(
         )
       ),
       tags$div(
-        style = "bottom: 0; width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: center; align-items: flex-end; padding: 10px 0;", # Center the container
+        style = "bottom: 0; width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: center; align-items: flex-end; padding: 10px 0;",
+        # Center the container
         tags$div(
-          style = "text-align: left; margin-right: 150px;", # Left-align content and add spacing
+          style = "text-align: left; margin-right: 150px;",
+          # Left-align content and add spacing
           tags$img(src = "lbnl.png", style = "max-height: 50px; margin-left: 0px;"),
           tags$p(tags$b("Prakash Rao"), style = "margin-top: 0.5px; margin-left: 0px;"),
           tags$p("prao@lbl.gov", style = "margin-top: 0.5px; margin-left: 0px;")
         ),
         tags$div(
-          style = "text-align: left;", # Left-align content
+          style = "text-align: left;",
+          # Left-align content
           tags$img(src = "ucdavis_logo_gold.png", style = "max-height: 50px;"),
           tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px;"),
           tags$p("jkissock@ucdavis.edu", style = "margin-top: 0.5px;")
@@ -431,34 +450,45 @@ server <- function(input, output, session) {
   output$qty_unit <- renderUI({
     req(input$file)
     if (input$selected_method == "Quantity-based") {
-      fluidRow(column(
+      fluidRow(style = "display:flex;align-items:flex-end", column(
         6,
-        textInput("units_name", "Enter Units of Quantity", value = "metric Tons/yr")
+        textInput(
+          "units_name",
+          "Enter Units of Quantity:",
+          value = "Metric Ton",
+          width = "95%"
+        )
       ))
-    } else if (input$selected_method == "Both" ||
-               input$selected_method == "Revenue-based") {
-      fluidRow(column(
-        6,
-        textInput("units_name", "Enter Units of Quantity", value = "metric Tons/yr")
-      ), uiOutput("dynamic_revenue"))
+    } else if (input$selected_method == "Revenue-based") {
+      fluidRow(style = "display:flex;align-items:flex-end",
+               column(
+                 6,
+                 textInput(
+                   "units_name",
+                   "Enter Units of Quantity:",
+                   value = "Metric Ton",
+                   width = "95%"
+                 )
+               ),
+               uiOutput("dynamic_revenue"))
     }
   })
   
   output$dynamic_revenue <- renderUI({
-    if (input$selected_method == "Both" ||
-        input$selected_method == "Revenue-based") {
-      column(
-        6,
+    if (input$selected_method == "Revenue-based") {
+      fluidRow(style = "display:flex;align-items:flex-end", column(
+        12,
         selectInput(
           "revenue_name",
           "Select Revenue Calculation Method:",
           choices = c(
             paste0("$/", input$units_name),
-            "Total product revenue ($)",
+            "Gross product revenue ($)",
             "Revenue %"
-          )
+          ),
+          width = "100%"
         )
-      )
+      ))
     }
   })
   
@@ -480,129 +510,160 @@ server <- function(input, output, session) {
     if (input$selected_method == "Quantity-based") {
       lapply(1:num, function(i) {
         tagList(fluidRow(
-          h4("Step 2: Enter Quantity-based Inputs", style = "font-weight: bold; font-size: 18px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;float: left;"),
-          wellPanel(
-            column(width = 6, numericInput(
-              paste0("qty_", i),
-              paste("Enter Product ", i, " Quantity (", input$units_name, "):"),
-              value = 0,
-              min = 0
-            )),
+          if (i == 1) {
             column(
-              width = 12,
+              12,
+              h4("Step 2: Enter Quantity-based Inputs", style = "font-weight: bold; font-size: 18px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; margin-bottom: 15px;")
+            )
+          },
+          div(
+            style = "border: 2px solid #ccc; padding: 15px; border-radius: 5px; margin-bottom: 20px;",
+            
+            numericInput(
+              paste0("qty_", i),
+              paste0("Enter Product ", i, " Quantity (", input$units_name, "):"),
+              value = 0,
+              min = 0,
+              width = "60%"
+            ),
+            selectInput(
+              paste0("process_", i),
+              paste("Select Product ", i, "-based Processes:"),
+              choices = end_use$measures,
+              multiple = TRUE,
+              width = "95%"
+            )
+          )
+        ))
+      })
+      
+    } else if (input$selected_method == "Revenue-based") {
+      if (input$revenue_name == "Revenue %") {
+        lapply(1:num, function(i) {
+          tagList(fluidRow(
+            if (i == 1) {
+              column(
+                12,
+                h4(
+                  "Step 2: Enter Quantity- and Revenue-based Inputs",
+                  style = "font-weight: bold; font-size: 18px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;float: left;"
+                )
+              )
+            },
+            div(
+              style = "border: 2px solid #ccc; padding: 15px; border-radius: 5px; margin-bottom: 20px;",
+              fluidRow(
+                style = "display:flex;align-items:flex-end;",
+                column(
+                  6,
+                  numericInput(
+                    paste0("qty_", i),
+                    paste0(
+                      "Enter Product ",
+                      i,
+                      " Quantity (",
+                      input$units_name,
+                      "):"
+                    ),
+                    value = 0,
+                    min = 0,
+                    width = "95%"
+                  )
+                ),
+                column(
+                  6,
+                  autonumericInput(
+                    inputId =   paste0("revenue_", i),
+                    label =  paste("Enter Product ", i, " Revenue %:"),
+                    value = 0,
+                    currencySymbol = "%",
+                    currencySymbolPlacement = "s",
+                    minimumValue = "0",
+                    maximumValue = "100",
+                    align = "left",
+                    width = "95%",
+                    decimalPlaces = 0
+                  )
+                )
+              )
+              ,
               selectInput(
                 paste0("process_", i),
                 paste("Select Product ", i, "-based Processes:"),
                 choices = end_use$measures,
-                multiple = TRUE
+                multiple = TRUE,
+                width = "95%"
               )
+              
             )
-          )
-        ), br())
-      })
-      
-    } else {
-      if (input$revenue_name == "Revenue %") {
-        lapply(1:num, function(i) {
-          tagList(fluidRow(
-            h4(
-              "Step 2: Enter Quantity- and Revenue-based Inputs",
-              style = "font-weight: bold; font-size: 18px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;float: left;"
-            ),
-            wellPanel(
-              column(
-                width = 6,
-                numericInput(
-                  paste0("qty_", i),
-                  paste(
-                    "Enter Product ",
-                    i,
-                    " Quantity (",
-                    input$units_name,
-                    "):"
-                  ),
-                  value = 0,
-                  min = 0
-                )
-              ),
-              column(
-                width = 6,
-                autonumericInput(
-                  inputId =   paste0("revenue_", i),
-                  label =  paste("Enter Product ", i, " Revenue %:"),
-                  value = 0,
-                  decimalPlaces = 0,
-                  currencySymbol = "%",
-                  currencySymbolPlacement = "s",
-                  minimumValue = "0",
-                  maximumValue = "100",
-                  align = "left"
-                )
-              ),
-              column(
-                width = 12,
-                selectInput(
-                  paste0("process_", i),
-                  paste("Select Product ", i, "-based Processes:"),
-                  choices = end_use$measures,
-                  multiple = TRUE
-                )
-              )
-            )
-          ), br())
+          ))
         })
       } else {
         lapply(1:num, function(i) {
           tagList(fluidRow(
-            h4(
-              "Step 2: Enter Quantity- and Revenue-based Inputs",
-              style = "font-weight: bold; font-size: 18px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;float: left;"
-            ),
-            wellPanel(
+            if (i == 1) {
               column(
-                width = 6,
-                numericInput(
-                  paste0("qty_", i),
-                  paste(
-                    "Enter Product ",
-                    i,
-                    " Quantity (",
-                    input$units_name,
-                    "):"
-                  ),
-                  value = 0,
-                  min = 0
-                )
-              ),
-              column(
-                width = 6,
-                autonumericInput(
-                  inputId =   paste0("revenue_", i),
-                  label =  if_else(
-                    input$revenue_name == "Total product revenue ($)",
-                    paste("Enter Product ", i, " Revenue ($):"),
-                    paste("Enter Product ", i, " Revenue per Unit:")
-                  ),
-                  value = 0,
-                  decimalPlaces = 0,
-                  currencySymbol = "$",
-                  currencySymbolPlacement = "p",
-                  minimumValue = "0",
-                  maximumValue = "10000000000000000000",
-                  align = "left"
-                )
-              ),
-              column(
-                width = 12,
-                selectInput(
-                  paste0("process_", i),
-                  paste("Select Product ", i, "-based Processes:"),
-                  choices = end_use$measures,
-                  multiple = TRUE
+                12,
+                h4(
+                  "Step 2: Enter Quantity- and Revenue-based Inputs",
+                  style = "font-weight: bold; font-size: 18px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;float: left;"
                 )
               )
-            ),
-            br()
+            },
+            div(
+              style = "border: 2px solid #ccc; padding: 15px; border-radius: 5px; margin-bottom: 20px;",
+              fluidRow(
+                style = "display:flex;align-items:flex-end;",
+                column(
+                  6,
+                  numericInput(
+                    paste0("qty_", i),
+                    paste0(
+                      "Enter Product ",
+                      i,
+                      " Quantity (",
+                      input$units_name,
+                      "):"
+                    ),
+                    value = 0,
+                    min = 0,
+                    width = "95%"
+                  )
+                ),
+                column(
+                  6,
+                  autonumericInput(
+                    inputId =   paste0("revenue_", i),
+                    label =  if_else(
+                      input$revenue_name == "Gross product revenue ($)",
+                      paste("Enter Product ", i, " Gross Revenue ($):"),
+                      paste(
+                        "Enter Product ",
+                        i,
+                        " Revenue per ",
+                        input$units_name,
+                        ":"
+                      )
+                    ),
+                    value = 0,
+                    decimalPlaces = 0,
+                    currencySymbol = "$",
+                    currencySymbolPlacement = "p",
+                    minimumValue = "0",
+                    maximumValue = "10000000000000000000",
+                    align = "left",
+                    width = "95%"
+                  )
+                )
+              ),
+              selectInput(
+                paste0("process_", i),
+                paste("Select Product ", i, "-based Processes:"),
+                choices = end_use$measures,
+                multiple = TRUE,
+                width = "95%"
+              )
+            )
           ))
         })
       }
@@ -1533,6 +1594,8 @@ server <- function(input, output, session) {
           MoreArgs = list(values = product_qties)
         )
         
+        product_df$product_qty <- product_qties[i]
+        
         # Calculate emissions intensities
         product_df$qty_based_intensity <- product_df$qty_based_emissions / product_qties[i]
         
@@ -1555,6 +1618,9 @@ server <- function(input, output, session) {
       
       if (exists("all_products_breakdown")) {
         all_products_breakdown <- `rownames<-`(all_products_breakdown, NULL)
+        all_products_breakdown <- all_products_breakdown %>%
+          relocate(product_qty, .after = product_number)
+        
         all_products_summarized <- all_products_breakdown %>%
           group_by(product_number) %>%
           summarise(
@@ -1564,23 +1630,27 @@ server <- function(input, output, session) {
         
         colnames(all_products_summarized) <-  c(
           "Product",
-          "Quantity-based Emissions\n(MTCO2e)",
-          "Quantity-based Emissions Intensity\n(MTCO2e/Ton of Product)"
+          "Quantity-based Emissions\n(MTCO₂e)",
+          paste0(
+            "Quantity-based Emissions Intensity\n(MTCO₂e/",
+            input$units_name,
+            " of Product)"
+          )
         )
         
         download_excel_file <- all_products_breakdown %>%
-          mutate(qty_weight = qty_based_emissions/co2e_emissions_mt_co2e_yr) %>% 
+          mutate(qty_weight_proportion = qty_based_emissions / co2e_emissions_mt_co2e_yr) %>%
           rename(
             associated_products = presence,
             all_products_co2e_emissions_mt_co2e_yr = co2e_emissions_mt_co2e_yr,
             qty_based_emissions_mt_co2e_yr = qty_based_emissions,
             qty_based_ei_mt_co2e_per_mt = qty_based_intensity
           ) %>%
-          relocate(qty_based_ei_mt_co2e_per_mt, .after = qty_based_emissions_mt_co2e_yr) %>% 
-          relocate(qty_weight, .after = all_products_co2e_emissions_mt_co2e_yr)
+          relocate(qty_based_ei_mt_co2e_per_mt, .after = qty_based_emissions_mt_co2e_yr) %>%
+          relocate(qty_weight_proportion, .after = all_products_co2e_emissions_mt_co2e_yr)
       }
     } else  {
-      #Revenue or Both based approach
+      #Revenue based approach
       
       all_product_dfs <- list()
       qty_values <- numeric(num)
@@ -1605,7 +1675,7 @@ server <- function(input, output, session) {
           input$revenue_name == "Revenue %",
           input[[paste0("revenue_", i)]] / 100,
           if_else(
-            input$revenue_name == "Total product revenue ($)",
+            input$revenue_name == "Gross product revenue ($)",
             input[[paste0("revenue_", i)]],
             input[[paste0("revenue_", i)]] * qty_value
           )
@@ -1639,7 +1709,7 @@ server <- function(input, output, session) {
           input$revenue_name == "Revenue %",
           input[[paste0("revenue_", i)]] / 100,
           if_else(
-            input$revenue_name == "Total product revenue ($)",
+            input$revenue_name == "Gross product revenue ($)",
             input[[paste0("revenue_", i)]],
             input[[paste0("revenue_", i)]] * qty_value
           )
@@ -1695,7 +1765,8 @@ server <- function(input, output, session) {
           MoreArgs = list(values = product_revenues)
         )
         
-
+        product_df$product_qty <- product_qties[i]
+        
         # Calculate emissions intensities
         product_df$qty_based_intensity <- product_df$qty_based_emissions / product_qties[i]
         product_df$revenue_based_intensity_qty <- product_df$revenue_based_emissions / product_qties[i]
@@ -1723,6 +1794,8 @@ server <- function(input, output, session) {
       
       if (exists("all_products_breakdown")) {
         all_products_breakdown <- `rownames<-`(all_products_breakdown, NULL)
+        all_products_breakdown <- all_products_breakdown %>%
+          relocate(product_qty, .after = product_number)
         
         if (input$revenue_name == "Revenue %") {
           all_products_summarized <- all_products_breakdown %>%
@@ -1734,24 +1807,24 @@ server <- function(input, output, session) {
           
           colnames(all_products_summarized) <-  c(
             "Product",
-            "Revenue-based Emissions\n(MTCO2e)",
-            "Revenue-based Emissions Intensity\n(MTCO2e/unit of Product)"
+            "Revenue-based Emissions (MTCO₂e)",
+            paste0(
+              "Revenue-based Emissions Intensity\n(MTCO₂e/",
+              input$units_name,
+              " of Product)"
+            )
           )
           
           download_excel_file <- all_products_breakdown %>%
-            mutate(qty_weight = qty_based_emissions/co2e_emissions_mt_co2e_yr,
-                   revenue_weight = revenue_based_emissions/co2e_emissions_mt_co2e_yr) %>% 
+            select(-c(qty_based_emissions, qty_based_intensity)) %>%
+            mutate(revenue_weight_proportion = revenue_based_emissions / co2e_emissions_mt_co2e_yr) %>%
             rename(
               associated_products = presence,
               all_products_co2e_emissions_mt_co2e_yr = co2e_emissions_mt_co2e_yr,
-              qty_based_emissions_mt_co2e_yr = qty_based_emissions,
-              qty_based_ei_mt_co2e_per_mt = qty_based_intensity,
               revenue_based_emissions_mt_co2e_yr = revenue_based_emissions,
               revenue_based_ei_mt_co2e_per_mt_qty = revenue_based_intensity_qty,
             ) %>%
-            relocate(qty_based_ei_mt_co2e_per_mt, .after = qty_based_emissions_mt_co2e_yr) %>% 
-            relocate(qty_weight,.after = all_products_co2e_emissions_mt_co2e_yr) %>% 
-            relocate(revenue_weight, .after = qty_based_emissions_mt_co2e_yr)
+            relocate(revenue_weight_proportion, .before = revenue_based_emissions_mt_co2e_yr)
           
         } else {
           all_products_summarized <- all_products_breakdown %>%
@@ -1766,79 +1839,41 @@ server <- function(input, output, session) {
           
           colnames(all_products_summarized) <-  c(
             "Product",
-            "Quantity-based Emissions\n(MTCO2e)",
-            "Quantity-based Emissions Intensity\n(MTCO2e/Ton of Product)",
-            "Revenue-based Emissions\n(MTCO2e)",
-            "Revenue-based Emissions Intensity\n(MTCO2e/$ Revenue)",
-            "Revenue-based Emissions Intensity\n(MTCO2e/unit of Product)"
+            "Quantity-based Emissions\n(MTCO₂e)",
+            paste0(
+              "Quantity-based Emissions Intensity\n(MTCO₂e/",
+              input$units_name,
+              " of Product)"
+            ),
+            "Revenue-based Emissions\n(MTCO₂e)",
+            "Revenue-based Emissions Intensity\n(MTCO₂e/$ Revenue)",
+            paste0(
+              "Revenue-based Emissions Intensity\n(MTCO₂e/",
+              input$units_name,
+              " of Product)"
+            )
           )
           
+          names(all_products_breakdown)
+          
           download_excel_file <- all_products_breakdown %>%
-            mutate(qty_weight = qty_based_emissions/co2e_emissions_mt_co2e_yr,
-                   revenue_weight = revenue_based_emissions/co2e_emissions_mt_co2e_yr) %>% 
+            select(-c(qty_based_emissions, qty_based_intensity)) %>%
+            mutate(revenue_weight_proportion = revenue_based_emissions / co2e_emissions_mt_co2e_yr) %>%
             rename(
               associated_products = presence,
               all_products_co2e_emissions_mt_co2e_yr = co2e_emissions_mt_co2e_yr,
-              qty_based_emissions_mt_co2e_yr = qty_based_emissions,
-              qty_based_ei_mt_co2e_per_mt = qty_based_intensity,
               revenue_based_emissions_mt_co2e_yr = revenue_based_emissions,
               revenue_based_ei_mt_co2e_per_mt_dollar = revenue_based_intensity_dollar,
               revenue_based_ei_mt_co2e_per_mt_qty = revenue_based_intensity_qty
-            ) %>%
-            relocate(qty_based_ei_mt_co2e_per_mt, .after = qty_based_emissions_mt_co2e_yr)%>% 
-            relocate(qty_weight,.after = all_products_co2e_emissions_mt_co2e_yr) %>% 
-            relocate(revenue_weight, .after = qty_based_emissions_mt_co2e_yr)
+            )  %>%
+            relocate(revenue_weight_proportion, .before = revenue_based_emissions_mt_co2e_yr)
         }
       }
     }
     
     
     output$intensity_table <- renderDataTable({
-      
-      if(input$selected_method == "Both") {
-        
-        if(input$revenue_name == "Revenue %") {
-          all_products_summarized %>%
-            DT::datatable(
-              class = 'cell-border stripe hover',
-              filter = "none",
-              style = "default",
-              fillContainer = F,
-              rownames = F,
-              selection = "single",
-              options = list(
-                columnDefs = list(list(
-                  className = 'dt-center', targets = 0:2
-                )),
-                dom = 't',
-                autoWidth = TRUE
-              )
-            ) %>%
-            formatRound(columns = c(2), digits = 0) %>%
-            formatRound(columns = c(3), digits = 2)
-        } else {
-      
-      all_products_summarized %>%
-        DT::datatable(
-          class = 'cell-border stripe hover',
-          filter = "none",
-          style = "default",
-          fillContainer = F,
-          rownames = F,
-          selection = "single",
-          options = list(
-            columnDefs = list(list(
-              className = 'dt-center', targets = 0:2
-            )),
-            dom = 't',
-            autoWidth = TRUE
-          )
-        ) %>%
-        formatRound(columns = c(2,4), digits = 0) %>%
-        formatRound(columns = c(3,5,6), digits = 2)
-        }
-        
-      } else if (input$selected_method == "Quantity-based") {
+      if (input$selected_method == "Quantity-based") {
         all_products_summarized %>%
           DT::datatable(
             class = 'cell-border stripe hover',
@@ -1856,31 +1891,10 @@ server <- function(input, output, session) {
             )
           ) %>%
           formatRound(columns = c(2), digits = 0) %>%
-          formatRound(columns = c(3), digits = 2)
+          formatRound(columns = c(3), digits = 3)
       } else if (input$selected_method == "Revenue-based") {
-        
-        if(input$revenue_name == "Revenue %") {
-        
-        all_products_summarized  %>% 
-          DT::datatable(
-            class = 'cell-border stripe hover',
-            filter = "none",
-            style = "default",
-            fillContainer = F,
-            rownames = F,
-            selection = "single",
-            options = list(
-              columnDefs = list(list(
-                className = 'dt-center', targets = 0:2
-              )),
-              dom = 't',
-              autoWidth = TRUE
-            )
-          ) %>%
-          formatRound(columns = c(2), digits = 0) %>%
-          formatRound(columns = c(3), digits = 2)
-        } else {
-          all_products_summarized %>% 
+        if (input$revenue_name == "Revenue %") {
+          all_products_summarized  %>%
             DT::datatable(
               class = 'cell-border stripe hover',
               filter = "none",
@@ -1896,14 +1910,36 @@ server <- function(input, output, session) {
                 autoWidth = TRUE
               )
             ) %>%
-            formatRound(columns = c(2,4), digits = 0) %>%
-            formatRound(columns = c(3,5,6), digits = 2)
+            formatRound(columns = c(2), digits = 0) %>%
+            formatRound(columns = c(3), digits = 3)
+        } else {
+          all_products_summarized %>%
+            select(-c(2, 3)) %>%
+            DT::datatable(
+              class = 'cell-border stripe hover',
+              filter = "none",
+              style = "default",
+              fillContainer = F,
+              rownames = F,
+              selection = "single",
+              options = list(
+                columnDefs = list(list(
+                  className = 'dt-center', targets = 0:2
+                )),
+                dom = 't',
+                autoWidth = TRUE
+              )
+            ) %>%
+            formatRound(columns = c(2), digits = 0) %>%
+            formatRound(columns = c(3, 4), digits = 3)
         }
       }
     })
     
     output$show_dl_link <- renderUI({
-      downloadLink("download_all_data", "Download Plot Data (.XLSX)", style = "font-size: 14px; text-decoration: underline;")
+      downloadLink("download_all_data",
+                   "Download Table Data (.xlsx)",
+                   style = "font-size: 14px; text-decoration: underline;")
     })
     
     
@@ -1924,14 +1960,6 @@ server <- function(input, output, session) {
           fontSize = 12
         )
         
-        # Create styles for different decimal places
-        style_1_decimal <- createStyle(numFmt = "0.0")
-        style_3_decimals <- createStyle(numFmt = "0.00")
-        
-        # Define columns for different decimal places
-        cols_1_decimals <- c(4, 5, 7)  # columns for 1 decimal place
-        cols_3_decimals <- c(6, 8)    # columns for 3 decimal places
-        
         # Create a workbook and add a worksheet
         wb <- createWorkbook()
         addWorksheet(wb, "Sheet1")
@@ -1939,39 +1967,66 @@ server <- function(input, output, session) {
         # Write data to the worksheet
         writeData(wb, "Sheet1", download_excel_file, headerStyle = hs1)
         
-        # Apply decimal formatting to specific columns
-        addStyle(
-          wb,
-          "Sheet1",
-          style_1_decimal,
-          rows = 2:(nrow(download_excel_file) + 1),
-          cols = cols_1_decimals,
-          gridExpand = TRUE
-        )
-        addStyle(
-          wb,
-          "Sheet1",
-          style_3_decimals,
-          rows = 2:(nrow(download_excel_file) + 1),
-          cols = cols_3_decimals,
-          gridExpand = TRUE
-        )
-        
         # Set column widths to auto
         setColWidths(wb,
                      "Sheet1",
                      cols = 1:ncol(download_excel_file),
                      widths = "auto")
         
-        # Add borders to all columns
+        # Create styles for different decimal places
+        no_decimal_style <- createStyle(numFmt = "0")
+        two_decimal_style <- createStyle(numFmt = "0.00")
+        three_decimal_style <- createStyle(numFmt = "0.000")
+        
+        # Define which columns should have which decimal places
+        no_decimal_cols <- c(2, 5, 7)
+        two_decimal_cols <- c(6)
+        
+        
+        # Apply styles to specific columns
         addStyle(
           wb,
           "Sheet1",
-          createStyle(border = "TopBottomLeftRight"),
-          rows = 1:(nrow(download_excel_file) + 1),
-          cols = 1:ncol(download_excel_file),
+          no_decimal_style,
+          rows = 2:(nrow(download_excel_file) + 1),
+          cols = no_decimal_cols,
           gridExpand = TRUE
         )
+        
+        addStyle(
+          wb,
+          "Sheet1",
+          two_decimal_style,
+          rows = 2:(nrow(download_excel_file) + 1),
+          cols = two_decimal_cols,
+          gridExpand = TRUE
+        )
+        
+        if (input$selected_method == "Quantity-based" ||
+            input$revenue_name == "Revenue %") {
+          three_decimal_cols <- c(8)
+          
+          addStyle(
+            wb,
+            "Sheet1",
+            three_decimal_style,
+            rows = 2:(nrow(download_excel_file) + 1),
+            cols = three_decimal_cols,
+            gridExpand = TRUE
+          )
+        } else {
+          three_decimal_cols <- c(8, 9)
+          
+          addStyle(
+            wb,
+            "Sheet1",
+            three_decimal_style,
+            rows = 2:(nrow(download_excel_file) + 1),
+            cols = three_decimal_cols,
+            gridExpand = TRUE
+          )
+        }
+        
         
         # Save the workbook
         saveWorkbook(wb, file, overwrite = TRUE)
