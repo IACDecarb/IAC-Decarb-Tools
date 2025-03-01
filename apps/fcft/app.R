@@ -16,7 +16,7 @@ library(htmltools)
 library(DT)
 library(bslib)
 
-install_phantomjs(force = T)
+# install_phantomjs(force = T)
 
 # Function to check presence of an entry in other dataframes
 check_presence <- function(entry, dataframes, current_index) {
@@ -362,12 +362,15 @@ server <- function(input, output, session) {
   nodes_data <- reactive({
     req(input$file)
     
-    aa <- read_excel(input$file$datapath, sheet = 'Calculator', range = "a6:m190")
+    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m190")
     
     aa <- aa[-1, ]
     aa <- clean_names(aa)
     aa <- aa %>%
       filter(!is.na(source))
+    aa <- aa %>%
+      mutate(emission_category = if_else(emission_category == "Conserved Energy", "Avoided Emissions", emission_category))
+    
     end.use <- tibble('Name' = aa$`source`)
     ene.src <- tibble('Name' = unique(aa$`energy_source`))
     em.src <- tibble('Name' = unique(aa$`emission_category`))
@@ -394,7 +397,7 @@ server <- function(input, output, session) {
   
   nodes_data_energy <- reactive({
     req(input$file)
-    aa <- read_excel(input$file$datapath, sheet = 'Calculator', range = "a6:m190")
+    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m190")
     aa <- aa[-1, ]
     aa <- clean_names(aa)
     aa <- aa %>%
@@ -410,6 +413,11 @@ server <- function(input, output, session) {
     
     if (!is_empty(non_ele$Name)) {
       nodes.hh[2, 'Name'] <- 'Fuel'
+    }
+    
+    ce_link_val <- numeric(0)
+    if (!is_empty(aa.ne$no)) {
+      nodes.hh[3, 'Name'] <- 'Conserved Energy'
     }
     nodes.h <- rbind(nodes.hh, ene.src, end.use)
     
@@ -460,7 +468,7 @@ server <- function(input, output, session) {
     req(input$file)
     num <- input$products_num
     
-    aa <- read_excel(input$file$datapath, sheet = 'Calculator', range = "a6:m190") %>%
+    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m190") %>%
       clean_names()
     
     aa <- aa[-1, ]
@@ -624,8 +632,8 @@ server <- function(input, output, session) {
     req(input$file)
     
     
-    bb <- read_excel(input$file$datapath, sheet = 'Emission Inputs (Optional)', range = "f10:l27")
-    aa <- read_excel(input$file$datapath, sheet = 'Calculator', range = "a6:m190")
+    bb <- read_excel(input$file$datapath, sheet = 'Emission Inputs (Optional)', range = "k10:q27")
+    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m190")
     
     aa <- aa[-1, ]
     aa <- clean_names(aa)
@@ -698,7 +706,7 @@ server <- function(input, output, session) {
     req(input$file)
     
     
-    temp <- read_excel(input$file$datapath, sheet = 'Calculator', range = "a6:m190")
+    temp <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m190")
     
     temp <- temp[-1, ]
     temp <- clean_names(temp)
@@ -709,7 +717,7 @@ server <- function(input, output, session) {
   
   temp_e <- reactive({
     req(input$file)
-    temp_e <- read_excel(input$file$datapath, sheet = 'Calculator', range = "a6:m190")
+    temp_e <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m190")
     temp_e <- temp_e[-1, ]
     temp_e <- clean_names(temp_e)
     temp_e <- temp_e %>%
@@ -720,12 +728,14 @@ server <- function(input, output, session) {
   
   links_data <- reactive({
     req(input$file)
-    aa <- read_excel(input$file$datapath, sheet = 'Calculator', range = "a6:m190")
+    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m190")
     
     aa <- aa[-1, ]
     aa <- clean_names(aa)
     aa <- aa %>%
       filter(!is.na(source))
+    aa <- aa %>%
+      mutate(emission_category = if_else(emission_category == "Conserved Energy", "Avoided Emissions", emission_category))
     
     end.use <- tibble('Name' = aa$`source`)
     ene.src <- tibble('Name' = unique(aa$`energy_source`))
@@ -757,7 +767,7 @@ server <- function(input, output, session) {
     )
     
     aa.e <- aa %>%
-      filter(!is.na(energy_source))
+      filter(emission_category == "Energy")
     
     for (i in 1:nrow(aa.e)) {
       links.h[i, 'No'] <- i
@@ -842,19 +852,8 @@ server <- function(input, output, session) {
     }
     
     aa.ne <- aa %>%
-      filter(is.na(energy_source))
-    pr <- nodes %>%
-      filter(Name == 'Process')
-    pr_link_val <- numeric(0)
-    if (!is_empty(pr$No)) {
-      pr_link_val <- as.numeric(pr$No - 1)
-    }
-    fg_link_val <- numeric(0)
-    fg <- nodes %>%
-      filter(Name == 'Fugitive')
-    if (!is_empty(fg$No)) {
-      fg_link_val <- as.numeric(fg$No - 1)
-    }
+      filter(emission_category != "Energy")
+    
     
     if (!is_empty(aa.ne$source)) {
       o <- 0
@@ -879,32 +878,48 @@ server <- function(input, output, session) {
       }
     }
     
-    if (!is_empty(pr_link_val) & !is_empty(fg_link_val)) {
-      links.t <- links.h %>%
-        filter(Source == pr_link_val |
-                 Source == ene_link_val |
-                 Source == fg_link_val) %>%
-        group_by(Source) %>%
-        summarise(Value = sum(Value))
-    } else if (!is_empty(pr_link_val) & is_empty(fg_link_val)) {
-      links.t <- links.h %>%
-        filter(Source == pr_link_val | Source == ene_link_val) %>%
-        group_by(Source) %>%
-        summarise(Value = sum(Value))
-    } else if (is_empty(pr_link_val) & !is_empty(fg_link_val)) {
-      links.t <- links.h %>%
-        filter(Source == fg_link_val | Source == ene_link_val) %>%
-        group_by(Source) %>%
-        summarise(Value = sum(Value))
-    } else{
-      links.t <- links.h %>%
-        filter(Source == ene_link_val) %>%
-        group_by(Source) %>%
-        summarise(Value = sum(Value))
+    
+    pr_link_val <- numeric(0)
+    fg_link_val <- numeric(0)
+    ac_link_val <- numeric(0)
+    
+    pr <- nodes %>%
+      filter(Name == 'Process')
+    fg <- nodes %>%
+      filter(Name == 'Fugitive')
+    ac <- nodes %>%
+      filter(Name == 'Avoided Emissions')
+    filter_criteria <- c()
+    
+    if (!is_empty(pr$No)) {
+      pr_link_val <- as.numeric(pr$No - 1)
+      filter_criteria <- c(filter_criteria, pr_link_val)
     }
     
+    if (!is_empty(fg$No)) {
+      fg_link_val <- as.numeric(fg$No - 1)
+      filter_criteria <- c(filter_criteria, fg_link_val)
+    }
+    
+    if (!is_empty(ac$No)) {
+      ac_link_val <- as.numeric(ac$No - 1)
+      filter_criteria <- c(filter_criteria, ac_link_val)
+    }
+    
+    # Always include ene_link_val
+    filter_criteria <- c(filter_criteria, ene_link_val)
+    
+    # Apply the filter and summarise
+    links.t <- links.h %>%
+      filter(Source %in% filter_criteria) %>%
+      group_by(Source) %>%
+      summarise(Value = sum(Value))
+    
     total_fields <- as.numeric(!is_empty(pr_link_val)) + as.numeric(!is_empty(ene_link_val)) +
-      as.numeric(!is_empty(fg_link_val))
+      as.numeric(!is_empty(fg_link_val)) + as.numeric(!is_empty(ac_link_val))
+    
+    
+    
     
     v <- 0
     for (m in (nrow(links.h) + 1):(nrow(links.h) + total_fields)) {
@@ -930,7 +945,7 @@ server <- function(input, output, session) {
   
   links_data_energy <- reactive({
     req(input$file)
-    aa <- read_excel(input$file$datapath, sheet = 'Calculator', range = "a6:m190")
+    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m190")
     aa <- aa[-1, ]
     aa <- clean_names(aa)
     aa <- aa %>%
@@ -952,6 +967,15 @@ server <- function(input, output, session) {
       fuel_link_val = 1
     }
     
+    aa.ne <- aa %>%
+      filter(emission_category == "Conserved Energy")
+    
+    ce_link_val <- numeric(0)
+    if (!is_empty(aa.ne$no)) {
+      nodes.hh[3, 'Name'] <- 'Conserved Energy'
+      ce_link_val = 2
+    }
+    
     nodes.h <- rbind(nodes.hh, ene.src, end.use)
     
     nodes <- nodes.h %>%
@@ -967,7 +991,7 @@ server <- function(input, output, session) {
     )
     
     aa.e <- aa %>%
-      filter(!is.na(energy_source))
+      filter(emission_category == "Energy")
     
     for (i in 1:nrow(aa.e)) {
       links.h[i, 'No'] <- i
@@ -982,7 +1006,7 @@ server <- function(input, output, session) {
         }
       }
       
-      if (input$perc_e == "Percentage") {
+      if (a == "Percentage") {
         links.h[i, 'Value'] <- aa.e[i, 'percentage_of_total_energy'] * 100
       } else {
         links.h[i, 'Value'] <- aa.e[i, 'total_energy_mm_btu_yr']
@@ -1036,29 +1060,53 @@ server <- function(input, output, session) {
     links.fe <- rbind(links.hh2, ele_link)
     
     
+    if (!is_empty(aa.ne$source)) {
+      o <- 0
+      for (q in (nrow(links.h) + 1):(nrow(links.h) + nrow(aa.ne))) {
+        o <- o + 1
+        links.h[q, 'No'] <- q
+        for (j in 1:nrow(nodes)) {
+          if (aa.ne[o, 'source'] == nodes[j, 'Name']) {
+            links.h[q, 'Target'] <- nodes[[j, 'No']] - 1
+          }
+        }
+        for (j in 1:nrow(nodes)) {
+          if (aa.ne[o, 'emission_category'] == nodes[j, 'Name']) {
+            links.h[q, 'Source'] <- nodes[[j, 'No']] - 1
+          }
+        }
+        if (a == "Percentage") {
+          links.h[q, 'Value'] <- aa.ne[o, 'percentage_of_total_energy'] * 100
+        } else {
+          links.h[q, 'Value'] <- aa.ne[o, 'total_energy_mm_btu_yr']
+        }
+      }
+    }
+  
     
+    # Create a vector of filtering criteria based on conditions
+    filter_criteria <- c()
     
-    if (!is_empty(ele_link_val) & !is_empty(fuel_link_val)) {
-      links.t <- links.h %>%
-        filter(Source == ele_link_val |
-                 Source == fuel_link_val) %>%
-        group_by(Source) %>%
-        summarise(Value = sum(Value))
-    } else if (!is_empty(ele_link_val) & is_empty(fuel_link_val)) {
-      links.t <- links.h %>%
-        filter(Source == ele_link_val) %>%
-        group_by(Source) %>%
-        summarise(Value = sum(Value))
-    } else {
-      links.t <- links.h %>%
-        filter(Source == fuel_link_val) %>%
-        group_by(Source) %>%
-        summarise(Value = sum(Value))
-      
+    if (!is_empty(ele_link_val)) {
+      filter_criteria <- c(filter_criteria, ele_link_val)
     }
     
+    if (!is_empty(fuel_link_val)) {
+      filter_criteria <- c(filter_criteria, fuel_link_val)
+    }
     
-    total_fields <- as.numeric(!is_empty(fuel_link_val)) + as.numeric(!is_empty(ele_link_val))
+    if (!is_empty(aa.ce$no)) {
+      filter_criteria <- c(filter_criteria, ce_link_val)
+    }
+    
+    # Apply the filter and summarise
+    links.t <- links.h %>%
+      filter(Source %in% filter_criteria) %>%
+      group_by(Source) %>%
+      summarise(Value = sum(Value))
+    
+    
+    total_fields <- as.numeric(!is_empty(fuel_link_val)) + as.numeric(!is_empty(ele_link_val)) + as.numeric(!is_empty(ce_link_val))
     
     v <- 0
     for (m in (nrow(links.h) + 1):(nrow(links.h) + total_fields)) {
@@ -1068,6 +1116,9 @@ server <- function(input, output, session) {
       links.h[m, 'Source'] <- 0
       links.h[m, 'Value'] <- links.t[v, 'Value']
     }
+    
+    
+    
     
     
     links <- links.h
@@ -1108,7 +1159,7 @@ server <- function(input, output, session) {
         fontSize = 14,
         nodeWidth = 30,
         iterations = 10,
-        colourScale = JS("d3.scaleSequential(d3.interpolateViridis);")
+        colourScale = JS("d3.scaleSequential(d3.interpolatePlasma);")
       )
     })
     
@@ -1153,7 +1204,7 @@ server <- function(input, output, session) {
         fontSize = 14,
         nodeWidth = 30,
         iterations = 10,
-        colourScale = JS("d3.scaleSequential(d3.interpolateViridis);")
+        colourScale = JS("d3.scaleSequential(d3.interpolatePlasma);")
       )
     })
     
@@ -1246,7 +1297,7 @@ server <- function(input, output, session) {
         sinksRight = F,
         fontSize = 14,
         nodeWidth = 30,
-        colourScale = JS("d3.scaleSequential(d3.interpolateViridis);")
+        colourScale = JS("d3.scaleSequential(d3.interpolatePlasma);")
       )
       
       
@@ -1329,7 +1380,7 @@ server <- function(input, output, session) {
         sinksRight = F,
         fontSize = 14,
         nodeWidth = 30,
-        colourScale = JS("d3.scaleSequential(d3.interpolateViridis);")
+        colourScale = JS("d3.scaleSequential(d3.interpolatePlasma);")
       )
       
       
@@ -1392,7 +1443,7 @@ server <- function(input, output, session) {
     num <- input$products_num
     end.use <- end_use$measures
     
-    aa <- read_excel(input$file$datapath, sheet = 'Calculator', range = "a6:m190")
+    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m190")
     aa <- aa[-1, ]
     aa <- clean_names(aa)
     aa <- aa %>%
