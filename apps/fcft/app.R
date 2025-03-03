@@ -381,18 +381,18 @@ server <- function(input, output, session) {
   nodes_data <- reactive({
     req(input$file)
     
-    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m190")
+    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m189")
     
-    aa <- aa[-1, ]
+    
     aa <- clean_names(aa)
     aa <- aa %>%
       filter(!is.na(source))
     aa <- aa %>%
-      mutate(emission_category = if_else(emission_category == "Conserved Energy", "Avoided Emissions", emission_category))
+      mutate(energy_or_emissions_category = if_else(energy_or_emissions_category == "Conserved Energy", "Avoided Emissions", energy_or_emissions_category))
     
     end.use <- tibble('Name' = aa$`source`)
     ene.src <- tibble('Name' = unique(aa$`energy_source`))
-    em.src <- tibble('Name' = unique(aa$`emission_category`))
+    em.src <- tibble('Name' = unique(aa$`energy_or_emissions_category`))
     ene.src <- na.omit(ene.src)
     n_src <- nrow(ene.src)
     nodes.hh <- tibble("Name" = "")
@@ -416,8 +416,8 @@ server <- function(input, output, session) {
   
   nodes_data_energy <- reactive({
     req(input$file)
-    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m190")
-    aa <- aa[-1, ]
+    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m189")
+    
     aa <- clean_names(aa)
     aa <- aa %>%
       filter(!is.na(energy_source))
@@ -433,6 +433,9 @@ server <- function(input, output, session) {
     if (!is_empty(non_ele$Name)) {
       nodes.hh[2, 'Name'] <- 'Fuel'
     }
+    
+    aa.ne <- aa %>%
+      filter(energy_or_emissions_category == "Conserved Energy")
     
     ce_link_val <- numeric(0)
     if (!is_empty(aa.ne$no)) {
@@ -498,10 +501,10 @@ server <- function(input, output, session) {
     req(input$file)
     num <- input$products_num
     
-    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m190") %>%
+    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m189") %>%
       clean_names()
     
-    aa <- aa[-1, ]
+    
     aa <- aa %>%
       filter(!is.na(source))
     end.use <- tibble('Name' = aa$`source`)
@@ -694,9 +697,9 @@ server <- function(input, output, session) {
     
     
     bb <- read_excel(input$file$datapath, sheet = 'Emission Inputs (Optional)', range = "k10:q27")
-    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m190")
+    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m189")
     
-    aa <- aa[-1, ]
+    
     aa <- clean_names(aa)
     aa <- aa %>%
       filter(!is.na(source))
@@ -767,9 +770,7 @@ server <- function(input, output, session) {
     req(input$file)
     
     
-    temp <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m190")
-    
-    temp <- temp[-1, ]
+    temp <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m189")
     temp <- clean_names(temp)
     temp <- temp %>%
       filter(!is.na(source))
@@ -778,8 +779,7 @@ server <- function(input, output, session) {
   
   temp_e <- reactive({
     req(input$file)
-    temp_e <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m190")
-    temp_e <- temp_e[-1, ]
+    temp_e <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m189")
     temp_e <- clean_names(temp_e)
     temp_e <- temp_e %>%
       filter(!is.na(energy_source))
@@ -789,18 +789,18 @@ server <- function(input, output, session) {
   
   links_data <- reactive({
     req(input$file)
-    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m190")
+    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m189")
     
-    aa <- aa[-1, ]
+    
     aa <- clean_names(aa)
     aa <- aa %>%
       filter(!is.na(source))
     aa <- aa %>%
-      mutate(emission_category = if_else(emission_category == "Conserved Energy", "Avoided Emissions", emission_category))
+      mutate(energy_or_emissions_category = if_else(energy_or_emissions_category == "Conserved Energy", "Avoided Emissions", energy_or_emissions_category))
     
     end.use <- tibble('Name' = aa$`source`)
     ene.src <- tibble('Name' = unique(aa$`energy_source`))
-    em.src <- tibble('Name' = unique(aa$`emission_category`))
+    em.src <- tibble('Name' = unique(aa$`energy_or_emissions_category`))
     ene.src <- na.omit(ene.src)
     n_src <- nrow(ene.src)
     nodes.hh <- tibble("Name" = "")
@@ -828,7 +828,7 @@ server <- function(input, output, session) {
     )
     
     aa.e <- aa %>%
-      filter(emission_category == "Energy")
+      filter(energy_or_emissions_category == "Energy")
     
     for (i in 1:nrow(aa.e)) {
       links.h[i, 'No'] <- i
@@ -913,7 +913,7 @@ server <- function(input, output, session) {
     }
     
     aa.ne <- aa %>%
-      filter(emission_category != "Energy")
+      filter(energy_or_emissions_category != "Energy")
     
     
     if (!is_empty(aa.ne$source)) {
@@ -927,7 +927,7 @@ server <- function(input, output, session) {
           }
         }
         for (j in 1:nrow(nodes)) {
-          if (aa.ne[o, 'emission_category'] == nodes[j, 'Name']) {
+          if (aa.ne[o, 'energy_or_emissions_category'] == nodes[j, 'Name']) {
             links.h[q, 'Source'] <- nodes[[j, 'No']] - 1
           }
         }
@@ -1006,8 +1006,8 @@ server <- function(input, output, session) {
   
   links_data_energy <- reactive({
     req(input$file)
-    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m190")
-    aa <- aa[-1, ]
+    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m189")
+    
     aa <- clean_names(aa)
     aa <- aa %>%
       filter(!is.na(energy_source))
@@ -1029,7 +1029,7 @@ server <- function(input, output, session) {
     }
     
     aa.ne <- aa %>%
-      filter(emission_category == "Conserved Energy")
+      filter(energy_or_emissions_category == "Conserved Energy")
     
     ce_link_val <- numeric(0)
     if (!is_empty(aa.ne$no)) {
@@ -1052,7 +1052,7 @@ server <- function(input, output, session) {
     )
     
     aa.e <- aa %>%
-      filter(emission_category == "Energy")
+      filter(energy_or_emissions_category == "Energy")
     
     for (i in 1:nrow(aa.e)) {
       links.h[i, 'No'] <- i
@@ -1067,7 +1067,7 @@ server <- function(input, output, session) {
         }
       }
       
-      if (a == "Percentage") {
+      if (input$perc_e == "Percentage") {
         links.h[i, 'Value'] <- aa.e[i, 'percentage_of_total_energy'] * 100
       } else {
         links.h[i, 'Value'] <- aa.e[i, 'total_energy_mm_btu_yr']
@@ -1132,11 +1132,11 @@ server <- function(input, output, session) {
           }
         }
         for (j in 1:nrow(nodes)) {
-          if (aa.ne[o, 'emission_category'] == nodes[j, 'Name']) {
+          if (aa.ne[o, 'energy_or_emissions_category'] == nodes[j, 'Name']) {
             links.h[q, 'Source'] <- nodes[[j, 'No']] - 1
           }
         }
-        if (a == "Percentage") {
+        if (input$perc_e == "Percentage") {
           links.h[q, 'Value'] <- aa.ne[o, 'percentage_of_total_energy'] * 100
         } else {
           links.h[q, 'Value'] <- aa.ne[o, 'total_energy_mm_btu_yr']
@@ -1156,7 +1156,7 @@ server <- function(input, output, session) {
       filter_criteria <- c(filter_criteria, fuel_link_val)
     }
     
-    if (!is_empty(aa.ce$no)) {
+    if (!is_empty(aa.ne$no)) {
       filter_criteria <- c(filter_criteria, ce_link_val)
     }
     
@@ -1504,8 +1504,8 @@ server <- function(input, output, session) {
     num <- input$products_num
     end.use <- end_use$measures
     
-    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m190")
-    aa <- aa[-1, ]
+    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m189")
+    
     aa <- clean_names(aa)
     aa <- aa %>%
       filter(!is.na(source)) %>%
