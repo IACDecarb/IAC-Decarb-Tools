@@ -148,7 +148,7 @@ ui <- fluidPage(
         )
       ),
       tags$div(
-        style = "position: fixed; bottom: 0; width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: center; align-items: flex-end; padding: 10px 0;",
+        style = "bottom: 0; width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: center; align-items: flex-end; padding: 10px 0;",
         # Center the container
         tags$div(
           style = "text-align: left; margin-right: 150px;",
@@ -376,6 +376,8 @@ server <- function(input, output, session) {
       file.copy(docFilePath, file)
     }
   )
+  
+ 
   
   # Read the uploaded nodes Excel file
   nodes_data <- reactive({

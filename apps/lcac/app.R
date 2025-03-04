@@ -38,7 +38,7 @@ ui <- fluidPage(
           )),
           downloadLink("downloadData1", "Download LC - Input Sheet"),
           br(),
-          br(),
+          textInput("cname", "Enter Facility Name"),
           br(),
           fileInput("file", "Upload \'LC - Input Sheet\' Excel File", accept = ".xlsx"),
           br(),
@@ -97,11 +97,25 @@ ui <- fluidPage(
         font-size: 18px;
       }
     ")),
-                 
-                 textInput("cname_e", "Enter Facility Name"),
+                 tags$head(
+                   tags$style(HTML("
+      .btn-container_e {
+        display: flex;
+        justify-content: space-between;
+        padding: 0 10px; /* Adjust padding as needed */
+      }
+      .btn-container .btn {
+        width: 48%; /* Adjust button width as needed */
+      }
+    "))
+                 ),
                  selectInput('unit_e',"Select Units", c("MMBtu","MWh"),"MMBtu"),
                  numericInput("pem_e", "Enter Total Plant Energy ", 0),
-                 selectInput("type_e", "Choose Level of Detail", c("Individual Measures", "Summarized")),
+                 div(class = "btn-container_e",
+                     actionButton("increase_font_e", "Increase Font", class = "btn-primary"),
+                     actionButton("decrease_font_e", "Decrease Font", class = "btn-danger")
+                 ),
+                 br(),
                  selectInput('tc_e','Show Total Conserved Energy', c('Yes','No'),'Yes'),
                  selectInput('anc_e','Show Annualized Expenditure', c('Yes','No'),'Yes'),
                  selectInput('avc_e','Show Average Cost of Conserved Energy', c('Yes','No'),'Yes'),
@@ -109,6 +123,7 @@ ui <- fluidPage(
                  numericInput("yaxmax_e", "Increase y-axis upper limit by", 0, -20000, 25000, 10),
                  numericInput("yaxmin_e", "Decrease y-axis lower limit by", 0, -20000, 25000, 10),
                  numericInput("xaxmax_e", "Increase x-axis upper limit by", 0, -20000, 25000, 10),
+                 
                  numericInput("rleg_e", "Specify Number of rows for Legend", 4, 1, 100, 1),
                  bsCollapse(id = "collapsePanel", open = "",
                             bsCollapsePanel(title = HTML("<div style='background-color: #98A4A4; padding: 10px; border-radius: 4px; text-align: left; width: 100%; margin: 0 auto;'><span style='font-size: 16px; color: white;'>Click here to adjust positioning of text on plot &#9660;</span></div>"),
@@ -128,7 +143,7 @@ ui <- fluidPage(
                  
                  tags$div(
                    style = "width: 100%;position: sticky; top: 0;",
-                   plotOutput("curve1_e", width = "100%", height = '600px')
+                   plotOutput("curve1_e", width = "100%", height = '800px')
                  )
                )
                
@@ -163,8 +178,24 @@ ui <- fluidPage(
         font-size: 18px;
       }
     ")),
-                 textInput("cname", "Enter Facility Name"),
+                 tags$head(
+                   tags$style(HTML("
+      .btn-container {
+        display: flex;
+        justify-content: space-between;
+        padding: 0 10px; /* Adjust padding as needed */
+      }
+      .btn-container .btn {
+        width: 48%; /* Adjust button width as needed */
+      }
+    "))
+                 ),
                  numericInput("pem", "Enter Total Plant CO₂e Emissions ", 0),
+                 div(class = "btn-container",
+                     actionButton("increase_font", "Increase Font", class = "btn-primary"),
+                     actionButton("decrease_font", "Decrease Font", class = "btn-danger")
+                 ),
+                 br(),
                  selectInput("type", "Choose Level of Detail", c("Individual Measures", "Summarized")),
                  selectInput('tc','Show Total Avoided CO₂e', c('Yes','No'),'Yes'),
                  selectInput('anc','Show Annualized Expenditure', c('Yes','No'),'Yes'),
@@ -194,7 +225,7 @@ ui <- fluidPage(
                  
                  tags$div(
                    style = "width: 100%;position: sticky; top: 0;",
-                   plotOutput("curve1", width = "100%", height = '600px')
+                   plotOutput("curve1", width = "100%", height = '800px')
                  )
                )
                
@@ -259,9 +290,21 @@ server <- function(input, output, session){
     }
   )
   
+  font_size <- reactiveVal(0)
+  
+  # Observe Increase Font button
+  observeEvent(input$increase_font, {
+    font_size(font_size() + 1) 
+  })
+  
+  # Observe Decrease Font button
+  observeEvent(input$decrease_font, {
+    font_size(font_size() - 1)  
+  })
+  
   sen1 <- reactive({
     req(input$file)
-    s1 <- read_excel(input$file$datapath, sheet = "Assessment Recommendations", range = "d29:ar200")
+    s1 <- read_excel(input$file$datapath, sheet = "Inputs for Avoided CO2", range = "d22:ar200")
     s1 <- clean_names(s1) 
     s1 <- s1[!is.na(s1$assessment_recommendation) & s1$assessment_recommendation != "", ]
     s1 <- s1 %>%
@@ -286,8 +329,8 @@ server <- function(input, output, session){
     }
     
     carbon_price <- as.numeric(read_excel(input$file$datapath, 
-                                          sheet = "Assessment Recommendations", 
-                                          range = "e23:e23",col_names = FALSE))
+                                          sheet = "Inputs for Avoided CO2", 
+                                          range = "i16:i16",col_names = FALSE))
     
     
     
@@ -318,13 +361,13 @@ server <- function(input, output, session){
                            "MT CO₂e/yr") +
       scale_y_continuous(name = "Levelized Cost of Avoided CO₂e ($/MT CO₂e Avoided)",
                          limits = c(y_min-50-input$yaxmin,y_max+50+input$yaxmax))  +
-      theme(axis.title = element_text(size = 15),
-            plot.subtitle = element_text(size = 15), 
-            axis.text = element_text(size = 15), 
-            legend.title = element_text(size=14), 
-            legend.text = element_text(size = 12), 
+      theme(axis.title = element_text(size = 15+font_size()),
+            plot.subtitle = element_text(size = 15+font_size()), 
+            axis.text = element_text(size = 15+font_size()), 
+            legend.title = element_text(size=14+font_size()), 
+            legend.text = element_text(size = 12+font_size()), 
             legend.position = "bottom",
-            plot.title = element_text(hjust = 0.5, size = 20))+
+            plot.title = element_text(hjust = 0.5, size = 20+font_size()))+
       scale_fill_manual(values = color_palette)+
       ggtitle(paste0("Levelized Cost of Avoided CO₂e Curve"))+
       guides(fill=guide_legend(title="Decarbonization \nMeasures",nrow = input$rleg))
@@ -334,14 +377,14 @@ server <- function(input, output, session){
         geom_vline(xintercept = s1_carbon_abated,linetype = c("dashed"), color = c("black")) +
         geom_text(data=data.frame((x=(9.2*s1_carbon_abated/10)+input$totch),y=min(s1$levelized_cost_of_avoided_co2e)+input$totc), aes(x, y), label=str_wrap(paste(
           "Total Avoided CO₂e = ",comma(s1_carbon_abated)," MT CO₂e/yr", sep = ""), width = 11)
-          ,size = 4.5, color = "black")
+          ,size = 4.5+font_size()/3, color = "black")
     }
     
     if(input$anc == 'Yes'){
       s1_fig <- s1_fig +
         geom_text(data=data.frame(x=(s1_carbon_abated/20)+input$ancosth,y=max(s1$levelized_cost_of_avoided_co2e)+input$ancost), aes(x, y), label=str_wrap(paste(
           'Annualized Expenditure = ',"$",comma(total_cost_s1),"/yr",sep=""), width = 11)
-          ,size = 4.5, color = "black")
+          ,size = 4.5+font_size()/3, color = "black")
     }
     
     if(input$avc == 'Yes'){
@@ -350,14 +393,14 @@ server <- function(input, output, session){
                    color = c("black","black")) +
         geom_text(data=data.frame(x=(s1_carbon_abated/2)+input$acoh,y=macc_average+input$aco), aes(x, y), 
                   label=str_wrap(paste("Average Cost = ","$",round(macc_average,digits = 1),
-                                       "/MT CO₂e",sep=""), width = 15), size =4, color = "black")
+                                       "/MT CO₂e",sep=""), width = 15), size =4+font_size()/3, color = "black")
     }
     
     if(carbon_price != 0){
       s1_fig <- s1_fig +
         geom_hline(yintercept = carbon_price, linetype = "dashed") +
         geom_text(data=data.frame(x=(s1_carbon_abated/4)+input$cprh,y=carbon_price+input$cpr), aes(x, y), label=str_wrap(paste(
-          "CO₂ Cost = ","$",carbon_price,"/MT CO₂", sep = ""), width=11), size =4)
+          "CO₂ Cost = ","$",carbon_price,"/MT CO₂", sep = ""), width=11), size =4+font_size()/3)
     }
     
     if(input$cname != ""){
@@ -370,26 +413,39 @@ server <- function(input, output, session){
       s1_fig <- s1_fig +
         geom_text(data=data.frame((x=(9.2*s1_carbon_abated/10)+input$totch),y=min(s1$levelized_cost_of_avoided_co2e)+input$totc), aes(x, y), label=str_wrap(paste(
           "Total Avoided CO₂e = ",comma(s1_carbon_abated)," MT CO₂e/yr\n","(",calc_percent,"%)", sep = ""), width = 11)
-          ,size = 4.5, color = "black")
+          ,size = 4.5+font_size()/3, color = "black")
     }
     
     if(input$tpc == 'Yes'){
       s1_fig <- s1_fig +
         geom_vline(xintercept = input$pem,linetype = c("dashed"), color = c("black"))+
+        geom_vline(xintercept = s1_carbon_abated,linetype = c("dashed"), color = c("black")) +
         scale_x_continuous(labels = comma,limits = c(0,(max(input$pem,s1_carbon_abated)+input$xaxmax)+20), name = 
                              "MT CO₂e/yr")+
         geom_text(data=data.frame((u=(9.2*input$pem/10)+input$pemh),v=min(s1$levelized_cost_of_avoided_co2e)+input$pemv), aes(u, v), label=str_wrap(paste(
           "Total Plant CO₂e = ",comma(input$pem)," MT CO₂e/yr", sep = ""), width = 11)
-          ,size = 4.25, color = "black")
+          ,size = 4.25+font_size()/3, color = "black")
     }
     
     s1_fig
     
   })
   
+  font_size_e <- reactiveVal(0)
+  
+  # Observe Increase Font button
+  observeEvent(input$increase_font_e, {
+    font_size_e(font_size_e() + 1) 
+  })
+  
+  # Observe Decrease Font button
+  observeEvent(input$decrease_font_e, {
+    font_size_e(font_size_e() - 1) 
+  })
+  
   sen1_energy <- reactive({
     req(input$file)
-    s1 <- read_excel(input$file$datapath, sheet = "Assessment Recommendations", range = "d29:ar200")
+    s1 <- read_excel(input$file$datapath, sheet = "Inputs for Conserved Energy", range = "d11:ae200")
     s1 <- clean_names(s1) 
     s1 <- s1[!is.na(s1$assessment_recommendation) & s1$assessment_recommendation != "", ]
     
@@ -405,23 +461,6 @@ server <- function(input, output, session){
       mutate(annualized_total_costs = as.numeric(annualized_total_costs)) %>%
       mutate(levelized_cost_of_conserved_energy = as.numeric(levelized_cost_of_conserved_energy_mm_btu)/conv_factor) %>% 
       mutate(total_cost = levelized_cost_of_conserved_energy*annualized_conserved_energy)
-    
-    if (input$type_e == "Summarized") {
-      s1 <- s1 %>% 
-        group_by(decarbonization_pillar) %>% 
-        summarise(
-          total_cost = sum(annualized_total_costs),
-          annualized_conserved_energy = sum(annualized_conserved_energy),
-          levelized_cost_of_conserved_energy = total_cost/annualized_conserved_energy
-        )
-      s1 <- s1 %>% 
-        rename(assessment_recommendation=decarbonization_pillar)
-    }
-    else {
-      s1 <- s1
-    }
-    
-    
     
     
     total_cost_s1 <- as.numeric(format(round(sum(s1$total_cost))))
@@ -448,13 +487,13 @@ server <- function(input, output, session){
                            paste0(input$unit_e,"/yr")) +
       scale_y_continuous(name = paste0("Levelized Cost of Conserved Energy ($/",input$unit_e,")"),
                          limits = c(y_min-50-input$yaxmin_e,y_max+50+input$yaxmax_e))  +
-      theme(axis.title = element_text(size = 15),
-            plot.subtitle = element_text(size = 15), 
-            axis.text = element_text(size = 15), 
-            legend.title = element_text(size=14), 
-            legend.text = element_text(size = 12), 
+      theme(axis.title = element_text(size = 15+font_size_e()),
+            plot.subtitle = element_text(size = 15+font_size_e()), 
+            axis.text = element_text(size = 15+font_size_e()), 
+            legend.title = element_text(size=14+font_size_e()), 
+            legend.text = element_text(size = 12+font_size_e()), 
             legend.position = "bottom",
-            plot.title = element_text(hjust = 0.5, size = 20))+
+            plot.title = element_text(hjust = 0.5, size = 20+font_size_e()))+
       scale_fill_manual(values = color_palette)+
       ggtitle(paste0("Levelized Cost of Conserved Energy"))+
       guides(fill=guide_legend(title="Energy Conservation \nMeasures",nrow = input$rleg_e))
@@ -464,14 +503,14 @@ server <- function(input, output, session){
         geom_vline(xintercept = s1_conserved_energy,linetype = c("dashed"), color = c("black")) +
         geom_text(data=data.frame((x=(9.2*s1_conserved_energy/10)+input$totch_e),y=min(s1$levelized_cost_of_conserved_energy)+input$totc_e), aes(x, y), label=str_wrap(paste(
           "Total Conserved Energy = ",comma(s1_conserved_energy)," ",input$unit_e,"/yr", sep = ""), width = 11)
-          ,size = 4.5, color = "black")
+          ,size = 4.5+font_size_e()/3, color = "black")
     }
     
     if(input$anc_e == 'Yes'){
       s1_fig <- s1_fig +
         geom_text(data=data.frame(x=(s1_conserved_energy/20)+input$ancosth_e,y=max(s1$levelized_cost_of_conserved_energy)+input$ancost_e), aes(x, y), label=str_wrap(paste(
           'Annualized Expenditure = ',"$",comma(total_cost_s1),"/yr",sep=""), width = 11)
-          ,size = 4.5, color = "black")
+          ,size = 4.5+font_size_e()/3, color = "black")
     }
     
     if(input$avc_e == 'Yes'){
@@ -480,13 +519,13 @@ server <- function(input, output, session){
                    color = c("black","black")) +
         geom_text(data=data.frame(x=(s1_conserved_energy/2)+input$acoh_e,y=macc_average+input$aco_e), aes(x, y), 
                   label=str_wrap(paste("Average Cost = ","$",round(macc_average,digits = 1),
-                                       "/",input$unit_e,sep=""), width = 15), size =4, color = "black")
+                                       "/",input$unit_e,sep=""), width = 15), size =4+font_size_e()/3, color = "black")
     }
     
     
-    if(input$cname_e != ""){
+    if(input$cname != ""){
       s1_fig <- s1_fig +
-        ggtitle(paste0("Levelized Cost of Conserved Energy for ", input$cname_e))
+        ggtitle(paste0("Levelized Cost of Conserved Energy for ", input$cname))
     }
     
     if(input$pem_e != 0) {
@@ -494,17 +533,37 @@ server <- function(input, output, session){
       s1_fig <- s1_fig +
         geom_text(data=data.frame((x=(9.2*s1_conserved_energy/10)+input$totch_e),y=min(s1$levelized_cost_of_conserved_energy)+input$totc_e), aes(x, y), label=str_wrap(paste(
           "Total Conserved Energy = ",comma(s1_conserved_energy)," ",input$unit_e,"/yr\n","(",calc_percent,"%)", sep = ""), width = 11)
-          ,size = 4.5, color = "black")
+          ,size = 4.5+font_size_e()/3, color = "black")
     }
     
-    if(input$tpc_e == 'Yes'){
+    if (input$tpc_e == 'Yes') {
       s1_fig <- s1_fig +
-        geom_vline(xintercept = input$pem_e,linetype = c("dashed"), color = c("black"))+
-        scale_x_continuous(labels = comma,limits = c(0,(max(input$pem_e,s1_conserved_energy)+input$xaxmax_e)+20), name = 
-                             unit_e,"/yr")+
-        geom_text(data=data.frame((u=(9.2*input$pem_e/10)+input$pemh_e),v=min(s1$levelized_cost_of_conserved_energy)+input$pemv_e), aes(u, v), label=str_wrap(paste(
-          "Total Plant Energy = ",comma(input$pem_e)," ",unit_e,"/yr", sep = ""), width = 11)
-          ,size = 4.25, color = "black")
+        geom_vline(
+          xintercept = input$pem_e,
+          linetype = "dashed",
+          color = "black"
+        ) +
+        geom_vline(xintercept = s1_conserved_energy,
+                   linetype = c("dashed"), 
+                   color = c("black")) +
+        scale_x_continuous(
+          labels = comma,
+          limits = c(0, max(input$pem_e, s1_conserved_energy) + input$xaxmax_e + 20),
+          name = paste0(input$unit_e, "/yr")  # Properly concatenate unit and "/yr"
+        ) +
+        geom_text(
+          data = data.frame(
+            u = (9.2 * input$pem_e / 10) + input$pemh_e,
+            v = min(s1$levelized_cost_of_conserved_energy) + input$pemv_e
+          ),
+          aes(u, v),
+          label = str_wrap(
+            paste("Total Plant Energy = ", comma(input$pem_e), " ", input$unit_e, "/yr", sep = ""),
+            width = 11
+          ),
+          size = 4.25 + font_size_e() / 3,  # Ensure font_size_e() is defined
+          color = "black"
+        )
     }
     
     s1_fig
