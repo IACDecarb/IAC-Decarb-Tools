@@ -321,8 +321,8 @@ server <- function(input, output, session){
       theme(axis.title = element_text(size = 15),
             plot.subtitle = element_text(size = 15), 
             axis.text = element_text(size = 15), 
-            legend.title = element_text(size=12), 
-            legend.text = element_text(size = 10), 
+            legend.title = element_text(size=14), 
+            legend.text = element_text(size = 12), 
             legend.position = "bottom",
             plot.title = element_text(hjust = 0.5, size = 20))+
       scale_fill_manual(values = color_palette)+
@@ -451,8 +451,8 @@ server <- function(input, output, session){
       theme(axis.title = element_text(size = 15),
             plot.subtitle = element_text(size = 15), 
             axis.text = element_text(size = 15), 
-            legend.title = element_text(size=12), 
-            legend.text = element_text(size = 10), 
+            legend.title = element_text(size=14), 
+            legend.text = element_text(size = 12), 
             legend.position = "bottom",
             plot.title = element_text(hjust = 0.5, size = 20))+
       scale_fill_manual(values = color_palette)+

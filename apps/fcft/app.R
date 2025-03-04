@@ -1321,6 +1321,7 @@ server <- function(input, output, session) {
     } else {
       paste0("CO₂e Flow ", "(" , input$units, ")")
     }
+    
   })
   
   
@@ -1331,7 +1332,7 @@ server <- function(input, output, session) {
     } else if (nchar(input$cname) > 0 &
                input$perc_e == "Percentage") {
       paste0("Energy Flow for ", input$cname, " (%)")
-    } else if (input$perc == "Percentage") {
+    } else if (input$perc_e == "Percentage") {
       paste0("Energy Flow ", "(%)")
     } else {
       paste0("Energy Flow ", "(" , input$units_e, ")")
