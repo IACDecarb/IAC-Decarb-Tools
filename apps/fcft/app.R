@@ -15,6 +15,7 @@ library(openxlsx)
 library(htmltools)
 library(DT)
 library(bslib)
+library(shinycssloaders)
 
 
 install_phantomjs(force = T)
@@ -81,7 +82,14 @@ ui <- fluidPage(
       .custom-tabset > .tab-content {
         width: 100%;
       }
-      "
+      .brand-picker button.btn.dropdown-toggle.btn-default {
+        background-color: #FFFFFF;
+        color: black;
+        border: none !important;
+      box-shadow: none !important;
+      outline: none !important;
+      }
+            "
     )
   )),
   titlePanel(HTML("Facility Sankey Tool"), windowTitle = "FST"),
@@ -169,8 +177,7 @@ ui <- fluidPage(
           numericInput(
             "precision_e",
             "Choose precision level of numeric values",
-            1,
-            -20,
+            1,-20,
             20,
             1
           ),
@@ -230,8 +237,7 @@ ui <- fluidPage(
           numericInput(
             "precision",
             "Choose precision level of numeric values",
-            1,
-            -20,
+            1,-20,
             20,
             1
           ),
@@ -319,13 +325,7 @@ ui <- fluidPage(
           fluidRow(column(12, uiOutput("product_inputs"))),
           actionButton("calc_int", "Calculate Product Intensity", width = "95%")
         ),
-        mainPanel(
-          div(
-            style = "position: relative; width: 100%; padding-bottom: 5%;",
-            div(style = "display: flex; justify-content: center; align-items: center;", DTOutput("intensity_table")),
-            div(style = "position: relative; bottom: 30%; right: -90%;", uiOutput("show_dl_link"))
-          )
-        )
+        mainPanel(uiOutput("mainpanelUI"))
       ),
       tags$div(
         style = "bottom: 0; width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: center; align-items: flex-end; padding: 10px 0;",
@@ -529,12 +529,17 @@ server <- function(input, output, session) {
               min = 0,
               width = "60%"
             ),
-            selectInput(
-              paste0("process_", i),
-              paste("Select Product ", i, "-based Processes:"),
-              choices = end_use$measures,
-              multiple = TRUE,
-              width = "95%"
+            tags$div(
+              pickerInput(
+                paste0("process_", i),
+                paste("Select Product ", i, "-based Processes:"),
+                choices = end_use$measures,
+                options = list(`actions-box` = TRUE, virtualScroll = T),
+                selected = unlist(end_use$measures),
+                multiple = TRUE,
+                width = "95%"
+              ),
+              class = "brand-picker"
             )
           )
         ))
@@ -590,14 +595,21 @@ server <- function(input, output, session) {
                 )
               )
               ,
-              selectInput(
-                paste0("process_", i),
-                paste("Select Product ", i, "-based Processes:"),
-                choices = end_use$measures,
-                multiple = TRUE,
-                width = "95%"
+              tags$div(
+                pickerInput(
+                  paste0("process_", i),
+                  paste("Select Product ", i, "-based Processes:"),
+                  choices = end_use$measures,
+                  options = list(
+                    `actions-box` = TRUE,
+                    virtualScroll = T
+                  ),
+                  selected = unlist(end_use$measures),
+                  multiple = TRUE,
+                  width = "95%"
+                ),
+                class = "brand-picker"
               )
-              
             )
           ))
         })
@@ -659,17 +671,76 @@ server <- function(input, output, session) {
                   )
                 )
               ),
-              selectInput(
-                paste0("process_", i),
-                paste("Select Product ", i, "-based Processes:"),
-                choices = end_use$measures,
-                multiple = TRUE,
-                width = "95%"
+              tags$div(
+                pickerInput(
+                  paste0("process_", i),
+                  paste("Select Product ", i, "-based Processes:"),
+                  choices = end_use$measures,
+                  options = list(
+                    `actions-box` = TRUE,
+                    virtualScroll = T
+                  ),
+                  selected = unlist(end_use$measures),
+                  multiple = TRUE,
+                  width = "95%"
+                ),
+                class = "brand-picker"
               )
             )
           ))
         })
       }
+    }
+  })
+  
+  
+  tabsShown <- reactiveVal(FALSE)
+  
+  # Observe the button press and update the reactive value
+  observeEvent(input$calc_int, {
+    tabsShown(TRUE)
+  })
+  
+  # Render the tabs conditionally based on the reactive value
+  output$mainpanelUI <- renderUI({
+    if (tabsShown()) {
+      tabsetPanel(tabPanel(
+        "Main Results",
+        div(
+          style = "position: relative; width: 100%; padding-bottom: 5%;",
+          div(
+            style = "display: flex; justify-content: left; align-items: left;",
+            conditionalPanel(
+              condition = "input.calc_int >= 1",
+              shinycssloaders::withSpinner(
+                verbatimTextOutput("textOutput1"),
+                type = getOption("spinner.type", default = 8)
+              )
+            )
+          )
+        )
+      )
+      ,
+      tabPanel(
+        "Intensity Tables",
+        div(
+          style = "position: relative; width: 100%; padding-bottom: 5%;",
+          div(
+            style = "display: flex; justify-content: center; align-items: center;",
+            conditionalPanel(
+              condition = "input.calc_int >= 1",
+              shinycssloaders::withSpinner(
+                DTOutput("intensity_table"),
+                type = getOption("spinner.type", default = 8)
+              )
+            )
+          ),
+          div(style = "position: relative; bottom: 30%; right: -90%;", uiOutput("show_dl_link"))
+        )
+      ))
+    } else {
+      # Optionally, you can display a message or nothing
+      h3("")
     }
   })
   
@@ -1143,7 +1214,7 @@ server <- function(input, output, session) {
         }
       }
     }
-  
+    
     
     # Create a vector of filtering criteria based on conditions
     filter_criteria <- c()
@@ -1519,6 +1590,8 @@ server <- function(input, output, session) {
       return(product_data)
     }
     
+    sentences <- reactiveVal(character(0))
+    
     if (input$selected_method == "Quantity-based") {
       all_product_dfs <- list()
       qty_values <- numeric(num)
@@ -1629,6 +1702,21 @@ server <- function(input, output, session) {
             qty_based_emission_intensity_mtco2e_ton = sum(qty_based_intensity)
           )
         
+        calculated_sentences <- sapply(1:num, function(i) {
+          # Example calculation for the value of each product
+          product_value <- all_products_summarized$qty_based_emission_intensity_mtco2e_ton[i]
+          paste0(
+            "The mass-based emissions intensity for Product ",
+            i,
+            " is ",
+            round(product_value, 3),
+            " MTCO₂e/",
+            input$units_name
+          )
+        })
+        
+        sentences(calculated_sentences)
+        
         colnames(all_products_summarized) <-  c(
           "Product",
           "Quantity-based Emissions\n(MTCO₂e)",
@@ -1649,6 +1737,21 @@ server <- function(input, output, session) {
           ) %>%
           relocate(qty_based_ei_mt_co2e_per_mt, .after = qty_based_emissions_mt_co2e_yr) %>%
           relocate(qty_weight_proportion, .after = all_products_co2e_emissions_mt_co2e_yr)
+        
+        colnames(download_excel_file) <-  c(
+          "Product",
+          paste0("Quantity\n(", input$units_name, ")"),
+          "Source",
+          "Associated Products",
+          "Total Emissions\n(MTCO₂e)",
+          "Share of Mass-based\nEmissions",
+          "Product-level Emissions\n(MTCO₂e)",
+          paste0(
+            "Mass-based Emissions Intensity\n(MTCO₂e/",
+            input$units_name,
+            ")"
+          )
+        )
       }
     } else  {
       #Revenue based approach
@@ -1806,6 +1909,21 @@ server <- function(input, output, session) {
               revenue_based_emission_intensity_mtco2e_qty = sum(revenue_based_intensity_qty)
             )
           
+          calculated_sentences <- sapply(1:num, function(i) {
+            # Example calculation for the value of each product
+            product_value <- all_products_summarized$revenue_based_emission_intensity_mtco2e_qty[i]
+            paste0(
+              "The revenue-based emissions intensity for Product ",
+              i,
+              " is ",
+              round(product_value, 3),
+              " MTCO₂e/",
+              input$units_name
+            )
+          })
+          
+          sentences(calculated_sentences)
+          
           colnames(all_products_summarized) <-  c(
             "Product",
             "Revenue-based Emissions (MTCO₂e)",
@@ -1827,6 +1945,21 @@ server <- function(input, output, session) {
             ) %>%
             relocate(revenue_weight_proportion, .before = revenue_based_emissions_mt_co2e_yr)
           
+          colnames(download_excel_file) <-  c(
+            "Product",
+            paste0("Quantity\n(", input$units_name, ")"),
+            "Source",
+            "Associated Products",
+            "Total Emissions\n(MTCO₂e)",
+            "Share of Revenue-based\nEmissions",
+            "Product-level Emissions\n(MTCO₂e)",
+            paste0(
+              "Revenue-Based Emissions Intensity\n(MTCO₂e/",
+              input$units_name,
+              ")"
+            )
+          )
+          
         } else {
           all_products_summarized <- all_products_breakdown %>%
             group_by(product_number) %>%
@@ -1837,6 +1970,24 @@ server <- function(input, output, session) {
               revenue_based_emission_intensity_mtco2e_dollar = sum(revenue_based_intensity_dollar),
               revenue_based_emission_intensity_mtco2e_qty = sum(revenue_based_intensity_qty)
             )
+          
+          calculated_sentences <- sapply(1:num, function(i) {
+            # Example calculation for the value of each product
+            product_value_a <- all_products_summarized$revenue_based_emission_intensity_mtco2e_dollar[i]
+            product_value_b <- all_products_summarized$revenue_based_emission_intensity_mtco2e_qty[i]
+            paste0(
+              "The revenue-based emissions intensity for Product ",
+              i,
+              " is ",
+              round(product_value_a, 3),
+              " MTCO₂e/$ revenue and " ,
+              round(product_value_b, 3),
+              " MTCO₂e/",
+              input$units_name
+            )
+          })
+          
+          sentences(calculated_sentences)
           
           colnames(all_products_summarized) <-  c(
             "Product",
@@ -1868,10 +2019,30 @@ server <- function(input, output, session) {
               revenue_based_ei_mt_co2e_per_mt_qty = revenue_based_intensity_qty
             )  %>%
             relocate(revenue_weight_proportion, .before = revenue_based_emissions_mt_co2e_yr)
+          
+          colnames(download_excel_file) <-  c(
+            "Product",
+            paste0("Quantity\n(", input$units_name, ")"),
+            "Source",
+            "Associated Products",
+            "Total Emissions\n(MTCO₂e)",
+            "Share of Revenue-based\nEmissions",
+            "Product-level Emissions\n(MTCO₂e)",
+            paste0(
+              "Revenue-Based Emissions Intensity\n(MTCO₂e/",
+              input$units_name,
+              ")"
+            ),
+            "Revenue-Based Emissions Intensity\n(MTCO₂e/$)"
+          )
+          
         }
       }
     }
     
+    output$textOutput1 <- renderText({
+      paste(sentences(), collapse = "\n")
+    })
     
     output$intensity_table <- renderDataTable({
       if (input$selected_method == "Quantity-based") {
@@ -2027,6 +2198,66 @@ server <- function(input, output, session) {
             gridExpand = TRUE
           )
         }
+        
+        column_border_style <- createStyle(border = c("left", "right"),
+                                           borderStyle = "thin")
+        
+        # Apply the style to each column individually
+        for (col in 1:ncol(download_excel_file)) {
+          addStyle(
+            wb,
+            "Sheet1",
+            style = column_border_style,
+            rows = 1:(nrow(download_excel_file) + 1),
+            # Apply to all rows including headers
+            cols = col,
+            gridExpand = TRUE,
+            stack = TRUE
+          )
+        }
+        
+        product_changes <- which(diff(download_excel_file$Product) != 0) + 1
+        
+        bottom_border_style <- createStyle(border = "bottom", borderStyle = "thin")
+        
+        # Apply the bottom border style to the identified rows
+        for (row in product_changes) {
+          addStyle(
+            wb,
+            "Sheet1",
+            style = bottom_border_style,
+            rows = row,
+            cols = 1:ncol(download_excel_file),
+            # Apply to all columns
+            gridExpand = TRUE,
+            stack = TRUE
+          )
+        }
+        
+        addStyle(
+          wb,
+          "Sheet1",
+          createStyle(border = "Bottom"),
+          rows = (nrow(download_excel_file) + 1),
+          cols = 1:ncol(download_excel_file),
+          gridExpand = TRUE,
+          stack = TRUE
+        )
+        
+        centered_style <- createStyle(halign = "center", valign = "center")
+        
+        # Apply the centered style to all cells
+        addStyle(
+          wb,
+          "Sheet1",
+          style = centered_style,
+          rows = 1:(nrow(download_excel_file) + 1),
+          # Apply to all rows including headers
+          cols = 1:ncol(download_excel_file),
+          # Apply to all columns
+          gridExpand = TRUE,
+          stack = TRUE
+        )
         
         
         # Save the workbook
