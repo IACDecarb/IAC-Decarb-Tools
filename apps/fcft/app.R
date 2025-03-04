@@ -867,8 +867,7 @@ server <- function(input, output, session) {
     aa <- aa %>%
       filter(!is.na(source))
     aa <- aa %>%
-
-    mutate(energy_or_emissions_category = if_else(energy_or_emissions_category == "Conserved Energy", "Avoided Emissions", energy_or_emissions_category))
+      mutate(energy_or_emissions_category = if_else(energy_or_emissions_category == "Conserved Energy", "Avoided Emissions", energy_or_emissions_category))
     
     end.use <- tibble('Name' = aa$`source`)
     ene.src <- tibble('Name' = unique(aa$`energy_source`))
