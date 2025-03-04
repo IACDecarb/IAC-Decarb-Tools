@@ -60,6 +60,19 @@ apply_proportions <- function(presence, emissions, values) {
   emissions * props[1]  # We take the first proportion as we're calculating for product 1
 }
 
+
+format_sentences <- function(sentences) {
+  formatted <- c()
+  for (i in 1:length(sentences)) {
+    if (i == 1) {
+      formatted <- c(formatted,"<br>", paste0("<p>", sentences[i], "</p>"))
+    } else {
+      formatted <- c(formatted, paste0("<li style='margin-left: 30px;margin-bottom: 10px;'>", sentences[i], "</li>"))
+    }
+  }
+  return(paste(formatted, collapse = ""))
+}
+
 ui <- fluidPage(
   theme = shinytheme("flatly"),
   includeCSS(system.file("css", "kable_extra.css", package = "kableExtra")),
@@ -89,6 +102,10 @@ ui <- fluidPage(
       box-shadow: none !important;
       outline: none !important;
       }
+      #intensity_table table {
+        font-family: 'Arial', sans-serif; 
+        font-size: 18px; 
+      }
             "
     )
   )),
@@ -99,14 +116,23 @@ ui <- fluidPage(
       "Load Inputs",
       sidebarLayout(
         sidebarPanel(
-          tags$style(HTML(
-            "
+          tags$style(
+            HTML(
+              "
       #downloadData1 {
         font-weight: bold;
-        font-size: 18px;
+        font-size: 1px;
       }
-    "
-          )),
+    #textOutput1{
+        color:black;
+        font-size:20px;
+        background: white;
+        border: none;
+        padding: 10px;
+        font-family: Arial, sans-serif;
+              }"
+            )
+          ),
           downloadLink("downloadData1", "Download Facility Sankey Tool - Input Sheet"),
           textInput("cname", "Enter Facility Name"),
           br(),
@@ -383,12 +409,17 @@ server <- function(input, output, session) {
     
     aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m189")
     
-    
     aa <- clean_names(aa)
     aa <- aa %>%
       filter(!is.na(source))
     aa <- aa %>%
-      mutate(energy_or_emissions_category = if_else(energy_or_emissions_category == "Conserved Energy", "Avoided Emissions", energy_or_emissions_category))
+      mutate(
+        energy_or_emissions_category = if_else(
+          energy_or_emissions_category == "Conserved Energy",
+          "Avoided Emissions",
+          energy_or_emissions_category
+        )
+      )
     
     end.use <- tibble('Name' = aa$`source`)
     ene.src <- tibble('Name' = unique(aa$`energy_source`))
@@ -458,7 +489,7 @@ server <- function(input, output, session) {
         textInput(
           "units_name",
           "Enter Units of Quantity:",
-          value = "Metric Ton",
+          value = "metric ton",
           width = "95%"
         )
       ))
@@ -469,7 +500,7 @@ server <- function(input, output, session) {
                  textInput(
                    "units_name",
                    "Enter Units of Quantity:",
-                   value = "Metric Ton",
+                   value = "metric ton",
                    width = "95%"
                  )
                ),
@@ -713,7 +744,7 @@ server <- function(input, output, session) {
             conditionalPanel(
               condition = "input.calc_int >= 1",
               shinycssloaders::withSpinner(
-                verbatimTextOutput("textOutput1"),
+                uiOutput("textOutput1"),
                 type = getOption("spinner.type", default = 8)
               )
             )
@@ -867,7 +898,13 @@ server <- function(input, output, session) {
     aa <- aa %>%
       filter(!is.na(source))
     aa <- aa %>%
-      mutate(energy_or_emissions_category = if_else(energy_or_emissions_category == "Conserved Energy", "Avoided Emissions", energy_or_emissions_category))
+      mutate(
+        energy_or_emissions_category = if_else(
+          energy_or_emissions_category == "Conserved Energy",
+          "Avoided Emissions",
+          energy_or_emissions_category
+        )
+      )
     
     end.use <- tibble('Name' = aa$`source`)
     ene.src <- tibble('Name' = unique(aa$`energy_source`))
@@ -1701,20 +1738,27 @@ server <- function(input, output, session) {
             qty_based_emission_intensity_mtco2e_ton = sum(qty_based_intensity)
           )
         
-        calculated_sentences <- sapply(1:num, function(i) {
-          # Example calculation for the value of each product
-          product_value <- all_products_summarized$qty_based_emission_intensity_mtco2e_ton[i]
-          paste0(
-            "The mass-based emissions intensity for Product ",
-            i,
-            " is ",
-            round(product_value, 3),
-            " MTCO₂e/",
-            input$units_name
-          )
-        })
+        calculated_sentences <- c(
+          paste0("Based on the user-selected ",
+                 strong("quantity-based approach,"),
+                 " the amount of ",
+                 tags$u("CO₂e (in metric ton)"),
+                 " emitted from the production of ",
+                 tags$u(paste0("one ", input$units_name)),
+                 " of product is shown below:<br>"),
+          sapply(1:num, function(i) {
+            product_value <- all_products_summarized$qty_based_emission_intensity_mtco2e_ton[i]
+            paste0(
+              tags$u(paste0(round(product_value, 3)," metric ton of CO₂e")),
+              " is generated to produce ",
+              tags$u(paste0("one ",input$units_name)),
+              " of Product ",
+              i
+            )
+          })
+        )
         
-        sentences(calculated_sentences)
+        formatted_sentences <- format_sentences(calculated_sentences)
         
         colnames(all_products_summarized) <-  c(
           "Product",
@@ -1917,11 +1961,32 @@ server <- function(input, output, session) {
               " is ",
               round(product_value, 3),
               " MTCO₂e/",
-              input$units_name
+              input$units_name,
+              " of product"
             )
           })
           
-          sentences(calculated_sentences)
+          calculated_sentences <- c(
+            paste0("Based on the user-selected ",
+                   strong("revenue percentage-based approach,"),
+                   " the amount of ",
+                   tags$u("CO₂e (in metric ton)"),
+                   " emitted from the production of ",
+                   tags$u(paste0("one ", input$units_name)),
+                   " of product is shown below:<br>"),
+            sapply(1:num, function(i) {
+              product_value <- all_products_summarized$revenue_based_emission_intensity_mtco2e_qty[i]
+              paste0(
+                tags$u(paste0(round(product_value, 3)," metric ton of CO₂e")),
+                " is generated to produce ",
+                tags$u(paste0("one ",input$units_name)),
+                " of Product ",
+                i
+              )
+            })
+          )
+          
+          formatted_sentences <- format_sentences(calculated_sentences)
           
           colnames(all_products_summarized) <-  c(
             "Product",
@@ -1982,11 +2047,44 @@ server <- function(input, output, session) {
               " MTCO₂e/$ revenue and " ,
               round(product_value_b, 3),
               " MTCO₂e/",
-              input$units_name
+              input$units_name,
+              " of product"
             )
           })
           
-          sentences(calculated_sentences)
+          calculated_sentences <- c(
+            paste0("Based on the user-selected ",
+                   strong("revenue-based approach,"),
+                   " the amount of ",
+                   tags$u("CO₂e (in metric ton)"),
+                   " emitted from the production of ",
+                   tags$u(paste0("one ", input$units_name)),
+                   " OR ",
+                   tags$u("per dollar revenue"),
+                   " of product is shown below:<br>"),
+            sapply(1:num, function(i) {
+              product_value_a <- all_products_summarized$revenue_based_emission_intensity_mtco2e_dollar[i]
+              product_value_b <- all_products_summarized$revenue_based_emission_intensity_mtco2e_qty[i]
+              paste0(
+                paste0(
+                tags$u(paste0(round(product_value_b, 3)," metric ton of CO₂e")),
+                " is generated to yield a ",
+                tags$u("dollar revenue"),
+                " of Product ",
+                i,
+                "<br>",
+                "<span style='margin-left: 40px;'>",
+                tags$u(paste0(round(product_value_a, 3)," metric ton of CO₂e", sep = "")), 
+                " is generated to produce ",
+                tags$u(paste0("one ",input$units_name)),
+                " of Product ",
+                i
+              )
+              )
+            })
+          )
+          
+          formatted_sentences <- format_sentences(calculated_sentences)
           
           colnames(all_products_summarized) <-  c(
             "Product",
@@ -2039,10 +2137,11 @@ server <- function(input, output, session) {
       }
     }
     
-    output$textOutput1 <- renderText({
-      paste(sentences(), collapse = "\n")
+    output$textOutput1 <- renderUI({
+      HTML(paste(formatted_sentences, collapse = "<br>"))
     })
     
+
     output$intensity_table <- renderDataTable({
       if (input$selected_method == "Quantity-based") {
         all_products_summarized %>%
