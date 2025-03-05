@@ -14,8 +14,8 @@ library(shinyWidgets)
 library(openxlsx)
 library(htmltools)
 library(DT)
-library(bslib)
 library(shinycssloaders)
+library(prompter)
 
 
 install_phantomjs(force = T)
@@ -67,7 +67,7 @@ format_sentences <- function(sentences) {
     if (i == 1) {
       formatted <- c(formatted,"<br>", paste0("<p>", sentences[i], "</p>"))
     } else {
-      formatted <- c(formatted, paste0("<li style='margin-left: 30px;margin-bottom: 10px;'>", sentences[i], "</li>"))
+      formatted <- c(formatted, paste0("<li style='margin-left: 30px;margin-bottom: 15px;'>", sentences[i], "</li>"))
     }
   }
   return(paste(formatted, collapse = ""))
@@ -75,6 +75,7 @@ format_sentences <- function(sentences) {
 
 ui <- fluidPage(
   theme = shinytheme("flatly"),
+  use_prompt(),
   includeCSS(system.file("css", "kable_extra.css", package = "kableExtra")),
   tags$head(tags$style(
     HTML(
@@ -108,7 +109,9 @@ ui <- fluidPage(
       }
             "
     )
-  )),
+  ),
+  tags$link(rel = "stylesheet", href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css")
+  ),
   titlePanel(HTML("Facility Sankey Tool"), windowTitle = "FST"),
   tabsetPanel(
     id = "tabs",
@@ -561,7 +564,8 @@ server <- function(input, output, session) {
               value = 0,
               min = 0,
               width = "60%"
-            ),
+            )
+            ,
             tags$div(
               pickerInput(
                 paste0("process_", i),
@@ -599,17 +603,26 @@ server <- function(input, output, session) {
                   6,
                   numericInput(
                     paste0("qty_", i),
-                    paste0(
-                      "Enter Product ",
+                   label =tags$span(
+                     paste0(
+                     "Enter Product ",
                       i,
                       " Quantity (",
                       input$units_name,
                       "):"
                     ),
+                    tags$span(
+                      icon(
+                        name = "circle-exclamation",
+                      ) 
+                    ) |>
+                      add_prompt(
+                        message = "If quantity value is not available, please select 'Gross Product' revenue calculation method", position = "right", size = "large")
+                    ),
                     value = 0,
                     min = 0,
                     width = "95%"
-                  )
+                  ),
                 ),
                 column(
                   6,
@@ -666,12 +679,21 @@ server <- function(input, output, session) {
                   6,
                   numericInput(
                     paste0("qty_", i),
-                    paste0(
-                      "Enter Product ",
-                      i,
-                      " Quantity (",
-                      input$units_name,
-                      "):"
+                    label =tags$span(
+                      paste0(
+                        "Enter Product ",
+                        i,
+                        " Quantity (",
+                        input$units_name,
+                        "):"
+                      ),
+                      tags$span(
+                        icon(
+                          name = "circle-exclamation",
+                        ) 
+                      ) |>
+                        add_prompt(
+                          message = "If quantity value is not available, please select 'Gross Product' revenue calculation method", position = "right", size = "large")
                     ),
                     value = 0,
                     min = 0,
@@ -2060,9 +2082,9 @@ server <- function(input, output, session) {
                    strong("revenue-based approach,"),
                    " the amount of ",
                    tags$u("CO₂e (in metric ton)"),
-                   " emitted from the production of ",
+                   " emitted from ",
                    tags$u(paste0("one ", input$units_name)),
-                   " OR ",
+                   " production or ",
                    tags$u("per dollar revenue"),
                    " of product is shown below:<br>"),
             sapply(1:num, function(i) {
@@ -2076,7 +2098,7 @@ server <- function(input, output, session) {
                 " of Product ",
                 i,
                 "<br>",
-                "<span style='margin-left: 40px;'>",
+                "<span style='margin-left: 28px;'>",
                 tags$u(paste0(round(product_value_a, 3)," metric ton of CO₂e", sep = "")), 
                 " is generated to produce ",
                 tags$u(paste0("one ",input$units_name)),
