@@ -16,7 +16,7 @@ library(htmltools)
 library(DT)
 library(shinycssloaders)
 library(prompter)
-
+library(bslib)
 
 install_phantomjs(force = T)
 linebreaks <- function(n) {
