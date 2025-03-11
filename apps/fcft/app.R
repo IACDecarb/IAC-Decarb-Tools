@@ -124,7 +124,7 @@ ui <- fluidPage(
               "
       #downloadData1 {
         font-weight: bold;
-        font-size: 1px;
+        font-size: 18px;
       }
     #textOutput1{
         color:black;
@@ -382,7 +382,7 @@ ui <- fluidPage(
 server <- function(input, output, session) {
   excelFilePath <- "Facility Sankey Tool - Input Sheet.xlsx"
   
-  docFilePath <- 'User Guide for Facility CO2e Flow Tool.pdf'
+  docFilePath <- 'User Guide for Facility Sankey Tool.pdf'
   
   observeEvent(input$file, {
     updateTabsetPanel(session, "tabs", selected = "Energy Sankey")
@@ -2219,7 +2219,7 @@ server <- function(input, output, session) {
               selection = "single",
               options = list(
                 columnDefs = list(list(
-                  className = 'dt-center', targets = 0:2
+                  className = 'dt-center', targets = 0:3
                 )),
                 dom = 't',
                 autoWidth = TRUE
