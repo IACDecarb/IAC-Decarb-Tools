@@ -70,21 +70,22 @@ ui <- fluidPage(
         )
       ),
       tags$div(
-        style = "position: fixed; bottom: 0; width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: space-between; align-items: flex-end;",
+        style = "bottom: 0; width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: center; align-items: flex-end; padding: 10px 0;",
+        # Center the container
         tags$div(
-          style = "text-align: left;",
+          style = "text-align: left; margin-right: 150px;",
+          # Left-align content and add spacing
           tags$img(src = "lbnl.png", style = "max-height: 50px; margin-left: 0px;"),
           tags$p(tags$b("Prakash Rao"), style = "margin-top: 0.5px; margin-left: 0px;"),
           tags$p("prao@lbl.gov", style = "margin-top: 0.5px; margin-left: 0px;")
         ),
         tags$div(
           style = "text-align: left;",
+          # Left-align content
           tags$img(src = "ucdavis_logo_gold.png", style = "max-height: 50px;"),
-          tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px; "),
+          tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px;"),
           tags$p("jkissock@ucdavis.edu", style = "margin-top: 0.5px;")
         )
-        
-        
       )
       
     ),
@@ -99,19 +100,19 @@ ui <- fluidPage(
     ")),
                  tags$head(
                    tags$style(HTML("
-      .btn-container_e {
+      .btn-container-e {
         display: flex;
         justify-content: space-between;
         padding: 0 10px; /* Adjust padding as needed */
       }
-      .btn-container .btn {
+      .btn-container-e .btn {
         width: 48%; /* Adjust button width as needed */
       }
     "))
                  ),
                  selectInput('unit_e',"Select Units", c("MMBtu","MWh"),"MMBtu"),
                  numericInput("pem_e", "Enter Total Plant Energy ", 0),
-                 div(class = "btn-container_e",
+                 div(class = "btn-container-e",
                      actionButton("increase_font_e", "Increase Font", class = "btn-primary"),
                      actionButton("decrease_font_e", "Decrease Font", class = "btn-danger")
                  ),
@@ -151,22 +152,22 @@ ui <- fluidPage(
                
              ),
              tags$div(
-               style = "width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: space-between; align-items: flex-end;",
+               style = "bottom: 0; width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: center; align-items: flex-end; padding: 10px 0;",
+               # Center the container
                tags$div(
-                 style = "text-align: left;",
+                 style = "text-align: left; margin-right: 150px;",
+                 # Left-align content and add spacing
                  tags$img(src = "lbnl.png", style = "max-height: 50px; margin-left: 0px;"),
                  tags$p(tags$b("Prakash Rao"), style = "margin-top: 0.5px; margin-left: 0px;"),
                  tags$p("prao@lbl.gov", style = "margin-top: 0.5px; margin-left: 0px;")
                ),
                tags$div(
                  style = "text-align: left;",
+                 # Left-align content
                  tags$img(src = "ucdavis_logo_gold.png", style = "max-height: 50px;"),
-                 tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px; "),
+                 tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px;"),
                  tags$p("jkissock@ucdavis.edu", style = "margin-top: 0.5px;")
                )
-               
-               
-               
              )
     ),
     tabPanel("Emissions",
@@ -233,22 +234,22 @@ ui <- fluidPage(
                
              ),
              tags$div(
-               style = "width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: space-between; align-items: flex-end;",
+               style = "bottom: 0; width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: center; align-items: flex-end; padding: 10px 0;",
+               # Center the container
                tags$div(
-                 style = "text-align: left;",
+                 style = "text-align: left; margin-right: 150px;",
+                 # Left-align content and add spacing
                  tags$img(src = "lbnl.png", style = "max-height: 50px; margin-left: 0px;"),
                  tags$p(tags$b("Prakash Rao"), style = "margin-top: 0.5px; margin-left: 0px;"),
                  tags$p("prao@lbl.gov", style = "margin-top: 0.5px; margin-left: 0px;")
                ),
                tags$div(
                  style = "text-align: left;",
+                 # Left-align content
                  tags$img(src = "ucdavis_logo_gold.png", style = "max-height: 50px;"),
-                 tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px; "),
+                 tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px;"),
                  tags$p("jkissock@ucdavis.edu", style = "margin-top: 0.5px;")
                )
-               
-               
-               
              )
     )
     
@@ -278,7 +279,7 @@ server <- function(input, output, session){
     }
   )
   
-  docFilePath <- "User Guide for LCAC Tool.pdf"
+  docFilePath <- "User Guide for LC Tool.pdf"
   output$downloadData2 <- downloadHandler(
     filename = function() {
       # Set the filename of the downloaded file
