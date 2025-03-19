@@ -739,14 +739,14 @@ server <- function(input, output, session) {
     req(input$pinchdt)
     forPlot.c <- forPlot.c()
     forPlot.h <- forPlot.h()
-    all_q$qhx <-  ifelse (min(forPlot.h$q_cum) >=0,round(abs(max(forPlot.c$q_cum)- abs(min(forPlot.h$q_cum))),1),
-                          round(abs(max(forPlot.c$q_cum)) - abs(min(forPlot.c$q_cum)),1))
+    all_q$qhx <-  ifelse (min(forPlot.h$q_cum) >=0,round(abs(max(forPlot.c$q_cum)- abs(min(forPlot.h$q_cum))),2),
+                          round(abs(max(forPlot.c$q_cum)) - abs(min(forPlot.c$q_cum)),2))
     
-    all_q$qhp.so <-  round(abs(min(forPlot.h$q_cum) - min(forPlot.c$q_cum)),1)
-    all_q$qhp.si.h <- round((all_q$qhp.so/(input$cop-1))*input$cop,1)
+    all_q$qhp.so <-  round(abs(min(forPlot.h$q_cum) - min(forPlot.c$q_cum)),2)
+    all_q$qhp.si.h <- round((all_q$qhp.so/(input$cop-1))*input$cop,2)
     all_q$qhp.poss <- max(forPlot.h$q_cum) - max(forPlot.c$q_cum)
-    all_q$qhp.si <- round(min(all_q$qhp.poss,all_q$qhp.si.h),1)
-    all_q$qbg <-  round(abs(max(forPlot.h$q_cum) - (max(forPlot.c$q_cum)+all_q$qhp.si)),1)
+    all_q$qhp.si <- round(min(all_q$qhp.poss,all_q$qhp.si.h),2)
+    all_q$qbg <-  round(abs(max(forPlot.h$q_cum) - (max(forPlot.c$q_cum)+all_q$qhp.si)),2)
   })
   
   lb <- reactive({
@@ -1066,12 +1066,12 @@ server <- function(input, output, session) {
     qhp.so <- all_q$qhp.so
     qhp.si <- all_q$qhp.si
     qbg <- all_q$qbg
-    qhx.l <- round(all_q$qhx,1)
+    qhx.l <- all_q$qhx
     cst.l <- round(coor$cst,1)
     hst.l <- round(coor$hst,1)
-    qhp.so.l <- round(all_q$qhp.so,1)
-    qhp.si.l <- round(all_q$qhp.si,1)
-    qbg.l <- round(all_q$qbg,1)
+    qhp.so.l <- all_q$qhp.so
+    qhp.si.l <- all_q$qhp.si
+    qbg.l <- all_q$qbg
     lb <- lb()
     lb.c <- lb.c()
     wavg.source.l <- wavg.source()
@@ -1141,7 +1141,7 @@ server <- function(input, output, session) {
     }
     
     if (input$hx == 'Yes') {
-      t1 <- paste0("Qhx\n",comma(qhx.l)," ", q_uni)
+      t1 <- paste0("Qhx\n",comma(qhx,accuracy = 0.01)," ", q_uni)
       
       ifelse (min(forPlot.h$q_cum) >=0, 
               xint1 <- min(forPlot.h$q_cum),
@@ -1171,9 +1171,9 @@ server <- function(input, output, session) {
     }
     if (input$hp == 'Yes') {
       
-      t2 <- paste0("Qhp Source\n",comma(qhp.so.l)," ", q_uni)
+      t2 <- paste0("Qhp Source\n",comma(qhp.so.l, accuracy = 0.01)," ", q_uni)
       
-      t4 <- paste0("Qhp Sink\n",comma(qhp.si.l)," ", q_uni)
+      t4 <- paste0("Qhp Sink\n",comma(qhp.si.l, accuracy = 0.01)," ", q_uni)
       
       
       t3 <- paste0("T Source\n",wavg.source.l, t_uni)
@@ -1236,7 +1236,7 @@ server <- function(input, output, session) {
       }
       else 
       {
-        t6 <- paste0("Qht\n",comma(qbg.l)," ", q_uni)
+        t6 <- paste0("Qht\n",comma(qbg.l, accuracy = 0.01)," ", q_uni)
         pinch <- pinch +  
           geom_vline(xintercept = max(forPlot.h$q_cum), linetype = "dashed", color = "blue")+
           geom_vline(xintercept = max(forPlot.c$q_cum)+qhp.si, linetype = "dashed", color = "blue")+
