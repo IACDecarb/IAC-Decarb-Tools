@@ -1,6 +1,6 @@
 *** Copyright Notice ***
 
-Facility CO2 Flow Tool (FCFT) Copyright (c) 2023, The Regents of the
+Facility Sankey Tool (FST) Copyright (c) 2023, The Regents of the
 University of California, through Lawrence Berkeley National Laboratory
 (subject to receipt of any required approvals from the U.S. Dept. of Energy),
 and University of California, Davis. All rights reserved.
