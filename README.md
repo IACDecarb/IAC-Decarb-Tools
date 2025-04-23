@@ -11,7 +11,7 @@ Tool Description:
   
   Suggested Citation: Khan, Ovais, Ali Qamar, Muhammad, Karki, Unique, Sinha, Vedant,  Kissock, John & Rao, Prakash. (2023, October 24). Facility CO2 Flow Tool (FCFT) v0.9. [Computer software]. https://github.com/IACDecarb/IAC-Decarb-Tools. https://doi.org/10.11578/dc.20240813.3
 
-## 2. Levelized Cost of Avoided CO<sub>2</sub>: [apps/lcac](apps/lcac)
+## 2. Levelized Cost Curve Tool: [apps/lcac](apps/lcac)
 
    Tool Description:
 The Levelized Cost Curve (LCC) tool facilitates techno-economic calculations for various energy efficiency and decarbonization technologies. It comprises two tools to accomplish this: an input workbook based on MS Excel and a web-based output tool. This workbook acts as the input sheet, using the user-provided decarbonization measures and their impacts on lifetime energy consumption, energy costs, and CO2 emissions to compute the LCCE (Levelized Cost of Conserved Energy) and LCAC (Levelized Cost of Avoided CO2). On the other hand, the web-based tool employs data from this workbook to generate an LC curve. This graphical representation illustrates the economic comparison of all decarbonization measures for purposes such as implementation prioritization.
