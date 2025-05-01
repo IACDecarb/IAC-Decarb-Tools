@@ -190,12 +190,14 @@ ui <- fluidPage(
           h3("Tab 2: Energy Sankey"),
           tags$p("1. View and customize Energy Sankey Diagram.", style = "font-size: 18px;"),
           tags$p("2. Download Energy Sankey Diagram.", style = "font-size: 18px;"),
-          br(),
-          h3("Tab 3: Emissions Sankey"),
+          h3("Tab 3: Energy Costs Sankey"),
+          tags$p("1. View and customize Energy Costs Sankey Diagram.", style = "font-size: 18px;"),
+          tags$p("2. Download Energy Costs Sankey Diagram.", style = "font-size: 18px;"),
+          h3("Tab 4: Emissions Sankey"),
           tags$p("1. View and customize Emissions Sankey Diagram.", style = "font-size: 18px;"),
           tags$p("2. Download Emissions Sankey Diagram.", style = "font-size: 18px;"),
           br(),
-          h3("Tab 4: Product Intensity Calculator"),
+          h3("Tab 5: Product Intensity Calculator"),
           tags$p(
             "1. Estimate Product Energy, Energy costs, and Emissions Intensity based on associated processes or equipment.",
             style = "font-size: 18px;"
