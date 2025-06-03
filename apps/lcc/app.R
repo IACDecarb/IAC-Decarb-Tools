@@ -19,8 +19,8 @@ library(shinyBS)
 
 ui <- fluidPage(
   theme = shinytheme("flatly"),
-  titlePanel(HTML("Levelized Cost Tool"),
-             windowTitle = "LCT"),
+  titlePanel(HTML("Levelized Cost Curve Tool"),
+             windowTitle = "LCC"),
   #  downloadButton("download", "Download"),
   tabsetPanel(
     id = "tabs",
@@ -36,7 +36,7 @@ ui <- fluidPage(
       }
     "
           )),
-          downloadLink("downloadData1", "Download LC - Input Sheet"),
+          downloadLink("downloadData1", "Download LCC - Input Sheet"),
           br(),
           textInput("cname", "Enter Facility Name"),
           br(),
