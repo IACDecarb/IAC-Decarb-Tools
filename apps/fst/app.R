@@ -18,8 +18,11 @@ library(shinycssloaders)
 library(prompter)
 library(bslib)
 library(shinyFeedback)
+library(plotly)
+library(scales)
 
 install_phantomjs(force = T)
+
 linebreaks <- function(n) {
   HTML(strrep(br(), n))
 }
@@ -77,6 +80,21 @@ format_sentences <- function(sentences) {
   }
 }
 
+format_sentences_bullet <- function(sentences) {
+  bullets <- paste0(
+    "<ul style='padding-inline-start: 30px; margin-left: 0;'>",
+    paste(sapply(sentences, function(s)
+      paste0(
+        "<li style='margin-left: 30px; margin-bottom: 15px;'>",
+        s,
+        "</li>"
+      )), collapse = ""),
+    "</ul>"
+  )
+  return(bullets)
+}
+
+
 
 ui <- fluidPage(
   theme = shinytheme("flatly"),
@@ -133,7 +151,45 @@ ui <- fluidPage(
         delete timers[timer];
       }
     });
-            "
+    
+     .responsive-plot-container {
+    position: relative;
+    height: 100%;
+    padding-bottom: 2%;
+    overflow: auto;
+    margin: 0 auto;
+  }
+  
+  /* Large desktops (≥1700px) */
+  @media (min-width: 1700px) {
+    .responsive-plot-container {
+      width: 65%;
+      max-width: 1440px;
+    }
+  }
+  
+  /* Medium devices (992px - 1199px) */
+  @media (min-width: 992px) and (max-width: 1699px) {
+    .responsive-plot-container {
+      width: 90%;
+    }
+  }
+  
+  /* Tablets (768px - 991px) */
+  @media (min-width: 768px) and (max-width: 991px) {
+    .responsive-plot-container {
+      width: 80%;
+    }
+  }
+  
+  /* Mobile devices (<768px) */
+  @media (max-width: 767px) {
+    .responsive-plot-container {
+      width: 95%;
+      padding-bottom: 5%;
+    }
+  }    
+      "
       )
     ),
     tags$link(rel = "stylesheet", href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css")
@@ -176,7 +232,7 @@ ui <- fluidPage(
       }
     "
           )),
-          downloadLink("downloadData2", "Download Tool Documentation")
+          downloadLink("downloadData2", "Download Tool Documentation (Draft Version)")
           
         ),
         mainPanel(
@@ -418,27 +474,43 @@ ui <- fluidPage(
       "Product Intensity Calculator",
       sidebarLayout(
         sidebarPanel(
+          width = 5,
           tags$style(HTML("
         font-weight: bold;
         font-size: 16px;
-      ")),
-          width = 3,
+              ")),
           fluidRow(
             column(
               12,
-              h4("Step 1: Select Methods", style = "font-weight: bold; font-size: 18px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;float: left;")
+              h4("Step 1: Select Method and Number of Products:", style = "font-weight: bold; font-size: 18px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;float: left;")
             ),
             wellPanel(
               style = "border: 2px solid #ccc; padding: 15px; border-radius: 5px; margin-bottom: 20px;",
               selectInput(
                 "products_num",
-                "Enter Number of Products:",
+                label = tags$span(
+                  "Enter Number of Products:",
+                  tags$span(icon(name = "circle-exclamation")) |>
+                    add_prompt(
+                      message = "Select the number of products that are manufactured. Alternatively, select the number of products whose intensities are being studied.",
+                      position = "right",
+                      size = "large"
+                    )
+                ),
                 choices = c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10"),
                 width = "95%"
               ),
               radioButtons(
                 "selected_method",
-                "Select Allocation Approach:",
+                label = tags$span(
+                  "Select Allocation Approach:",
+                  tags$span(icon(name = "circle-exclamation")) |>
+                    add_prompt(
+                      message = "Select quantity-based allocation if you would like to allocate based on underlying physical relationship, such as mass, volume, or number of units. Select revenue-based method if physical relationship cannot be established (or if production is driven by market value of products).",
+                      position = "right",
+                      size = "large"
+                    )
+                ),
                 choices = c("Quantity-based", "Revenue-based"),
                 selected = "Quantity-based",
                 width = "95%"
@@ -473,7 +545,9 @@ ui <- fluidPage(
             checkboxInput("em", "Emissions Intensity", FALSE, width = "95%")
           )
         ),
-        mainPanel(uiOutput("mainpanelUI"))
+        mainPanel(    width = 7,
+                      uiOutput("mainpanelUI")
+        )
       ),
       tags$div(
         style = "bottom: 0; width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: center; align-items: flex-end; padding: 10px 0;",
@@ -529,7 +603,7 @@ server <- function(input, output, session) {
   nodes_data <- reactive({
     req(input$file)
     
-    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m189")
+    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:o189")
     
     aa <- clean_names(aa)
     aa <- aa %>%
@@ -569,21 +643,11 @@ server <- function(input, output, session) {
   
   nodes_data_energy_costs <- reactive({
     req(input$file)
-    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m189")
+    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:o189")
     
     aa <- clean_names(aa)
     aa <- aa %>%
       filter(!is.na(energy_source))
-    
-    #Extract the unit energy costs from the "Energy Inputs" sheet in the input excel file
-    energy_unit_cost <- read_excel(input$file$datapath, sheet = 'Energy Costs Inputs (Optional)', range = "as3:at20") %>%
-      clean_names() %>%
-      drop_na()
-    
-    #Combine the energy results with energy unit costs, and multiply unit costs with total energy to get total energy costs per year
-    aa <- left_join(aa, energy_unit_cost, by = "energy_source") %>%
-      mutate(total_energy_costs_yr = total_energy_mm_btu_yr * energy_unit_cost)
-    
     
     end.use <- tibble('Name' = aa$`source`)
     ene.src <- tibble('Name' = unique(aa$`energy_source`))
@@ -609,7 +673,7 @@ server <- function(input, output, session) {
   
   nodes_data_energy <- reactive({
     req(input$file)
-    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m189")
+    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:o189")
     
     aa <- clean_names(aa)
     aa <- aa %>%
@@ -785,7 +849,7 @@ server <- function(input, output, session) {
     req(input$file)
     num <- input$products_num
     
-    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m189") %>%
+    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:o189") %>%
       clean_names()
     
     
@@ -830,8 +894,8 @@ server <- function(input, output, session) {
           },
           div(
             style = "border: 2px solid #ccc; padding: 15px; border-radius: 5px; margin-bottom: 20px;",
-            
             fluidRow(
+              style = "display:flex;align-items:flex-end;",
               column(
                 4,
                 textInput(
@@ -844,8 +908,16 @@ server <- function(input, output, session) {
               column(
                 4,
                 textInput(
-                  paste0("units_name_", i),
-                  "Enter Units of Quantity:",
+                  inputId =  paste0("units_name_", i),
+                  label = tags$span(
+                    paste0("Enter Units of Quantity:"),
+                    tags$span(icon(name = "circle-exclamation")) |>
+                      add_prompt(
+                        message = "Note that units name, such as metric ton, are placeholders only. If you entered kg and pounds for two products, respectively, the tool will not convert them to identical units",
+                        position = "right",
+                        size = "large"
+                      )
+                  ),
                   value = text_val,
                   width = "95%"
                 )
@@ -858,7 +930,15 @@ server <- function(input, output, session) {
             tags$div(
               pickerInput(
                 paste0("process_", i),
-                paste("Select Product ", i, "-based Processes:"),
+                label = tags$span(
+                  paste("Select Processes/Equipment Relevant to this Product:"),
+                  tags$span(icon(name = "circle-exclamation")) |>
+                    add_prompt(
+                      message = "The list below has been referenced from the excel input sheet.",
+                      position = "right",
+                      size = "large"
+                    )
+                ),
                 choices = end_use$measures,
                 options = list(`actions-box` = TRUE, virtualScroll = T),
                 selected = picker_val,
@@ -930,8 +1010,16 @@ server <- function(input, output, session) {
                 column(
                   4,
                   textInput(
-                    paste0("units_name_", i),
-                    "Enter Units of Quantity:",
+                    inputId =  paste0("units_name_", i),
+                    label = tags$span(
+                      paste0("Enter Units of Quantity:"),
+                      tags$span(icon(name = "circle-exclamation")) |>
+                        add_prompt(
+                          message = "Note that units name, such as metric ton, are placeholders only. If you entered kg and pounds for two products, respectively, the tool will not convert them to identical units",
+                          position = "right",
+                          size = "large"
+                        )
+                    ),
                     value = text_val,
                     width = "95%"
                   )
@@ -959,7 +1047,17 @@ server <- function(input, output, session) {
               tags$div(
                 pickerInput(
                   paste0("process_", i),
-                  paste("Select Product ", i, "-based Processes:"),
+                  label = tags$span(
+                    paste(
+                      "Select Processes/Equipment Relevant to this Product:"
+                    ),
+                    tags$span(icon(name = "circle-exclamation")) |>
+                      add_prompt(
+                        message = "The list below has been referenced from the excel input sheet.",
+                        position = "right",
+                        size = "large"
+                      )
+                  ),
                   choices = end_use$measures,
                   options = list(
                     `actions-box` = TRUE,
@@ -1032,8 +1130,16 @@ server <- function(input, output, session) {
                 column(
                   4,
                   textInput(
-                    paste0("units_name_", i),
-                    "Enter Units of Quantity:",
+                    inputId =  paste0("units_name_", i),
+                    label = tags$span(
+                      paste0("Enter Units of Quantity:"),
+                      tags$span(icon(name = "circle-exclamation")) |>
+                        add_prompt(
+                          message = "Note that units name, such as metric ton, are placeholders only. If you entered kg and pounds for two products, respectively, the tool will not convert them to identical units",
+                          position = "right",
+                          size = "large"
+                        )
+                    ),
                     value = text_val,
                     width = "95%"
                   )
@@ -1048,14 +1154,8 @@ server <- function(input, output, session) {
                     inputId =   paste0("revenue_", i),
                     label =  if_else(
                       input$revenue_name == "Gross product revenue ($)",
-                      paste("Enter Product ", i, " Gross Revenue ($):"),
-                      paste(
-                        "Enter Product ",
-                        i,
-                        " Revenue per ",
-                        input$units_name,
-                        ":"
-                      )
+                      paste("Enter Product Gross Revenue ($):"),
+                      paste("Enter Product Revenue per ", input$units_name, ":")
                     ),
                     value = num_cost_val,
                     decimalPlaces = 0,
@@ -1071,7 +1171,17 @@ server <- function(input, output, session) {
               tags$div(
                 pickerInput(
                   paste0("process_", i),
-                  paste("Select Product ", i, "-based Processes:"),
+                  label = tags$span(
+                    paste(
+                      "Select Processes/Equipment Relevant to this Product:"
+                    ),
+                    tags$span(icon(name = "circle-exclamation")) |>
+                      add_prompt(
+                        message = "The list below has been referenced from the excel input sheet.",
+                        position = "right",
+                        size = "large"
+                      )
+                  ),
                   choices = end_use$measures,
                   options = list(
                     `actions-box` = TRUE,
@@ -1106,7 +1216,7 @@ server <- function(input, output, session) {
         output[[paste0("qty_values_", i)]] <- renderUI({
           numericInput(
             paste0("qty_", i),
-            paste0("Enter Product ", i, " Quantity (", input[[paste0("units_name_", i)]], "):"),
+            paste0("Enter Product Quantity (", input[[paste0("units_name_", i)]], "):"),
             value = num_val,
             min = 0.0001,
             width = "95%"
@@ -1128,7 +1238,7 @@ server <- function(input, output, session) {
             numericInput(
               paste0("qty_", i),
               label = tags$span(
-                paste0("Enter Product ", i, " Quantity (", input[[paste0("units_name_", i)]], "):"),
+                paste0("Enter Product Quantity (", input[[paste0("units_name_", i)]], "):"),
                 tags$span(icon(name = "circle-exclamation", )) |>
                   add_prompt(
                     message = "If quantity value is not available, please select 'Gross Product' revenue calculation method",
@@ -1155,7 +1265,7 @@ server <- function(input, output, session) {
             numericInput(
               paste0("qty_", i),
               label = tags$span(
-                paste0("Enter Product ", i, " Quantity (", input[[paste0("units_name_", i)]], "):"),
+                paste0("Enter Product Quantity (", input[[paste0("units_name_", i)]], "):"),
                 tags$span(icon(name = "circle-exclamation", )) |>
                   add_prompt(
                     message = "If quantity value is not available, please select 'Gross Product' revenue calculation method",
@@ -1183,29 +1293,84 @@ server <- function(input, output, session) {
   # Render the tabs conditionally based on the reactive value
   output$mainpanelUI <- renderUI({
     if (tabsShown()) {
-      tabsetPanel(tabPanel(
-        "Main Results",
-        div(
-          style = "position: relative; width: 100%; padding-bottom: 5%;",
+      tagList(tabsetPanel(
+        id = "ResultTabs",
+        tabPanel(
+          "Graphical Results",
           div(
-            style = "display: flex; justify-content: left; align-items: left;",
+            class = "responsive-plot-container",
             conditionalPanel(
               condition = "input.calc_int >= 1",
               shinycssloaders::withSpinner(
-                uiOutput("textOutput1"),
+                if (input$en && input$ec && input$em) {
+                  navset_card_underline(
+                    id = "graph_tabs",
+                    nav_panel("Energy Intensity Plot", value = "enPlotvalue",plotlyOutput("enPlot")),
+                    nav_panel(
+                      "Energy Costs Intensity Plot",value = "ecPlotvalue",
+                      plotlyOutput("ecPlot")
+                    ),
+                    nav_panel(
+                      "Emissions Intensity Plot",value = "emPlotvalue",
+                      plotlyOutput("emPlot")
+                    )
+                  )
+                } else if (input$en && input$ec) {
+                  navset_card_underline(
+                    id = "graph_tabs",
+                    nav_panel("Energy Intensity Plot", value = "enPlotvalue",plotlyOutput("enPlot")),
+                    nav_panel(
+                      "Energy Costs Intensity Plot",value = "ecPlotvalue",
+                      plotlyOutput("ecPlot")
+                    )
+                  )
+                } else if (input$en && input$em) {
+                  navset_card_underline(
+                    id = "graph_tabs",
+                    nav_panel("Energy Intensity Plot",value = "enPlotvalue", plotlyOutput("enPlot")),
+                    nav_panel(
+                      "Emissions Intensity Plot",value = "emPlotvalue",
+                      plotlyOutput("emPlot")
+                    )
+                  )
+                } else if (input$ec && input$em) {
+                  navset_card_underline(
+                    id = "graph_tabs",
+                    nav_panel(
+                      "Energy Costs Intensity Plot",value = "ecPlotvalue",
+                      plotlyOutput("ecPlot")
+                    ),
+                    nav_panel(
+                      "Emissions Intensity Plot",value = "emPlotvalue",
+                      plotlyOutput("emPlot")
+                    )
+                  )
+                } else if (input$en) {
+                  navset_card_underline(
+                    id = "graph_tabs",nav_panel("Energy Intensity Plot",value = "enPlotvalue", plotlyOutput("enPlot")))
+                } else if (input$ec) {
+                  navset_card_underline(
+                    id = "graph_tabs",nav_panel(
+                      "Energy Costs Intensity Plot",value = "ecPlotvalue",
+                      plotlyOutput("ecPlot")
+                    ))
+                } else if (input$em) {
+                  navset_card_underline(
+                    id = "graph_tabs",nav_panel(
+                      "Emissions Intensity Plot",value = "emPlotvalue",
+                      plotlyOutput("emPlot")
+                    ))
+                },
                 type = getOption("spinner.type", default = 8)
               )
             )
           )
         )
-      )
-      ,
-      tabPanel(
-        "Intensity Tables",
-        div(
-          style = "position: relative; width: 100%; padding-bottom: 5%;",
+        ,
+        tabPanel(
+          "Intensity Tables",
           div(
-            style = "display: flex; justify-content: center; align-items: center;",
+            class = "responsive-plot-container",
             conditionalPanel(
               condition = "input.calc_int >= 1",
               shinycssloaders::withSpinner(
@@ -1214,9 +1379,11 @@ server <- function(input, output, session) {
               )
             )
           ),
-          div(style = "position: relative; bottom: 30%; right: -90%;", uiOutput("show_dl_link"))
+          div(class = "responsive-plot-container", uiOutput("show_dl_link"))
+          
         )
-      ))
+      ),
+      uiOutput("textOutput1"))
     } else {
       # Optionally, you can display a message or nothing
       h3("")
@@ -1247,7 +1414,7 @@ server <- function(input, output, session) {
     
     
     bb <- read_excel(input$file$datapath, sheet = 'Emission Inputs (Optional)', range = "k10:q27")
-    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m189")
+    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:o189")
     
     
     aa <- clean_names(aa)
@@ -1319,7 +1486,7 @@ server <- function(input, output, session) {
     req(input$file)
     
     
-    temp <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m189")
+    temp <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:o189")
     temp <- clean_names(temp)
     temp <- temp %>%
       filter(!is.na(source))
@@ -1328,7 +1495,7 @@ server <- function(input, output, session) {
   
   temp_e <- reactive({
     req(input$file)
-    temp_e <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m189")
+    temp_e <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:o189")
     temp_e <- clean_names(temp_e)
     temp_e <- temp_e %>%
       filter(!is.na(energy_source))
@@ -1337,26 +1504,17 @@ server <- function(input, output, session) {
   
   temp_ec <- reactive({
     req(input$file)
-    temp_ec_0 <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m189")
-    temp_ec_0 <- clean_names(temp_ec_0)
-    temp_ec_0 <- temp_ec_0 %>%
+    temp_ec <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:o189")
+    temp_ec <- clean_names(temp_ec)
+    temp_ec <- temp_ec %>%
       filter(!is.na(energy_source))
-    
-    energy_unit_cost <- read_excel(input$file$datapath, sheet = 'Energy Costs Inputs (Optional)', range = "as3:at20") %>%
-      clean_names() %>%
-      drop_na()
-    
-    #Combine the energy results with energy unit costs, and multiply unit costs with total energy to get total energy costs per year
-    temp_ec <- left_join(temp_ec_0, energy_unit_cost, by = "energy_source") %>%
-      mutate(total_energy_costs_yr = total_energy_mm_btu_yr * energy_unit_cost)
-    temp_ec
   })
   
   
   
   links_data <- reactive({
     req(input$file)
-    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m189")
+    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:o189")
     
     
     aa <- clean_names(aa)
@@ -1578,20 +1736,11 @@ server <- function(input, output, session) {
   
   links_data_energy_costs <- reactive({
     req(input$file)
-    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m189")
+    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:o189")
     
     aa <- clean_names(aa)
     aa <- aa %>%
       filter(!is.na(energy_source))
-    
-    #Extract the unit energy costs from the "Energy Inputs" sheet in the input excel file
-    energy_unit_cost <- read_excel(input$file$datapath, sheet = 'Energy Costs Inputs (Optional)', range = "as3:at20") %>%
-      clean_names() %>%
-      drop_na()
-    
-    #Combine the energy results with energy unit costs, and multiply unit costs with total energy to get total energy costs per year
-    aa <- left_join(aa, energy_unit_cost, by = "energy_source") %>%
-      mutate(total_energy_costs_yr = total_energy_mm_btu_yr * energy_unit_cost)
     
     aa$percentage_of_total_energy_costs = aa$total_energy_costs_yr / sum(aa$total_energy_costs_yr)
     
@@ -1729,7 +1878,7 @@ server <- function(input, output, session) {
     if (!is_empty(fuel_costs_link_val)) {
       filter_criteria <- c(filter_criteria, fuel_costs_link_val)
     }
-
+    
     
     # Apply the filter and summarise
     links.t <- links.h %>%
@@ -1738,7 +1887,7 @@ server <- function(input, output, session) {
       summarise(Value = sum(Value))
     
     
-    total_fields <- as.numeric(!is_empty(fuel_costs_link_val)) + as.numeric(!is_empty(ele_link_val)) 
+    total_fields <- as.numeric(!is_empty(fuel_costs_link_val)) + as.numeric(!is_empty(ele_link_val))
     
     v <- 0
     for (m in (nrow(links.h) + 1):(nrow(links.h) + total_fields)) {
@@ -1766,7 +1915,7 @@ server <- function(input, output, session) {
   
   links_data_energy <- reactive({
     req(input$file)
-    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m189")
+    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:o189")
     
     aa <- clean_names(aa)
     aa <- aa %>%
@@ -2401,6 +2550,7 @@ server <- function(input, output, session) {
     }
   )
   
+  
   observeEvent(input$calc_int, {
     req(input$file)
     num <- input$products_num
@@ -2450,25 +2600,19 @@ server <- function(input, output, session) {
     }
     
     
-    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:m189")
+    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:o189")
     
     aa <- clean_names(aa)
     
-    #Extract the unit energy costs from the "Energy Inputs" sheet in the input excel file
-    energy_unit_cost <- read_excel(input$file$datapath, sheet = 'Energy Costs Inputs (Optional)', range = "as3:at20") %>%
-      clean_names() %>%
-      drop_na()
-    
     aa <- aa %>%
       filter(!is.na(source)) %>%
-      select(source,
-             total_energy_mm_btu_yr,
-             co2e_emissions_mt_co2e_yr,
-             energy_source)
-    
-    #Combine the energy results with energy unit costs, and multiply unit costs with total energy to get total energy costs per year
-    aa <- left_join(aa, energy_unit_cost, by = "energy_source") %>%
-      mutate(total_energy_costs_yr = total_energy_mm_btu_yr * energy_unit_cost)
+      select(
+        source,
+        total_energy_mm_btu_yr,
+        co2e_emissions_mt_co2e_yr,
+        total_energy_costs_yr,
+        energy_source
+      )
     
     if (input$energy_units_int == "MWh") {
       aa <- aa %>%
@@ -2648,18 +2792,21 @@ server <- function(input, output, session) {
           ),
           sapply(1:num, function(i) {
             product_value <- all_products_summarized$qty_based_energy_intensity_mmbtu_ton[i]
-            paste0(tags$u(
-              paste0(
-                round(product_value, 2),
-                " ",
-                input$energy_units_int,
-                " energy"
-              )
-            ),
-            " is required to produce ",
-            tags$u(paste0("one ", input[[paste0("units_name_", i)]])),
-            " of ",
-            input[[paste0("products_name_", i)]])
+            product_name <- all_products_summarized$product_name[i]
+            paste0(
+              strong(product_name),
+              ": ",
+              tags$u(
+                paste0(
+                  scales::comma(product_value, accuracy = 0.01),
+                  " ",
+                  input$energy_units_int,
+                  " energy"
+                )
+              ),
+              " is required to produce ",
+              tags$u(paste0("one ", input[[paste0("units_name_", i)]]))
+            )
           })
         )
         
@@ -2671,16 +2818,14 @@ server <- function(input, output, session) {
           # Product information part
           product_value <- all_products_summarized$energy_costs_intensity_dollar_qty[i]
           unit_name <- input[[paste0("units_name_", i)]]
-          product_name <- input[[paste0("products_name_", i)]]
+          product_name <- all_products_summarized$product_name[i]
           
           product_part <- paste0(
-            tags$u(paste0("$", round(
-              product_value, 2
-            ))),
-            " in energy costs is spent to produce ",
-            tags$u(paste0("one ", input[[paste0("units_name_", i)]])),
-            " of ",
-            product_name
+            strong(product_name),
+            ": ",
+            tags$u(paste0("$", scales::comma(product_value, accuracy = 0.01))),
+            " in energy costs is required to produce ",
+            tags$u(paste0("one ", input[[paste0("units_name_", i)]]))
           )
           
           # Get all energy sources and their values at once
@@ -2695,7 +2840,7 @@ server <- function(input, output, session) {
                 energy_sources,
                 "-based intensity is ",
                 "$",
-                round(energy_values, 2),
+                scales::comma(energy_values, accuracy = 0.01),
                 " ",
                 tags$u(paste0("per ", unit_name))
               ),
@@ -2709,7 +2854,7 @@ server <- function(input, output, session) {
           calculated_sentences_ec_0[[i]] <- paste0(product_part, ". ", energy_part, ".")
         }
         
-        formatted_sentences_ec_0 <- format_sentences(calculated_sentences_ec_0)
+        formatted_sentences_ec_0 <- format_sentences_bullet(calculated_sentences_ec_0)
         
         calculated_sentences_ec_1 <- c(
           if_else(
@@ -2730,11 +2875,11 @@ server <- function(input, output, session) {
               strong("Energy Costs"),
               " required to produce a unit of product is shown below:"
             )
-          ),
-          formatted_sentences_ec_0
+          )
         )
         
-        formatted_sentences_ec <- HTML(format_sentences(calculated_sentences_ec_1))
+        formatted_sentences_ec <- HTML(format_sentences(calculated_sentences_ec_1),
+                                       formatted_sentences_ec_0)
         
         
         calculated_sentences_em <- c(
@@ -2756,13 +2901,16 @@ server <- function(input, output, session) {
           ),
           sapply(1:num, function(i) {
             product_value <- all_products_summarized$qty_based_emission_intensity_mtco2e_ton[i]
-            paste0(tags$u(paste0(
-              round(product_value, 3), " metric ton of CO₂e"
-            )),
-            " is generated to produce ",
-            tags$u(paste0("one ", input[[paste0("units_name_", i)]])),
-            " of Product ",
-            i)
+            product_name <- all_products_summarized$product_name[i]
+            paste0(
+              strong(product_name),
+              ": ",
+              tags$u(paste0(
+                scales::comma(product_value, accuracy = 0.001), " metric ton of CO₂e"
+              )),
+              " is generated to produce ",
+              tags$u(paste0("one ", input[[paste0("units_name_", i)]]))
+            )
           })
         )
         
@@ -2832,9 +2980,8 @@ server <- function(input, output, session) {
           
         } else if (input$en == TRUE &&
                    input$ec == TRUE && input$em == FALSE) {
-          formatted_sentences <- paste0(formatted_sentences_en,
-                                        "\n\n\n",
-                                        formatted_sentences_ec)
+          formatted_sentences_en <- paste0(formatted_sentences_en)                            
+          formatted_sentences_ec <- paste0(formatted_sentences_ec)
           
           all_products_summarized <- all_products_summarized %>%
             select(
@@ -2867,9 +3014,9 @@ server <- function(input, output, session) {
           
         } else if (input$en == TRUE &&
                    input$ec == FALSE && input$em == TRUE) {
-          formatted_sentences <- paste0(formatted_sentences_en,
-                                        "\n\n\n",
-                                        formatted_sentences_em)
+          
+          formatted_sentences_en <- paste0(formatted_sentences_en)                            
+          formatted_sentences_em <- paste0(formatted_sentences_em)
           
           all_products_summarized <- all_products_summarized %>%
             select(
@@ -2902,9 +3049,8 @@ server <- function(input, output, session) {
           
         } else if (input$en == FALSE &&
                    input$ec == TRUE && input$em == TRUE) {
-          formatted_sentences <- paste0(formatted_sentences_ec,
-                                        "\n\n\n",
-                                        formatted_sentences_em)
+          formatted_sentences_em <- paste0(formatted_sentences_em)                            
+          formatted_sentences_ec <- paste0(formatted_sentences_ec)
           
           all_products_summarized <- all_products_summarized %>%
             select(
@@ -2926,13 +3072,9 @@ server <- function(input, output, session) {
           
         } else if (input$en == TRUE &&
                    input$ec == TRUE && input$em == TRUE) {
-          formatted_sentences <- paste0(
-            formatted_sentences_en,
-            "\n\n\n",
-            formatted_sentences_ec,
-            "\n\n\n",
-            formatted_sentences_em
-          )
+          formatted_sentences_en <- paste0(formatted_sentences_en)                            
+          formatted_sentences_ec <- paste0(formatted_sentences_ec)
+          formatted_sentences_em <- paste0(formatted_sentences_em) 
           
           all_products_summarized <- all_products_summarized %>%
             rename(
@@ -3245,25 +3387,28 @@ server <- function(input, output, session) {
               "Based on the user-selected ",
               strong("Revenue percentage-based approach,"),
               " the amount of ",
-              strong("energy"),
+              strong("Energy"),
               " (in ",
               input$energy_units_int,
-              " required to produce a unit of product is shown below:<br>"
+              ") required to produce a unit of product is shown below:<br>"
             ),
             sapply(1:num, function(i) {
               product_value <- all_products_summarized$revenue_based_energy_intensity_mmbtu_qty[i]
-              paste0(tags$u(
-                paste0(
-                  round(product_value, 2),
-                  " ",
-                  input$energy_units_int,
-                  " of energy"
-                )
-              ),
-              " is required to produce ",
-              tags$u(paste0("one ", input[[paste0("units_name_", i)]])),
-              " of ",
-              input[[paste0("products_name_", i)]])
+              product_name <- all_products_summarized$product_name[i]
+              paste0(
+                strong(product_name),
+                ": ",
+                tags$u(
+                  paste0(
+                    scales::comma(product_value, accuracy = 0.01),
+                    " ",
+                    input$energy_units_int,
+                    " of energy"
+                  )
+                ),
+                " is required to produce ",
+                tags$u(paste0("one ", input[[paste0("units_name_", i)]]))
+              )
             })
           )
           
@@ -3293,14 +3438,16 @@ server <- function(input, output, session) {
             ,
             sapply(1:num, function(i) {
               product_value <- all_products_summarized$revenue_based_emission_intensity_mtco2e_qty[i]
+              product_name <- all_products_summarized$product_name[i]
               paste0(
+                strong(product_name),
+                ": ",
                 tags$u(paste0(
-                  round(product_value, 3), " metric ton of CO₂e"
+                  scales::comma(product_value, accuracy = 0.001), " metric ton of CO₂e"
                 )),
                 " is generated to produce ",
                 tags$u(paste0("one ", input[[paste0("units_name_", i)]])),
-                " of Product ",
-                i
+                " of "
               )
             })
           )
@@ -3313,15 +3460,14 @@ server <- function(input, output, session) {
             # Product information part
             product_value <- all_products_summarized$energy_costs_intensity_revenue_based[i]
             unit_name <- input[[paste0("units_name_", i)]]
+            product_name <- all_products_summarized$product_name[i]
             
             product_part <- paste0(
-              tags$u(paste0("$", round(
-                product_value, 2
-              ))),
-              " in energy costs is spent to generate ",
-              tags$u(paste0("one ", input[[paste0("units_name_", i)]])),
-              " of ",
-              input[[paste0("products_name_", i)]]
+              strong(product_name),
+              ": ",
+              tags$u(paste0("$", scales::comma(product_value, accuracy = 0.01))),
+              " in energy costs is required to proudce ",
+              tags$u(paste0("one ", input[[paste0("units_name_", i)]]))
             )
             
             # Get all energy sources and their values at once
@@ -3336,7 +3482,7 @@ server <- function(input, output, session) {
                   energy_sources,
                   "-based intensity is ",
                   "$",
-                  round(energy_values, 2),
+                  scales::comma(energy_values, accuracy = 0.01),
                   " ",
                   tags$u(paste0("per ", unit_name))
                 ),
@@ -3350,7 +3496,7 @@ server <- function(input, output, session) {
             calculated_sentences_ec_0[[i]] <- paste0(product_part, ". ", energy_part, ".")
           }
           
-          formatted_sentences_ec_0 <- format_sentences(calculated_sentences_ec_0)
+          formatted_sentences_ec_0 <- format_sentences_bullet(calculated_sentences_ec_0)
           
           calculated_sentences_ec_1 <- c(
             if_else(
@@ -3369,13 +3515,13 @@ server <- function(input, output, session) {
               paste0(
                 "The ",
                 strong("Energy Costs"),
-                " required to generate a unit product are shown below:"
+                " required to produce a unit of product is shown below:"
               )
-            ),
-            formatted_sentences_ec_0
+            )
           )
           
-          formatted_sentences_ec <- format_sentences(calculated_sentences_ec_1)
+          formatted_sentences_ec <- HTML(format_sentences(calculated_sentences_ec_1),
+                                         formatted_sentences_ec_0)
           
           all_products_summarized <- all_products_summarized %>%
             ungroup() %>%
@@ -3444,9 +3590,8 @@ server <- function(input, output, session) {
             
           } else if (input$en == TRUE &&
                      input$ec == TRUE && input$em == FALSE) {
-            formatted_sentences <- paste0(formatted_sentences_en,
-                                          "\n\n\n",
-                                          formatted_sentences_ec)
+            formatted_sentences_en <- paste0(formatted_sentences_en)                            
+            formatted_sentences_ec <- paste0(formatted_sentences_ec)
             
             all_products_summarized <- all_products_summarized %>%
               select(
@@ -3479,9 +3624,8 @@ server <- function(input, output, session) {
             
           } else if (input$en == TRUE &&
                      input$ec == FALSE && input$em == TRUE) {
-            formatted_sentences <- paste0(formatted_sentences_en,
-                                          "\n\n\n",
-                                          formatted_sentences_em)
+            formatted_sentences_en <- paste0(formatted_sentences_en)   
+            formatted_sentences_em <- paste0(formatted_sentences_em) 
             
             all_products_summarized <- all_products_summarized %>%
               select(
@@ -3513,10 +3657,9 @@ server <- function(input, output, session) {
               )
             
           } else if (input$en == FALSE &&
-                     input$ec == TRUE && input$em == TRUE) {
-            formatted_sentences <- paste0(formatted_sentences_ec,
-                                          "\n\n\n",
-                                          formatted_sentences_em)
+                     input$ec == TRUE && input$em == TRUE) {                           
+            formatted_sentences_ec <- paste0(formatted_sentences_ec)
+            formatted_sentences_em <- paste0(formatted_sentences_em) 
             
             all_products_summarized <- all_products_summarized %>%
               select(
@@ -3538,13 +3681,9 @@ server <- function(input, output, session) {
             
           } else if (input$en == TRUE &&
                      input$ec == TRUE && input$em == TRUE) {
-            formatted_sentences <- paste0(
-              formatted_sentences_en,
-              "\n\n\n",
-              formatted_sentences_ec,
-              "\n\n\n",
-              formatted_sentences_em
-            )
+            formatted_sentences_en <- paste0(formatted_sentences_en)                            
+            formatted_sentences_ec <- paste0(formatted_sentences_ec)
+            formatted_sentences_em <- paste0(formatted_sentences_em) 
             
             all_products_summarized <- all_products_summarized %>%
               rename(
@@ -3678,35 +3817,34 @@ server <- function(input, output, session) {
             sapply(1:num, function(i) {
               product_value_a <- all_products_summarized$revenue_based_energy_intensity_mmbtu_dollar[i]
               product_value_b <- all_products_summarized$revenue_based_energy_intensity_mmbtu_qty[i]
+              product_name <- all_products_summarized$product_name[i]
               paste0(
+                strong(product_name),
+                ": ",
                 paste0(
                   tags$u(
                     paste0(
-                      round(product_value_b, 2),
+                      scales::comma(product_value_a, accuracy = 0.01),
                       " ",
                       input$energy_units_int,
                       " of energy"
                     )
                   ),
-                  " is consumed to yield a ",
+                  " is required to produce a ",
                   tags$u("dollar revenue"),
-                  " of ",
-                  input[[paste0("products_name_", i)]],
                   "<br>",
                   "<span style='margin-left: 28px;'>",
                   tags$u(
                     paste0(
-                      round(product_value_a, 2),
+                      scales::comma(product_value_b, accuracy = 0.01),
                       " ",
                       input$energy_units_int,
                       " of energy",
                       sep = ""
                     )
                   ),
-                  " is consumed to produce ",
-                  tags$u(paste0("one ", input[[paste0("units_name_", i)]])),
-                  " of ",
-                  input[[paste0("products_name_", i)]]
+                  " is required to produce ",
+                  tags$u(paste0("one ", input[[paste0("units_name_", i)]]))
                 )
               )
             })
@@ -3720,11 +3858,14 @@ server <- function(input, output, session) {
             # Product information part
             product_value <- all_products_summarized$revenue_based_energy_costs_intensity_dollar[i]
             unit_name <- input[[paste0("units_name_", i)]]
+            product_name <- all_products_summarized$product_name[i]
             
-            product_part <- paste0(tags$u(paste0("$", round(
-              product_value, 2
-            ))),
-            " in energy costs is spent to generate a dollar in revenue")
+            product_part <- paste0(
+              strong(product_name),
+              ": ",
+              tags$u(paste0("$", scales::comma(product_value, accuracy = 0.01))),
+              " in energy costs is required to generate a dollar in revenue"
+            )
             
             # Get all energy sources and their values at once
             energy_sources <- colnames(energy_costs_summarized)[2:ncol(energy_costs_summarized)]
@@ -3738,9 +3879,9 @@ server <- function(input, output, session) {
                   energy_sources,
                   "-based intensity is ",
                   "$",
-                  round(energy_values, 2),
+                  scales::comma(energy_values, accuracy = 0.01),
                   " ",
-                  tags$u(paste0("per ", unit_name))
+                  tags$u(paste0("per dollar revenue"))
                 ),
                 NA_character_
               )
@@ -3752,7 +3893,7 @@ server <- function(input, output, session) {
             calculated_sentences_ec_0[[i]] <- paste0(product_part, ". ", energy_part, ".")
           }
           
-          formatted_sentences_ec_0 <- format_sentences(calculated_sentences_ec_0)
+          formatted_sentences_ec_0 <- format_sentences_bullet(calculated_sentences_ec_0)
           
           
           calculated_sentences_ec_1 <- c(
@@ -3767,18 +3908,18 @@ server <- function(input, output, session) {
                 strong("Revenue-based approach"),
                 ", the amount of ",
                 strong("Energy Costs"),
-                " required to produce a unit of product is shown below:"
+                " required to produce a dollar revenue of product is shown below:"
               ),
               paste0(
                 "The ",
                 strong("Energy Costs"),
-                " required to generate a unit product are shown below:"
+                " required to produce a dollar revenue of product is shown below:"
               )
-            ),
-            formatted_sentences_ec_0
+            )
           )
           
-          formatted_sentences_ec <- format_sentences(calculated_sentences_ec_1)
+          formatted_sentences_ec <- HTML(format_sentences(calculated_sentences_ec_1),
+                                         formatted_sentences_ec_0)
           
           calculated_sentences_em <- c(
             if_else(
@@ -3788,30 +3929,26 @@ server <- function(input, output, session) {
                 strong("Revenue-based approach,"),
                 " the amount of ",
                 tags$u("CO₂e (in metric ton)"),
-                " emitted from the production of ",
-                tags$u(paste0("one ", input[[paste0("units_name_", i)]])),
-                " of product is shown below:<br>"
+                " emitted from a dollar revenue of product is shown below:<br>"
               ),
               paste0(
                 "The amount of ",
                 strong("CO₂e emissions"),
                 " (in metric ton)",
-                " emitted from the production of ",
-                tags$u(paste0("one ", input[[paste0("units_name_", i)]])),
-                " of product is shown below:<br>"
+                " emitted from a dollar revenue of product is shown below:<br>"
               )
             )
             ,
             sapply(1:num, function(i) {
-              product_value <- all_products_summarized$revenue_based_emission_intensity_mtco2e_qty[i]
+              product_value <- all_products_summarized$revenue_based_emission_intensity_mtco2e_dollar[i]
+              product_name <- all_products_summarized$product_name[i]
               paste0(
+                strong(product_name),
+                ": ",
                 tags$u(paste0(
-                  round(product_value, 3), " metric ton of CO₂e"
+                  scales::comma(product_value, accuracy = 0.001), " metric ton of CO₂e"
                 )),
-                " is generated to produce ",
-                tags$u(paste0("one ", input[[paste0("units_name_", i)]])),
-                " of Product ",
-                i
+                " is generated per dollar revenue"
               )
             })
           )
@@ -3899,9 +4036,8 @@ server <- function(input, output, session) {
             
           } else if (input$en == TRUE &&
                      input$ec == TRUE && input$em == FALSE) {
-            formatted_sentences <- paste0(formatted_sentences_en,
-                                          "\n\n\n",
-                                          formatted_sentences_ec)
+            formatted_sentences_en <- paste0(formatted_sentences_en)                            
+            formatted_sentences_ec <- paste0(formatted_sentences_ec)
             
             all_products_summarized <- all_products_summarized %>%
               select(
@@ -3944,9 +4080,8 @@ server <- function(input, output, session) {
             
           } else if (input$en == TRUE &&
                      input$ec == FALSE && input$em == TRUE) {
-            formatted_sentences <- paste0(formatted_sentences_en,
-                                          "\n\n\n",
-                                          formatted_sentences_em)
+            formatted_sentences_en <- paste0(formatted_sentences_en)  
+            formatted_sentences_em <- paste0(formatted_sentences_em) 
             
             all_products_summarized <- all_products_summarized %>%
               select(
@@ -3988,10 +4123,9 @@ server <- function(input, output, session) {
               )
             
           } else if (input$en == FALSE &&
-                     input$ec == TRUE && input$em == TRUE) {
-            formatted_sentences <- paste0(formatted_sentences_ec,
-                                          "\n\n\n",
-                                          formatted_sentences_em)
+                     input$ec == TRUE && input$em == TRUE) {                            
+            formatted_sentences_ec <- paste0(formatted_sentences_ec)
+            formatted_sentences_em <- paste0(formatted_sentences_em) 
             
             all_products_summarized <- all_products_summarized %>%
               select(
@@ -4017,13 +4151,9 @@ server <- function(input, output, session) {
             
           } else if (input$en == TRUE &&
                      input$ec == TRUE && input$em == TRUE) {
-            formatted_sentences <- paste0(
-              formatted_sentences_en,
-              "\n\n\n",
-              formatted_sentences_ec,
-              "\n\n\n",
-              formatted_sentences_em
-            )
+            formatted_sentences_en <- paste0(formatted_sentences_en)                            
+            formatted_sentences_ec <- paste0(formatted_sentences_ec)
+            formatted_sentences_em <- paste0(formatted_sentences_em) 
             
             all_products_summarized <- all_products_summarized %>%
               rename(
@@ -4142,8 +4272,264 @@ server <- function(input, output, session) {
       }
     }
     
+    output$enPlot <- renderPlotly({
+      all_products_summarized_plot <<- all_products_summarized %>%
+        select(1:2, contains("energy intensity")) %>%
+        pivot_longer(cols = !c(1, 2),
+                     names_to = "intensity_name",
+                     values_to = "value")
+      
+      p <- ggplot(data = all_products_summarized_plot, 
+                  aes(x = `Product Name`, 
+                      y = value, 
+                      fill = `Product Name`)) +
+        geom_bar(stat = "identity",
+                 position = position_dodge2(preserve = "single", padding = 0.1),
+                 alpha = 0.9,
+                 width = 0.5,
+                 color = "white") +
+        facet_wrap(~ intensity_name, 
+                   scales = "free_y") +
+        scale_fill_viridis_d(option = "plasma", 
+                             begin = 0.1, 
+                             end = 0.9,
+                             direction = -1) +
+        labs(x = "Product",
+             y = paste0("Energy Intensity\n(",input$energy_units_int,"/unit)")) +
+        theme_minimal(base_size = 14) +
+        theme(
+          text = element_text(family = "sans"),
+          axis.text.x = element_text( color = "#2d3436"),
+          axis.title = element_text(face = "bold", 
+                                    color = "#2d3436"),
+          panel.grid.major.x = element_blank(),
+          panel.grid.minor.y = element_blank(),
+          panel.grid.major.y = element_line(color = "#dfe6e9"),
+          strip.background = element_rect(fill = "#f5f6fa",
+                                          color = NA),
+          strip.text = element_text(face = "bold",
+                                    color = "#2d3436"),
+          plot.margin = unit(c(1, 2, 1, 1), "cm")
+        ) +
+        scale_y_continuous(labels = comma) +
+        coord_cartesian(clip = "off") +
+        guides(fill = "none")
+      
+      
+      p2 <- ggplotly(p, tooltip = "text")
+      
+      p2 <- p2 %>%
+        config(
+          displayModeBar = T,
+          modeBarButtonsToRemove = list(
+            "zoom2d",
+            "zoomIn2d",
+            "zoomOut2d",
+            "autoScale2d",
+            "resetScale2d",
+            "hoverClosestCartesian",
+            "hoverCompareCartesian",
+            "lasso2d",
+            "select2d",
+            "zoom3d",
+            "pan3d",
+            "orbitRotation",
+            "tableRotation",
+            "handleDrag3d",
+            "resetCameraDefault3d",
+            "resetCameraLastSave3d",
+            "hoverClosest3d",
+            "zoomInGeo",
+            "zoomOutGeo",
+            "resetGeo",
+            "hoverClosestGeo",
+            "hoverClosestGl2d",
+            "hoverClosestPie",
+            "toggleHover",
+            "resetViews",
+            "toggleSpikelines"
+          )
+        )
+      
+      return(p2)
+    })
+    
+    output$ecPlot <- renderPlotly({
+      all_products_summarized_plot <- all_products_summarized %>%
+        select(1:2, contains("energy costs intensity")) %>%
+        pivot_longer(cols = !c(1, 2),
+                     names_to = "intensity_name",
+                     values_to = "value")
+      
+      p <- ggplot(data = all_products_summarized_plot, 
+                  aes(x = `Product Name`, 
+                      y = value, 
+                      fill = `Product Name`)) +
+        geom_bar(stat = "identity",
+                 position = position_dodge2(preserve = "single", padding = 0.1),
+                 alpha = 0.9,
+                 width = 0.5,
+                 color = "white") +
+        facet_wrap(~ intensity_name, 
+                   scales = "free_y") +
+        scale_fill_viridis_d(option = "plasma", 
+                             begin = 0.1, 
+                             end = 0.9,
+                             direction = -1) +
+        labs(x = "Product",
+             y = paste0("Energy Costs Intensity\n(",input$energy_units_int,"/unit)")) +
+        theme_minimal(base_size = 14) +
+        theme(
+          text = element_text(family = "sans"),
+          axis.text.x = element_text( color = "#2d3436"),
+          axis.title = element_text(face = "bold", 
+                                    color = "#2d3436"),
+          panel.grid.major.x = element_blank(),
+          panel.grid.minor.y = element_blank(),
+          panel.grid.major.y = element_line(color = "#dfe6e9"),
+          strip.background = element_rect(fill = "#f5f6fa",
+                                          color = NA),
+          strip.text = element_text(face = "bold",
+                                    color = "#2d3436"),
+          plot.margin = unit(c(1, 2, 1, 1), "cm")
+        ) +
+        scale_y_continuous(labels = comma) +
+        coord_cartesian(clip = "off") +
+        guides(fill = "none")
+      
+      p2 <- ggplotly(p, tooltip = "text")
+      
+      p2 <- p2 %>%
+        config(
+          displayModeBar = T,
+          modeBarButtonsToRemove = list(
+            "zoom2d",
+            "zoomIn2d",
+            "zoomOut2d",
+            "autoScale2d",
+            "resetScale2d",
+            "hoverClosestCartesian",
+            "hoverCompareCartesian",
+            "lasso2d",
+            "select2d",
+            "zoom3d",
+            "pan3d",
+            "orbitRotation",
+            "tableRotation",
+            "handleDrag3d",
+            "resetCameraDefault3d",
+            "resetCameraLastSave3d",
+            "hoverClosest3d",
+            "zoomInGeo",
+            "zoomOutGeo",
+            "resetGeo",
+            "hoverClosestGeo",
+            "hoverClosestGl2d",
+            "hoverClosestPie",
+            "toggleHover",
+            "resetViews",
+            "toggleSpikelines"
+          )
+        )
+      
+      return(p2)
+    })
+    
+    output$emPlot <- renderPlotly({
+      all_products_summarized_plot <- all_products_summarized %>%
+        select(1:2, contains("emissions intensity")) %>%
+        pivot_longer(cols = !c(1, 2),
+                     names_to = "intensity_name",
+                     values_to = "value")
+      
+      p <- ggplot(data = all_products_summarized_plot, 
+                  aes(x = `Product Name`, 
+                      y = value, 
+                      fill = `Product Name`)) +
+        geom_bar(stat = "identity",
+                 position = position_dodge2(preserve = "single", padding = 0.1),
+                 alpha = 0.9,
+                 width = 0.5,
+                 color = "white") +
+        facet_wrap(~ intensity_name, 
+                   scales = "free_y") +
+        scale_fill_viridis_d(option = "plasma", 
+                             begin = 0.1, 
+                             end = 0.9,
+                             direction = -1) +
+        labs(x = "Product",
+             y = paste0("Energy Intensity\n(",input$energy_units_int,"/unit)")) +
+        theme_minimal(base_size = 14) +
+        theme(
+          text = element_text(family = "sans"),
+          axis.text.x = element_text( color = "#2d3436"),
+          axis.title = element_text(face = "bold", 
+                                    color = "#2d3436"),
+          panel.grid.major.x = element_blank(),
+          panel.grid.minor.y = element_blank(),
+          panel.grid.major.y = element_line(color = "#dfe6e9"),
+          strip.background = element_rect(fill = "#f5f6fa",
+                                          color = NA),
+          strip.text = element_text(face = "bold",
+                                    color = "#2d3436"),
+          plot.margin = unit(c(1, 2, 1, 1), "cm")
+        ) +
+        scale_y_continuous(labels = comma) +
+        coord_cartesian(clip = "off") +
+        guides(fill = "none")
+      
+      p2 <- ggplotly(p, tooltip = "text")
+      
+      p2 <- p2 %>%
+        config(
+          displayModeBar = T,
+          modeBarButtonsToRemove = list(
+            "zoom2d",
+            "zoomIn2d",
+            "zoomOut2d",
+            "autoScale2d",
+            "resetScale2d",
+            "hoverClosestCartesian",
+            "hoverCompareCartesian",
+            "lasso2d",
+            "select2d",
+            "zoom3d",
+            "pan3d",
+            "orbitRotation",
+            "tableRotation",
+            "handleDrag3d",
+            "resetCameraDefault3d",
+            "resetCameraLastSave3d",
+            "hoverClosest3d",
+            "zoomInGeo",
+            "zoomOutGeo",
+            "resetGeo",
+            "hoverClosestGeo",
+            "hoverClosestGl2d",
+            "hoverClosestPie",
+            "toggleHover",
+            "resetViews",
+            "toggleSpikelines"
+          )
+        )
+      
+      return(p2)
+    })
+    
     output$textOutput1 <- renderUI({
-      HTML(paste(formatted_sentences, collapse = "<br>"))
+      if (input$ResultTabs == "Graphical Results") {
+        if (input$graph_tabs == "enPlotvalue") {
+          HTML(paste(formatted_sentences_en, collapse = "<br>"))
+        } else if (input$graph_tabs == "ecPlotvalue") {
+          HTML(paste(formatted_sentences_ec, collapse = "<br>"))
+        } else if (input$graph_tabs == "emPlotvalue") {
+          HTML(paste(formatted_sentences_em, collapse = "<br>"))
+        } else {
+          HTML(paste(formatted_sentences, collapse = "<br>"))
+        }
+      } else {
+        NULL
+      }
     })
     
     
@@ -4436,7 +4822,7 @@ server <- function(input, output, session) {
     
     output$show_dl_link <- renderUI({
       downloadLink("download_all_data",
-                   "Download Table Data (.xlsx)",
+                   "Download Underlying Data (.xlsx)",
                    style = "font-size: 14px; text-decoration: underline;")
     })
     
