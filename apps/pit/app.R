@@ -9,13 +9,95 @@ library(shinyBS)
 library(scales)
 library(plotly)
 library(ggrepel)
+library(plotly)
+library(openxlsx)
+library(bslib)
 
+# UI ----
 
 ui <- fluidPage(
   useShinyjs(),
   theme = shinytheme("flatly"),
   titlePanel("Pinch Heat Integration Tool"),
   tabsetPanel(
+    id = "tabs",
+    tabPanel(
+      "Load Inputs",
+      sidebarLayout(
+        sidebarPanel(
+          tags$style(HTML(
+            "
+      #downloadData1 {
+        font-weight: bold;
+        font-size: 18px;
+      }
+    "
+          )),
+          downloadLink("downloadData1", "Download Pinch Heat Integration Tool - Input Sheet"),
+          br(),
+          br(),
+          br(),
+          fileInput("file", "Upload PIT - Input Sheet"),
+          br(),
+          tags$style(HTML("
+      #downloadData2 {
+        font-weight: bold;
+        font-size: 16px;
+      }
+    ")),
+          downloadLink("downloadData2", "Download Tool Documentation")
+          
+        ),
+        mainPanel(
+          h1("Instructions"),
+          br(),
+          h3("Tab 1: Load Inputs"),
+          tags$p("1. Download and fill out Input Sheet.", style = "font-size: 18px;"),
+          tags$p("2. Upload completed Input Sheet.", style = "font-size: 18px;"),
+          tags$p("3. Refer to documentation if needed.", style = "font-size: 18px;"),
+          br(),
+          h3("Tab 2: Main Pinch"),
+          tags$p("1. View the Shifted Composite Curve (SCC) diagram.", style = "font-size: 18px;"),
+          tags$p("2. Add optional overlays.", style = "font-size: 18px;"),
+          tags$p("3. Download the SCC diagram.", style = "font-size: 18px;"),
+          br(),
+          h3("Tab 3: GCC"),
+          tags$p("1. View the Grand Composite Curve (GCC) diagram.", style = "font-size: 18px;"),
+          tags$p("2. Download the GCC diagram.", style = "font-size: 18px;"),
+          br(),
+          h3("Tab 4: Heat Exchanger"),
+          tags$p("1. Select streams to match using heat exchanger (HX).", style = "font-size: 18px;"),
+          tags$p("2. Specify HX effectiveness.", style = "font-size: 18px;"),
+          tags$p("3. Run analysis and download results", style = "font-size: 18px;"),
+          br(),
+          h3("Tab 5: Heat Pump"),
+          tags$p("1. Select streams to match using heat pump (HP).", style = "font-size: 18px;"),
+          tags$p("2. Select Coefficient of Performance (COP) calculation methodology.", style = "font-size: 18px;"),
+          tags$p("3. Run technical analysis.", style = "font-size: 18px;"),
+          tags$p("4. Specify economic and emissions inputs to perform economic and emission analysis.", style = "font-size: 18px;"),
+          tags$p("5. Download results.", style = "font-size: 18px;"),
+        )
+      ),
+      tags$div(
+        style = "bottom: 0; width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: center; align-items: flex-end; padding: 10px 0;",
+        # Center the container
+        tags$div(
+          style = "text-align: left; margin-right: 150px;",
+          # Left-align content and add spacing
+          tags$img(src = "lbnl.png", style = "max-height: 50px; margin-left: 0px;"),
+          tags$p(tags$b("Prakash Rao"), style = "margin-top: 0.5px; margin-left: 0px;"),
+          tags$p("prao@lbl.gov", style = "margin-top: 0.5px; margin-left: 0px;")
+        ),
+        tags$div(
+          style = "text-align: left;",
+          # Left-align content
+          tags$img(src = "ucdavis_logo_gold.png", style = "max-height: 50px;"),
+          tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px;"),
+          tags$p("jkissock@ucdavis.edu", style = "margin-top: 0.5px;")
+        )
+      )
+      
+    ),
     tabPanel("Main Pinch",
              sidebarLayout(
                sidebarPanel(
@@ -25,40 +107,34 @@ ui <- fluidPage(
         font-size: 16px;
       }
     ")),
-                 downloadLink("downloadData1", "Download Pinch Heat Integration Tool - Input Sheet"),
-                 br(),
-                 br(),
-                 fileInput("file", "Upload Excel File"),
+                 
                  textInput('title', 'Add Pinch Title'),
                  numericInput("pinchdt", "Enter Pinch Temperature", 10),
                  selectInput('pt','Show Pinch Hot/Cold Side Temperatures', c('No','Yes')),
                  selectInput('hx','Show Heat Exchanger Overlap Region', c('No','Yes'), "Yes"),
                  selectInput('hp','Show Heat Pump Source and Sink Regions', c('No','Yes'), "Yes"),
-                 numericInput("cop", HTML("Specify Heat Pump COP<sub>h</sub>"), 3),
-                 numericInput("hxappmain","Specify Heat Exchanger Approach Temperature for Heat Pump HXs" , 5),
                  selectInput('bg','Show High Temperature Heating Region', c('No','Yes')),
                  selectInput('hl','Show Stream Labels', c('No','Yes'),"Yes"),
-                 numericInput("xaxmin","Decrease x-axis by" , 0),
-                 numericInput("xax","Specify x-axis limit" , 0),
-                 numericInput("yax","Specify y-axis limit" , 0),
+                 numericInput("cop", HTML("Specify Heat Pump COP<sub>h</sub>"), 3),
+                 numericInput("hxappmain","Specify Heat Exchanger Approach Temperature for Heat Pump HXs" , 5),
+                 bsCollapse(id = "collapsePanel", open = "",
+                            bsCollapsePanel(title = HTML("<div style='background-color: #98A4A4; padding: 10px; border-radius: 4px; text-align: left; width: 100%; margin: 0 auto;'><span style='font-size: 16px; color: white;'>Click here to adjust axes. &#9660;</span></div>"),
+                                            numericInput("xaxmin","Decrease x-axis by" , 0),
+                                            numericInput("xax","Specify x-axis limit" , 0),
+                                            numericInput("yax","Specify y-axis limit" , 0)
+                            )
+                 ),
+                 
                  downloadButton("downloadPNG", "Click Here to Download plot as Image"),
                  br(),
                  br(),
-                 downloadButton("downloadtab", "Click Here to Download Pinch Summary Table"),
-                 br(),
-                 br(),
-                 tags$style(HTML("
-      #downloadData2 {
-        font-weight: bold;
-        font-size: 16px;
-      }
-    ")),
-                 downloadLink("downloadData2", "Download Tool Documentation")
+                 downloadButton("downloadtab", "Click Here to Download Pinch Summary Table")
+
                ),
                mainPanel(
                  span(textOutput("error1"), style="color:red"),
                  plotOutput("pinch_plot", height = '600px') %>% withSpinner(color="#0dc5c1"),
-                 span(textOutput("pinch_notes"), style="font-size: 10px"),
+                 span(textOutput("pinch_notes"), style="font-size: 12px"),
                  br(),
                  textOutput('ercode'),
                  br(),
@@ -69,15 +145,18 @@ ui <- fluidPage(
                )
              ),
              tags$div(
-               style = "width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: space-between; align-items: flex-end;",
+               style = "bottom: 0; width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: center; align-items: flex-end; padding: 10px 0;",
+               # Center the container
                tags$div(
-                 style = "text-align: left;",
+                 style = "text-align: left; margin-right: 150px;",
+                 # Left-align content and add spacing
                  tags$img(src = "lbnl.png", style = "max-height: 50px; margin-left: 0px;"),
                  tags$p(tags$b("Prakash Rao"), style = "margin-top: 0.5px; margin-left: 0px;"),
                  tags$p("prao@lbl.gov", style = "margin-top: 0.5px; margin-left: 0px;")
                ),
                tags$div(
                  style = "text-align: left;",
+                 # Left-align content
                  tags$img(src = "ucdavis_logo_gold.png", style = "max-height: 50px;"),
                  tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px;"),
                  tags$p("jkissock@ucdavis.edu", style = "margin-top: 0.5px;")
@@ -93,20 +172,23 @@ ui <- fluidPage(
                mainPanel(
                  fluidRow(
                  ),
-                 withSpinner(plotOutput("gcc_plot", height = '600px'), color = "#0dc5c1"),
+                 withSpinner(plotlyOutput("gcc_plot", height = '600px'), color = "#0dc5c1"),
                )
                
              ),
              tags$div(
-               style = "width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: space-between; align-items: flex-end;",
+               style = "bottom: 0; width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: center; align-items: flex-end; padding: 10px 0;",
+               # Center the container
                tags$div(
-                 style = "text-align: left;",
+                 style = "text-align: left; margin-right: 150px;",
+                 # Left-align content and add spacing
                  tags$img(src = "lbnl.png", style = "max-height: 50px; margin-left: 0px;"),
                  tags$p(tags$b("Prakash Rao"), style = "margin-top: 0.5px; margin-left: 0px;"),
                  tags$p("prao@lbl.gov", style = "margin-top: 0.5px; margin-left: 0px;")
                ),
                tags$div(
                  style = "text-align: left;",
+                 # Left-align content
                  tags$img(src = "ucdavis_logo_gold.png", style = "max-height: 50px;"),
                  tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px;"),
                  tags$p("jkissock@ucdavis.edu", style = "margin-top: 0.5px;")
@@ -187,15 +269,18 @@ ui <- fluidPage(
                
              ),
              tags$div(
-               style = "width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: space-between; align-items: flex-end;",
+               style = "bottom: 0; width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: center; align-items: flex-end; padding: 10px 0;",
+               # Center the container
                tags$div(
-                 style = "text-align: left;",
+                 style = "text-align: left; margin-right: 150px;",
+                 # Left-align content and add spacing
                  tags$img(src = "lbnl.png", style = "max-height: 50px; margin-left: 0px;"),
                  tags$p(tags$b("Prakash Rao"), style = "margin-top: 0.5px; margin-left: 0px;"),
                  tags$p("prao@lbl.gov", style = "margin-top: 0.5px; margin-left: 0px;")
                ),
                tags$div(
                  style = "text-align: left;",
+                 # Left-align content
                  tags$img(src = "ucdavis_logo_gold.png", style = "max-height: 50px;"),
                  tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px;"),
                  tags$p("jkissock@ucdavis.edu", style = "margin-top: 0.5px;")
@@ -205,11 +290,12 @@ ui <- fluidPage(
     tabPanel("Heat Pump", 
              sidebarLayout(
                sidebarPanel(
+                 h3("Step 1: Technical Analysis"),
                  selectInput("stream111", "Choose Source Stream", character(0)),
                  selectInput("stream222", "Choose Sink Stream", character(0)),
                  radioButtons('copmet','Select COP Calculation Methodolgy', choices = c("Enter Heat Pump COP", "Calculate COP from Temperatures")),
                  
-                 bsCollapse(id = "collapsePanel", open = "",
+                 bsCollapse(id = "collapsePanel2", open = "",
                             bsCollapsePanel(title = "Enter Heat Pump COP",
                                             numericInput("cop2", "", min = 1, value = 3)),
                             bsCollapsePanel(title = "Calculate COP from Temperatures",
@@ -218,12 +304,33 @@ ui <- fluidPage(
                                             tags$small("(only available for select refrigerants and temperature ranges)")
                             )
                  ),
+                 radioButtons('match', 'Match Streams:', choices = c("Completely", "Partially")),
+                 
+                 conditionalPanel(
+                   condition = "input.match == 'Partially'",
+                   numericInput("match_input", "Enter Percentage of Source Heat to use (%)", min = 1, max = 100, value = 100)
+                 ),
                  
                  numericInput("hxapp", "Specify Heat Exchanger Approach Temperature", min = 0.01, max = 100, value = 10),
-                 actionButton("run2", "Run Analysis"),
+                 actionButton("run2", "Run Technical Analysis"),
+                 h3("Step 2: Economic Analysis"),
+                 selectInput("fuel_type", "Select Baseline Fuel", c("Natural Gas", "Propane", "Petroleum Coke", "Distillate or Light Fuel Oil", 
+                                                                    "Coal", "Diesel", "Motor Gasoline")),
+                 numericInput("ng_cost", "Enter Fuel Cost ($/MMBtu)", min = 0.001, value = 4),
+                 numericInput("elec_cost", "Enter Electricity Cost ($/kW)", min = 0.001, value = 0.10),
+                 numericInput("eff_heat", "Enter Efficiency of Thermal Unit (%)", min = 0.001,max = 100, value = 80),
+                 numericInput("oper_hours", "Enter Annual Operating Hours", min = 1, value = 8000),
+                 actionButton("run3", "Run Economic Analysis"),
+                 tooltip(
+                   h3("Step 3: Emissions Analysis"),
+                   "This section uses fuel and electricity emission factors to compare emissions from natural gas equipment vs. heat pump."
+                 ),
+                 
+                 numericInput("elec_ef", "Enter Electricity Emissions Factor (kg/kWh)", min = 0.001, value = 0.20),
+                 actionButton("run4", "Run Emissions Analysis"),
                  br(),
                  br(),
-                 downloadButton("downloadtabhp", "Click Here to Heat Pump Results Table")
+                 downloadButton("downloadtabhp", "Click Here to Download Heat Pump Results Table"),
                  
                ),
                mainPanel(
@@ -276,7 +383,7 @@ ui <- fluidPage(
                 color: black;
                  position: relative;
                      top: -380px;
-                     left: 100px;
+                     left: 80px;
                           font-size: 15px;
                           width: 40px;"
                      ),
@@ -314,24 +421,31 @@ ui <- fluidPage(
                      )
                    ),
                  ),
-                 span(textOutput("image_notes"), style="font-size: 10px"),
-                 h4("Streams Data (Inputs)", align = "left"),
+                 span(textOutput("image_notes"), style="font-size: 12px"),
+                 span(textOutput("stream_data"), style="font-size: 18px"),
                  tableOutput("hptable1"),
-                 h4("Results Table", align = "left"),
+                 span(textOutput("technical_results"), style="font-size: 18px"),
                  tableOutput("resulthp"),
-                 span(textOutput("hperror"), style="color:red")
+                 span(textOutput("hperror"), style="color:red"),
+                 span(textOutput("economic_results"), style="font-size: 18px"),
+                 tableOutput("econ_table"),
+                 span(textOutput("emissions_results"), style="font-size: 18px"),
+                 tableOutput("em_table")
                )
              ),
              tags$div(
-               style = "width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: space-between; align-items: flex-end;",
+               style = "bottom: 0; width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: center; align-items: flex-end; padding: 10px 0;",
+               # Center the container
                tags$div(
-                 style = "text-align: left;",
+                 style = "text-align: left; margin-right: 150px;",
+                 # Left-align content and add spacing
                  tags$img(src = "lbnl.png", style = "max-height: 50px; margin-left: 0px;"),
                  tags$p(tags$b("Prakash Rao"), style = "margin-top: 0.5px; margin-left: 0px;"),
                  tags$p("prao@lbl.gov", style = "margin-top: 0.5px; margin-left: 0px;")
                ),
                tags$div(
                  style = "text-align: left;",
+                 # Left-align content
                  tags$img(src = "ucdavis_logo_gold.png", style = "max-height: 50px;"),
                  tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px;"),
                  tags$p("jkissock@ucdavis.edu", style = "margin-top: 0.5px;")
@@ -343,18 +457,23 @@ ui <- fluidPage(
 server <- function(input, output, session) {
   
   
-  
   excelFilePath <- 'Pinch.xlsx'
   copFilePath <- 'cop_table.xlsx'
   docFilePath <- 'User Guide for Pinch Heat Integration Tool.pdf'
   
   observeEvent(input$copmet, ({
     if (input$copmet == "Calculate COP from Temperatures") {
-      updateCollapse(session, "collapsePanel",open = "Calculate COP from Temperatures")
+      updateCollapse(session, "collapsePanel2",open = "Calculate COP from Temperatures")
     } else {
-      updateCollapse(session, "collapsePanel", open = "Enter Heat Pump COP")
+      updateCollapse(session, "collapsePanel2", open = "Enter Heat Pump COP")
     }
   }))
+  
+  observeEvent(input$file, {
+    updateTabsetPanel(session, "tabs", selected = "Main Pinch")
+  })
+  
+# Page 1 - Main Pinch ----
   
   hs <- reactiveValues()
   
@@ -547,7 +666,6 @@ server <- function(input, output, session) {
   })
   
   
-  
   observe({
     req(input$file)
     req(input$pinchdt)
@@ -729,9 +847,6 @@ server <- function(input, output, session) {
     
   })
   
-  
-  
-  
   all_q <- reactiveValues()
   
   observe({
@@ -739,14 +854,14 @@ server <- function(input, output, session) {
     req(input$pinchdt)
     forPlot.c <- forPlot.c()
     forPlot.h <- forPlot.h()
-    all_q$qhx <-  ifelse (min(forPlot.h$q_cum) >=0,round(abs(max(forPlot.c$q_cum)- abs(min(forPlot.h$q_cum))),2),
-                          round(abs(max(forPlot.c$q_cum)) - abs(min(forPlot.c$q_cum)),2))
+    all_q$qhx <-  ifelse (min(forPlot.h$q_cum) >=0,round(abs(max(forPlot.c$q_cum)- abs(min(forPlot.h$q_cum))),1),
+                          round(abs(max(forPlot.c$q_cum)) - abs(min(forPlot.c$q_cum)),1))
     
-    all_q$qhp.so <-  round(abs(min(forPlot.h$q_cum) - min(forPlot.c$q_cum)),2)
-    all_q$qhp.si.h <- round((all_q$qhp.so/(input$cop-1))*input$cop,2)
+    all_q$qhp.so <-  round(abs(min(forPlot.h$q_cum) - min(forPlot.c$q_cum)),1)
+    all_q$qhp.si.h <- round((all_q$qhp.so/(input$cop-1))*input$cop,1)
     all_q$qhp.poss <- max(forPlot.h$q_cum) - max(forPlot.c$q_cum)
-    all_q$qhp.si <- round(min(all_q$qhp.poss,all_q$qhp.si.h),2)
-    all_q$qbg <-  round(abs(max(forPlot.h$q_cum) - (max(forPlot.c$q_cum)+all_q$qhp.si)),2)
+    all_q$qhp.si <- round(min(all_q$qhp.poss,all_q$qhp.si.h),1)
+    all_q$qbg <-  round(abs(max(forPlot.h$q_cum) - (max(forPlot.c$q_cum)+all_q$qhp.si)),1)
   })
   
   lb <- reactive({
@@ -1006,13 +1121,12 @@ server <- function(input, output, session) {
     if (hs$c1l > hs$c1h & hs$c2l > hs$c2h) {
       t_init = max(forPlot.c$tout)
     }
-
-
+    
+    
     wavg.sink <- sum(wavg.h$dt)+t_init+input$hxappmain
     wavg.sink <- round(wavg.sink,1)
     wavg.sink
   })
-  
   
   data <- reactive({
     req(input$file)
@@ -1030,14 +1144,11 @@ server <- function(input, output, session) {
     data
   })
   
-  
-  
   output$myTable <- renderTable({
     
     req(hs$c1l < hs$c1h | hs$c2l < hs$c2h)
     data()
   })
-  
   
   output$error1 <- renderText({
     req(hs$c1l > hs$c1h & hs$c2l > hs$c2h)
@@ -1066,12 +1177,12 @@ server <- function(input, output, session) {
     qhp.so <- all_q$qhp.so
     qhp.si <- all_q$qhp.si
     qbg <- all_q$qbg
-    qhx.l <- all_q$qhx
+    qhx.l <- round(all_q$qhx,1)
     cst.l <- round(coor$cst,1)
     hst.l <- round(coor$hst,1)
-    qhp.so.l <- all_q$qhp.so
-    qhp.si.l <- all_q$qhp.si
-    qbg.l <- all_q$qbg
+    qhp.so.l <- round(all_q$qhp.so,1)
+    qhp.si.l <- round(all_q$qhp.si,1)
+    qbg.l <- round(all_q$qbg,1)
     lb <- lb()
     lb.c <- lb.c()
     wavg.source.l <- wavg.source()
@@ -1141,7 +1252,7 @@ server <- function(input, output, session) {
     }
     
     if (input$hx == 'Yes') {
-      t1 <- paste0("Qhx\n",comma(qhx,accuracy = 0.01)," ", q_uni)
+      t1 <- paste0("Qhx\n",comma(qhx.l)," ", q_uni)
       
       ifelse (min(forPlot.h$q_cum) >=0, 
               xint1 <- min(forPlot.h$q_cum),
@@ -1171,9 +1282,9 @@ server <- function(input, output, session) {
     }
     if (input$hp == 'Yes') {
       
-      t2 <- paste0("Qhp Source\n",comma(qhp.so.l, accuracy = 0.01)," ", q_uni)
+      t2 <- paste0("Qhp Source\n",comma(qhp.so.l)," ", q_uni)
       
-      t4 <- paste0("Qhp Sink\n",comma(qhp.si.l, accuracy = 0.01)," ", q_uni)
+      t4 <- paste0("Qhp Sink\n",comma(qhp.si.l)," ", q_uni)
       
       
       t3 <- paste0("T Source\n",wavg.source.l, t_uni)
@@ -1236,7 +1347,7 @@ server <- function(input, output, session) {
       }
       else 
       {
-        t6 <- paste0("Qht\n",comma(qbg.l, accuracy = 0.01)," ", q_uni)
+        t6 <- paste0("Qht\n",comma(qbg.l)," ", q_uni)
         pinch <- pinch +  
           geom_vline(xintercept = max(forPlot.h$q_cum), linetype = "dashed", color = "blue")+
           geom_vline(xintercept = max(forPlot.c$q_cum)+qhp.si, linetype = "dashed", color = "blue")+
@@ -1272,9 +1383,8 @@ server <- function(input, output, session) {
   })
   
   output$pinch_plot <- renderPlot({
-    
     pinch1()
-    })
+  })
   
   
   output$pinch_notes <- renderText({
@@ -1306,159 +1416,162 @@ server <- function(input, output, session) {
       write.csv(data(), file,fileEncoding="Windows-1252")
     })
   
-  ## Page 2 - GCC
-
-    gcc_plot <- reactive({
-      req(input$file)
-      req(input$pinchdt)
-      output$ercode <- renderText("")
-      
-      forPlot.h <- forPlot.h()
-      forPlot.c <- forPlot.c()
-      needs_heating <- needs_heating()
-      needs_cooling <- needs_cooling()
-      pinchdt = input$pinchdt
-      uni <- uni()
-      t_uni <- uni[[1, "tin"]]
-      q_uni <- uni[[1, "q"]]
-      
-      forPlot.c.shift <- forPlot.c %>% 
-        mutate(tout = tout - (0.5*pinchdt))
-      
-      forPlot.h.shift <- forPlot.h %>% 
-        mutate(tin = tin + (0.5*pinchdt))
-      
-      min_temp <- min(min(forPlot.h.shift$tin),min(forPlot.c.shift$tout))
-      max_temp <- max(max(forPlot.h.shift$tin),max(forPlot.c.shift$tout))
-      
-      
-      line_seg_fc<- tibble(
-        'startx' = 0,
-        'endx' = 0,
-        'starty' = 0,
-        'endy' = 0
-      )
-      for (g in 1:(nrow(forPlot.c.shift)-1)) {
-        line_seg_fc[g,'startx'] <- forPlot.c.shift[g, "q_cum"]
-        line_seg_fc[g,'endx'] <- forPlot.c.shift[g+1, "q_cum"]
-        line_seg_fc[g,'starty'] <- forPlot.c.shift[g, "tout"]
-        line_seg_fc[g,'endy'] <- forPlot.c.shift[g+1, "tout"]
-      }
-      
-      line_seg_fc <- line_seg_fc %>% 
-        mutate(slope = (endy-starty)/(endx-startx)) %>% 
-        mutate(intercept = starty - (slope*startx))
-      
-      line_seg_fh<- tibble(
-        'startx' = 0,
-        'endx' = 0,
-        'starty' = 0,
-        'endy' = 0
-      )
-      for (g in 1:(nrow(forPlot.h.shift)-1)) {
-        line_seg_fh[g,'startx'] <- forPlot.h.shift[g, "q_cum"]
-        line_seg_fh[g,'endx'] <- forPlot.h.shift[g+1, "q_cum"]
-        line_seg_fh[g,'starty'] <- forPlot.h.shift[g, "tin"]
-        line_seg_fh[g,'endy'] <- forPlot.h.shift[g+1, "tin"]
-      }
-      
-      line_seg_fh <- line_seg_fh %>% 
-        mutate(slope = (endy-starty)/(endx-startx)) %>% 
-        mutate(intercept = starty - (slope*startx))
-      
-      
-      
-      gcc <- tibble(
-        'temp' = seq(min_temp,max_temp, by=0.1),
-        'slopefh' = 0,
-        'interceptfh' = 0,
-        'slopefc' = 0,
-        'interceptfc' = 0
-      )
-      
-      for(p in 1:nrow(gcc)){
-        for (q in 1:nrow(line_seg_fh)) {
-          if(gcc[[p,'temp']]>=line_seg_fh[[q,'starty']] & gcc[[p,'temp']]<=line_seg_fh[[q,'endy']]){
-            gcc[[p,'slopefh']] <- line_seg_fh[[q,'slope']]
-            gcc[[p,'interceptfh']] <- line_seg_fh[[q,'intercept']]
-          }
-        }
-      }
-      
-      for(p in 1:nrow(gcc)){
-        for (q in 1:nrow(line_seg_fc)) {
-          if(gcc[[p,'temp']]>=line_seg_fc[[q,'starty']] & gcc[[p,'temp']]<=line_seg_fc[[q,'endy']]){
-            gcc[[p,'slopefc']] <- line_seg_fc[[q,'slope']]
-            gcc[[p,'interceptfc']] <- line_seg_fc[[q,'intercept']]
-          }
-        }
-      }
-      
-      gcc <- gcc %>% 
-        mutate(xc = (temp-interceptfc)/slopefc) %>% 
-        mutate(xh = (temp-interceptfh)/slopefh)
-      
-      idx_fc = line_seg_fc$slope == Inf
-      idx_fh =  line_seg_fh$slope == Inf
-      
-      inf_line_fc = line_seg_fc[idx_fc,]
-      inf_line_fh = line_seg_fh[idx_fh,]
-      
-      if (nrow(inf_line_fc) > 0){
-        for (i in 1:nrow(inf_line_fc)) {
-          st_y = inf_line_fc$starty[i]
-          end_y = inf_line_fc$endy[i]
-          gcc_idx = gcc$temp >= st_y & gcc$temp <= end_y
-          gcc$xc[gcc_idx] = inf_line_fc$endx[i]
-        }
-      }
-      
-      if (nrow(inf_line_fh) > 0){
-        for (i in 1:nrow(inf_line_fh)) {
-          st_y = inf_line_fh$starty[i]
-          end_y = inf_line_fh$endy[i]
-          gcc_idx = gcc$temp >= st_y & gcc$temp <= end_y
-          gcc$xh[gcc_idx] = inf_line_fh$endx[i]
-        }
-      }
-      
-      
-      gcc <- gcc %>% 
-        mutate(xc = ifelse(temp<min(forPlot.c.shift$tout), min(forPlot.c.shift$q_cum), xc)) %>% 
-        mutate(xc = ifelse(temp>max(forPlot.c.shift$tout), max(forPlot.c.shift$q_cum), xc)) %>% 
-        mutate(xh = ifelse(temp<min(forPlot.h.shift$tin), min(forPlot.h.shift$q_cum), xh)) %>% 
-        mutate(xh = ifelse(temp>max(forPlot.h.shift$tin), max(forPlot.h.shift$q_cum), xh)) %>% 
-        mutate(x = abs(xh-xc))
-      
-      
-      y_max_limit = max(gcc$x)
-      x_max_limit = max(gcc$temp)
-      
-      p <- ggplot()+
-        geom_line(data = gcc, aes(x=temp,y=x))+
-        theme_bw()+
-        ylab(paste0('Q (', q_uni, ')')) +
-        xlab(paste0('Temperature (', t_uni, ')'))+
-        theme(
-          panel.grid.minor = element_line(color = "gray", linewidth = 0.1),
-          axis.title = element_text(size = 15),
-          axis.text = element_text(size = 15),
-          plot.title = element_text(size = 24)
-        )+
-        scale_y_continuous(limits = c(0, y_max_limit)) +
-        scale_x_continuous(limits = c(0, x_max_limit)) +
-        ggtitle("Grand Composite Curve")
-      
-      gcc_plot <- p + coord_flip()
-      
-      gcc_plot
-      
-    })
+# Page 2 - GCC ----
+  
+  gcc_plot <- reactive({
+    req(input$file)
+    req(input$pinchdt)
+    output$ercode <- renderText("")
     
+    forPlot.h <- forPlot.h()
+    forPlot.c <- forPlot.c()
+    needs_heating <- needs_heating()
+    needs_cooling <- needs_cooling()
+    pinchdt = input$pinchdt
+    uni <- uni()
+    t_uni <- uni[[1, "tin"]]
+    q_uni <- uni[[1, "q"]]
+    
+    forPlot.c.shift <- forPlot.c %>% 
+      mutate(tout = tout - (0.5*pinchdt))
+    
+    forPlot.h.shift <- forPlot.h %>% 
+      mutate(tin = tin + (0.5*pinchdt))
+    
+    min_temp <- min(min(forPlot.h.shift$tin),min(forPlot.c.shift$tout))
+    max_temp <- max(max(forPlot.h.shift$tin),max(forPlot.c.shift$tout))
+    
+    
+    line_seg_fc<- tibble(
+      'startx' = 0,
+      'endx' = 0,
+      'starty' = 0,
+      'endy' = 0
+    )
+    for (g in 1:(nrow(forPlot.c.shift)-1)) {
+      line_seg_fc[g,'startx'] <- forPlot.c.shift[g, "q_cum"]
+      line_seg_fc[g,'endx'] <- forPlot.c.shift[g+1, "q_cum"]
+      line_seg_fc[g,'starty'] <- forPlot.c.shift[g, "tout"]
+      line_seg_fc[g,'endy'] <- forPlot.c.shift[g+1, "tout"]
+    }
+    
+    line_seg_fc <- line_seg_fc %>% 
+      mutate(slope = (endy-starty)/(endx-startx)) %>% 
+      mutate(intercept = starty - (slope*startx))
+    
+    line_seg_fh<- tibble(
+      'startx' = 0,
+      'endx' = 0,
+      'starty' = 0,
+      'endy' = 0
+    )
+    for (g in 1:(nrow(forPlot.h.shift)-1)) {
+      line_seg_fh[g,'startx'] <- forPlot.h.shift[g, "q_cum"]
+      line_seg_fh[g,'endx'] <- forPlot.h.shift[g+1, "q_cum"]
+      line_seg_fh[g,'starty'] <- forPlot.h.shift[g, "tin"]
+      line_seg_fh[g,'endy'] <- forPlot.h.shift[g+1, "tin"]
+    }
+    
+    line_seg_fh <- line_seg_fh %>% 
+      mutate(slope = (endy-starty)/(endx-startx)) %>% 
+      mutate(intercept = starty - (slope*startx))
+    
+    
+    
+    gcc <- tibble(
+      'temp' = seq(min_temp,max_temp, by=0.1),
+      'slopefh' = 0,
+      'interceptfh' = 0,
+      'slopefc' = 0,
+      'interceptfc' = 0
+    )
+    
+    for(p in 1:nrow(gcc)){
+      for (q in 1:nrow(line_seg_fh)) {
+        if(gcc[[p,'temp']]>=line_seg_fh[[q,'starty']] & gcc[[p,'temp']]<=line_seg_fh[[q,'endy']]){
+          gcc[[p,'slopefh']] <- line_seg_fh[[q,'slope']]
+          gcc[[p,'interceptfh']] <- line_seg_fh[[q,'intercept']]
+        }
+      }
+    }
+    
+    for(p in 1:nrow(gcc)){
+      for (q in 1:nrow(line_seg_fc)) {
+        if(gcc[[p,'temp']]>=line_seg_fc[[q,'starty']] & gcc[[p,'temp']]<=line_seg_fc[[q,'endy']]){
+          gcc[[p,'slopefc']] <- line_seg_fc[[q,'slope']]
+          gcc[[p,'interceptfc']] <- line_seg_fc[[q,'intercept']]
+        }
+      }
+    }
+    
+    gcc <- gcc %>% 
+      mutate(xc = (temp-interceptfc)/slopefc) %>% 
+      mutate(xh = (temp-interceptfh)/slopefh)
+    
+    idx_fc = line_seg_fc$slope == Inf
+    idx_fh =  line_seg_fh$slope == Inf
+    
+    inf_line_fc = line_seg_fc[idx_fc,]
+    inf_line_fh = line_seg_fh[idx_fh,]
+    
+    if (nrow(inf_line_fc) > 0){
+      for (i in 1:nrow(inf_line_fc)) {
+        st_y = inf_line_fc$starty[i]
+        end_y = inf_line_fc$endy[i]
+        gcc_idx = gcc$temp >= st_y & gcc$temp <= end_y
+        gcc$xc[gcc_idx] = inf_line_fc$endx[i]
+      }
+    }
+    
+    if (nrow(inf_line_fh) > 0){
+      for (i in 1:nrow(inf_line_fh)) {
+        st_y = inf_line_fh$starty[i]
+        end_y = inf_line_fh$endy[i]
+        gcc_idx = gcc$temp >= st_y & gcc$temp <= end_y
+        gcc$xh[gcc_idx] = inf_line_fh$endx[i]
+      }
+    }
+    
+    
+    gcc <- gcc %>% 
+      mutate(xc = ifelse(temp<min(forPlot.c.shift$tout), min(forPlot.c.shift$q_cum), xc)) %>% 
+      mutate(xc = ifelse(temp>max(forPlot.c.shift$tout), max(forPlot.c.shift$q_cum), xc)) %>% 
+      mutate(xh = ifelse(temp<min(forPlot.h.shift$tin), min(forPlot.h.shift$q_cum), xh)) %>% 
+      mutate(xh = ifelse(temp>max(forPlot.h.shift$tin), max(forPlot.h.shift$q_cum), xh)) %>% 
+      mutate(x = abs(xh-xc))
+    
+    
+    y_max_limit = max(gcc$x)
+    x_max_limit = max(gcc$temp)
+    
+    p <- ggplot(gcc, aes(x = temp, y = x)) +
+      geom_line() +  # main line, no hover text here
+      geom_point(aes(
+        text = paste0("Temperature: ", round(temp, 1), " ", t_uni, 
+                      "<br>Q: ", round(x, 1), " ", q_uni)),
+        alpha = 0  # invisible points just for hover text
+      ) +
+      theme_bw() +
+      ylab(paste0('Q (', q_uni, ')')) +
+      xlab(paste0('Temperature (', t_uni, ')')) +
+      theme(
+        panel.grid.minor = element_line(color = "gray", linewidth = 0.1),
+        axis.title = element_text(size = 15),
+        axis.text = element_text(size = 15),
+        plot.title = element_text(size = 24)
+      ) +
+      scale_y_continuous(limits = c(0, y_max_limit)) +
+      scale_x_continuous(limits = c(0, x_max_limit)) +
+      ggtitle("Grand Composite Curve")
+    
+    gcc_plot <- p + coord_flip()
+    
+  })
   
   
-  output$gcc_plot <- renderPlot({
-    gcc_plot()
+  
+  output$gcc_plot <- renderPlotly({
+    ggplotly(gcc_plot(), tooltip = "text")
   })
   
   output$downloadgcc <- downloadHandler(
@@ -1471,7 +1584,7 @@ server <- function(input, output, session) {
     })
   
   
-  #Page 2
+# Page 3 - Heat Exchanger ----
   
   observeEvent(input$file, {
     updateSelectInput(inputId = 'stream1', choices = unique(hold()$stream_no))}
@@ -1674,7 +1787,7 @@ server <- function(input, output, session) {
   
   
   
-  #Page 3
+# Page 4 - Heat Pump ----
   
   observeEvent(input$file, {
     updateSelectInput(inputId = 'stream111', choices = unique(hold()$stream_no))}
@@ -1688,9 +1801,13 @@ server <- function(input, output, session) {
     read_excel("cop_table.xlsx",sheet = ref_name)
   })
   
+  results_table <- reactiveValues()
+  
   observeEvent(input$run2,{
     stream11 <- as.numeric(input$stream111)
     stream22 <- as.numeric(input$stream222)
+    output$stream_data <- renderText("Selected Stream Data")
+    output$technical_results <- renderText("Technical Results Table")
     output$hperror <- renderText ("")
     uni <- uni()
     t_uni <- uni[[1, "tin"]]
@@ -1739,7 +1856,13 @@ server <- function(input, output, session) {
     })
     tsource_in <- hp[[stream11, "tin"]]
     tsource_out <- hp[[stream11, "tout"]]
-    qsource_avail <- hp[[stream11, "q"]]
+    if (input$match == 'Partially') {
+      qsource_avail <- hp[[stream11, "q"]]*input$match_input/100
+    } else {
+      qsource_avail <- hp[[stream11, "q"]]
+    }
+    
+    
     mcp_source <- hp[[stream11, "mcp"]]
     tsink_in <- hp[[stream22, "tin"]]
     tsink_out <- hp[[stream22, "tout"]]
@@ -1872,6 +1995,22 @@ server <- function(input, output, session) {
       cop_c <- cop - 1
       cop_combined <- cop_c + cop
       
+      win_uni <- "KW"
+      
+      if (q_uni == "MMBtu/hr") {
+        win = w_in*293.07107
+      } else if (q_uni == "kJ/hr") {
+        win = w_in*0.0002777778
+      } else if (q_uni == "kW") {
+        win = w_in
+      } else if (q_uni == "MW") {
+        win = w_in*1000
+      } else if (q_uni == "MJ/hr") {
+        win = w_in*0.277777778
+      } else {
+        win = w_in
+        win_uni = q_uni
+      }
       
       if (is.na(tsource_out_act) | is.na(tsink_out_act)) {
         output$hperror <- renderText("Error: COP calculation not available for this temperature range. Consider manually enterting COP.")
@@ -1881,83 +2020,62 @@ server <- function(input, output, session) {
         output$hperror <- renderText("Error: Calculated COP is less than 1. Lift may not be achievable.")
       } else if (tc > 212){
         output$hperror <- renderText("Warning: High Temperature at Condenser, a suitable Heat Pump may not be available.")
+        
+        output$tcin_hp <- renderText({
+          t <- round(tsource_in,0)
+          val <- paste0(t, " ",t_uni)
+          val
+        })
+        output$thin_hp  <- renderText({
+          t <- round(tsink_in,0)
+          val <- paste0(t, " ",t_uni)
+          val
+        })
+        output$thout_hp  <- renderText({
+          t <- round(tsink_out_act,0)
+          val <- paste0(t, " ",t_uni)
+          val
+        })
+        output$tcout_hp  <- renderText({
+          t <- round(tsource_out_act,0)
+          val <- paste0(t, " ",t_uni)
+          val
+        })
+        output$qsource <- renderText({
+          t <- round(qsource_act,1)
+          val <- paste0(t, " ",q_uni)
+          val
+        })
+        output$qsink <- renderText({
+          t <- round(qsink_act,1)
+          val <- paste0(t, " ",q_uni)
+          val
+        })
+        output$tsink <- renderText({
+          t <- round(tc,1)
+          val <- paste0(t, " ",t_uni)
+          val
+        })
+        output$tsource <- renderText({
+          t <- round(te,1)
+          val <- paste0(t, " ",t_uni)
+          val
+        })
+        output$winhp <- renderText({
+          
+          t <- round(win,1)
+          val <- paste0(t, " ",win_uni)
+          val
+        })
         results_hp <- tibble(
           'Title' = c('Tso,in','Tso,out','Tsi,in',
                       'Tsi,out','Q,source','Q,sink','W,in',"COP,h", "COP,c","COP,combined"),
-          'Value' = c(tsource_in,tsource_out_act,tsink_in,tsink_out_act,qsource_act,qsink_act, w_in,cop,cop_c,cop_combined),
-          'Units' = c(t_uni,t_uni,t_uni,t_uni,q_uni,q_uni,q_uni," "," "," ")
+          'Value' = c(tsource_in,tsource_out_act,tsink_in,tsink_out_act,qsource_act,qsink_act, win,cop,cop_c,cop_combined),
+          'Units' = c(t_uni,t_uni,t_uni,t_uni,q_uni,q_uni,win_uni," "," "," ")
         )
-        output$tcin_hp <- renderText({
-          t <- round(tsource_in,0)
-          val <- paste0(t, " ",t_uni)
-          val
-        })
-        output$thin_hp  <- renderText({
-          t <- round(tsink_in,0)
-          val <- paste0(t, " ",t_uni)
-          val
-        })
-        output$thout_hp  <- renderText({
-          t <- round(tsink_out_act,0)
-          val <- paste0(t, " ",t_uni)
-          val
-        })
-        output$tcout_hp  <- renderText({
-          t <- round(tsource_out_act,0)
-          val <- paste0(t, " ",t_uni)
-          val
-        })
-        output$qsource <- renderText({
-          t <- round(qsource_act,1)
-          val <- paste0(t, " ",q_uni)
-          val
-        })
-        output$qsink <- renderText({
-          t <- round(qsink_act,1)
-          val <- paste0(t, " ",q_uni)
-          val
-        })
-        output$tsink <- renderText({
-          t <- round(tc,1)
-          val <- paste0(t, " ",t_uni)
-          val
-        })
-        output$tsource <- renderText({
-          t <- round(te,1)
-          val <- paste0(t, " ",t_uni)
-          val
-        })
-        output$winhp <- renderText({
-          
-          win_uni <- "KW"
-          
-          if (q_uni == "MMBtu/hr") {
-            win = w_in*293.07107
-          } else if (q_uni == "kJ/hr") {
-            win = w_in*0.0002777778
-          } else if (q_uni == "kW") {
-            win = w_in
-          } else if (q_uni == "MW") {
-            win = w_in*1000
-          } else if (q_uni == "MJ/hr") {
-            win = w_in*0.277777778
-          } else {
-            win = w_in
-            win_uni = q_uni
-          }
-          t <- round(win,1)
-          val <- paste0(t, " ",win_uni)
-          val
-        })
       }
       else {
-        results_hp <- tibble(
-          'Title' = c('Th,1','Th,2','Tc,1',
-                      'Tc,2','Q,evap','Q,cond','W,in',"COP,h", "COP,c","COP,combined"),
-          'Value' = c(tsource_in,tsource_out_act,tsink_in,tsink_out_act,qsource_act,qsink_act, w_in,cop,cop_c,cop_combined),
-          'Units' = c(t_uni,t_uni,t_uni,t_uni,q_uni,q_uni,q_uni," "," "," ")
-        )
-        results_hp$Value <- formatC(results_hp$Value, digits = 3, format = "g") 
+        
         output$tcin_hp <- renderText({
           t <- round(tsource_in,0)
           val <- paste0(t, " ",t_uni)
@@ -2000,26 +2118,17 @@ server <- function(input, output, session) {
         })
         output$winhp <- renderText({
           
-          win_uni <- "KW"
           
-          if (q_uni == "MMBtu/hr") {
-            win = w_in*293.07107
-          } else if (q_uni == "kJ/hr") {
-            win = w_in*0.0002777778
-          } else if (q_uni == "kW") {
-            win = w_in
-          } else if (q_uni == "MW") {
-            win = w_in*1000
-          } else if (q_uni == "MJ/hr") {
-            win = w_in*0.277777778
-          } else {
-            win = w_in
-            win_uni = q_uni
-          }
           t <- round(win,1)
           val <- paste0(t, " ",win_uni)
           val
         })
+        results_hp <- tibble(
+          'Title' = c('Tso,in','Tso,out','Tsi,in',
+                      'Tsi,out','Q,source','Q,sink','W,in',"COP,h", "COP,c","COP,combined"),
+          'Value' = c(tsource_in,tsource_out_act,tsink_in,tsink_out_act,qsource_act,qsink_act, win,cop,cop_c,cop_combined),
+          'Units' = c(t_uni,t_uni,t_uni,t_uni,q_uni,q_uni,win_uni," "," "," ")
+        )
       }
       
       
@@ -2029,16 +2138,118 @@ server <- function(input, output, session) {
       output$hperror <- renderText("error: Please verify that Source Stream is a Needs Cooling and 
                                    Sink Stream is a Needs Heating Stream")
     }
+    #results_hp$Value <- formatC(results_hp$Value, digits = 3, format = "g")
     output$resulthp <- renderTable(results_hp)
+    results_table$results_hp_rv = results_hp
     
-    output$downloadtabhp <- downloadHandler(
-      filename = "Heat Pump Results.csv",
-      content = function(file) {
-        write.csv(results_hp, file,fileEncoding="Windows-1252")
-      })
+    
+    # output$downloadtabhp <- downloadHandler(
+    #   filename = "Heat Pump Results.csv",
+    #   content = function(file) {
+    #     write.csv(results_hp, file,fileEncoding="Windows-1252")
+    #   })
     
   })
   
+  observeEvent(input$run3, {
+    results_hp = results_table$results_hp_rv 
+    hp_cost = input$hp_cost
+    ng_price = input$ng_cost
+    elec_price = input$elec_cost
+    oper_hours = input$oper_hours
+    output$economic_results <- renderText("Economic Results Table")
+    
+    q_cond_value <- results_hp$Value[results_hp$Title == "Q,sink"]
+    w_in_value <- results_hp$Value[results_hp$Title == "W,in"]
+    
+    ng_cost = q_cond_value*ng_price*oper_hours/(input$eff_heat/100)
+    elec_cost = w_in_value*elec_price*oper_hours
+    energy_savings = ng_cost - elec_cost
+    
+    hp_cost = q_cond_value*293.07107*1.2*hp_cost
+    
+    simple_payback = max(0,hp_cost/energy_savings)
+    
+    econ_results = tibble(
+      'Title' = c("Natural Gas Cost", "Electricity Cost", "Energy Cost Savings"),
+      'Value' = c(ng_cost, elec_cost, energy_savings),
+      'Units' = c("($)","($)","($)"))
+    
+    output$econ_table <- renderTable({
+      econ_results
+    }, digits = 0, # Number of decimal places
+    format.args = list(big.mark = ","))
+    
+    results_table$econ_table <- econ_results
+  })
+  
+  observeEvent(input$run4, {
+    results_hp = results_table$results_hp_rv 
+    elec_ef = input$elec_ef
+    oper_hours = input$oper_hours
+    
+    q_cond_value <- results_hp$Value[results_hp$Title == "Q,sink"]
+    q_cond_units <- results_hp$Units[results_hp$Title == "Q,sink"]
+    w_in_value <- results_hp$Value[results_hp$Title == "W,in"]
+    
+    output$emissions_results <- renderText("Emissions Results Table")
+    
+    emissions_data <- data.frame(
+     'Title'= c("Natural Gas", "Propane", "Petroleum Coke", "Distillate or Light Fuel Oil", 
+                "Coal", "Diesel", "Motor Gasoline")
+    )
+    emissions_data <- emissions_data %>% 
+      mutate(      'kJ/hr' = c(5.0E-08, 6.0E-08, 9.7E-08, 7.0E-08, 9.1E-08, 7.0E-08, 6.7E-08),
+                   'kW' = c(1.8E-04, 2.1E-04, 3.5E-04, 2.5E-04, 3.3E-04, 2.5E-04, 2.4E-04),
+                   'MMBtu/hr' = c(5.3E-02, 6.3E-02, 1.0E-01, 7.4E-02, 9.6E-02, 7.4E-02, 7.1E-02),
+                   'MW' = kW*1000,
+                   'MJ/hr' = `kJ/hr`*1000)
+    
+    fuel_ef = emissions_data[emissions_data$Title == input$fuel_type, q_cond_units]*1000 #convert from MT to kg.
+    
+    
+    ng_emissions = q_cond_value*fuel_ef*oper_hours/(input$eff_heat/100)
+    elec_emisions = w_in_value*elec_ef*oper_hours
+    emissions_savings = ng_emissions - elec_emisions
+    
+    emission_results = tibble(
+      'Title' = c("Natural Gas Emissions", "Electricity Emissions", "Emissions Savings"),
+      'Value' = c(ng_emissions, elec_emisions, emissions_savings),
+      'Units' = c("(kg CO2)","(kg CO2)","(kg CO2)"))
+    
+    emission_results$Value <- round(emission_results$Value / 10) * 10      
+    output$em_table <- renderTable({
+      emission_results
+    }, digits = 0, # Number of decimal places
+    format.args = list(big.mark = ","))
+    results_table$em_table <- emission_results
+    
+  })
+  
+  output$downloadtabhp <- downloadHandler(
+    filename = function() {
+      "Heat_Pump_Results.xlsx"
+    },
+    content = function(file) {
+      wb <- createWorkbook()
+      results_hp <- results_table$results_hp_rv
+      econ_table <- results_table$econ_table
+      em_table <- results_table$em_table
+      
+      # Add each table to a separate worksheet
+      addWorksheet(wb, "Technical Results")
+      writeData(wb, "Technical Results", results_hp)
+      
+      addWorksheet(wb, "Economic Results")
+      writeData(wb, "Economic Results", econ_table)
+      
+      addWorksheet(wb, "Emissions Results")
+      writeData(wb, "Emissions Results", em_table)
+      
+      # Save workbook
+      saveWorkbook(wb, file, overwrite = TRUE)
+    }
+  )
 }
 
 shinyApp(ui = ui, server = server)
