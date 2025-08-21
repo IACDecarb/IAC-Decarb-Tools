@@ -188,7 +188,24 @@ ui <- fluidPage(
       width: 95%;
       padding-bottom: 5%;
     }
-  }    
+  }  
+  .nav-tabs > li.active > a,
+      .nav-tabs > li.active > a:hover,
+      .nav-tabs > li.active > a:focus {
+        background-color: #E7E7E7; /* A light gray background */
+        font-weight: bold;        /* Make the text bold */
+      }
+      
+   #ResultTabs .nav-tabs .active > a {
+        background-color: #E7E7E7 !important;
+        font-weight: bold !important;
+      }
+
+      #graph_tabs .nav-link.active {
+        background-color: #D6EAF8 !important;
+        font-weight: bold !important;
+        border-bottom-color: #2E86C1 !important;
+      }
       "
       )
     ),
@@ -1040,7 +1057,8 @@ server <- function(input, output, session) {
                     maximumValue = "100",
                     align = "left",
                     width = "95%",
-                    decimalPlaces = 0
+                    decimalPlaces = 2,
+                    allowDecimalPadding = TRUE
                   )
                 )
               ),
@@ -1155,16 +1173,17 @@ server <- function(input, output, session) {
                     label =  if_else(
                       input$revenue_name == "Gross product revenue ($)",
                       paste("Enter Product Gross Revenue ($):"),
-                      paste("Enter Product Revenue per ", input$units_name, ":")
+                      paste("Enter Product Revenue per ", input[[paste0("units_name_", i)]], ":")
                     ),
                     value = num_cost_val,
-                    decimalPlaces = 0,
+                    decimalPlaces = 2,
                     currencySymbol = "$",
                     currencySymbolPlacement = "p",
                     minimumValue = "0",
                     maximumValue = "10000000000000000000",
                     align = "left",
-                    width = "95%"
+                    width = "95%",
+                    allowDecimalPadding = TRUE
                   )
                 )
               ),
@@ -1219,7 +1238,8 @@ server <- function(input, output, session) {
             paste0("Enter Product Quantity (", input[[paste0("units_name_", i)]], "):"),
             value = num_val,
             min = 0.0001,
-            width = "95%"
+            width = "95%",
+            step = 0.001
           )
         })
       })
@@ -1248,7 +1268,8 @@ server <- function(input, output, session) {
               ),
               value = num_qty_val,
               min = 0.0001,
-              width = "95%"
+              width = "95%",
+              step = 0.001
             )
           })
         })
@@ -1275,6 +1296,7 @@ server <- function(input, output, session) {
               ),
               value = num_qty_val,
               min = 0.0001,
+              step = 0.001,
               width = "95%"
             )
           })
@@ -2762,7 +2784,8 @@ server <- function(input, output, session) {
           relocate(product_unit, .after = product_qty) %>%
           relocate(product_name, .before = product_qty)
         
-        all_products_summarized <- all_products_breakdown %>%
+        all_products_summarized <- all_products_breakdown %>% 
+          mutate(product_name = factor(product_name, levels = unique(product_name))) %>%
           group_by(product_name, product_unit) %>%
           summarise(
             total_energy_qty_based_mmbtu_yr = sum(qty_based_energy, na.rm = TRUE),
@@ -2770,8 +2793,9 @@ server <- function(input, output, session) {
             total_energy_costs = sum(qty_based_energy_costs, na.rm = TRUE),
             energy_costs_intensity_dollar_qty = sum(energy_cost_based_intensity, na.rm = TRUE),
             total_emissions_qty_based_mtco2e_yr = sum(qty_based_emissions, na.rm = TRUE),
-            qty_based_emission_intensity_mtco2e_ton = sum(qty_based_em_intensity, na.rm = TRUE)
-          )
+            qty_based_emission_intensity_mtco2e_ton = sum(qty_based_em_intensity, na.rm = TRUE)#
+          ) 
+        
         
         #Summarize all_products_breakdown by energy costs of each energy source types, and make the dataframe wider to be able to index in the
         #calculated_sentences dataframe below
@@ -3363,6 +3387,7 @@ server <- function(input, output, session) {
         
         if (input$revenue_name == "Revenue %") {
           all_products_summarized <- all_products_breakdown %>%
+            mutate(product_name = factor(product_name, levels = unique(product_name))) %>%
             group_by(product_number, product_name, product_unit) %>%
             summarise(
               total_energy_revenue_based_mmbtu_yr = sum(revenue_based_energy, na.rm = T),
@@ -3776,6 +3801,7 @@ server <- function(input, output, session) {
           
         } else {
           all_products_summarized <- all_products_breakdown %>%
+            mutate(product_name = factor(product_name, levels = unique(product_name))) %>%
             group_by(product_number, product_name, product_unit) %>%
             summarise(
               total_energy_revenue_based_mmbtu_yr = sum(revenue_based_energy, na.rm = T),
@@ -4295,7 +4321,7 @@ server <- function(input, output, session) {
                              end = 0.9,
                              direction = -1) +
         labs(x = "Product",
-             y = paste0("Energy Intensity\n(",input$energy_units_int,"/unit)")) +
+             y = "") +
         theme_minimal(base_size = 14) +
         theme(
           text = element_text(family = "sans"),
@@ -4377,7 +4403,7 @@ server <- function(input, output, session) {
                              end = 0.9,
                              direction = -1) +
         labs(x = "Product",
-             y = paste0("Energy Costs Intensity\n(",input$energy_units_int,"/unit)")) +
+             y = "") +
         theme_minimal(base_size = 14) +
         theme(
           text = element_text(family = "sans"),
@@ -4458,7 +4484,7 @@ server <- function(input, output, session) {
                              end = 0.9,
                              direction = -1) +
         labs(x = "Product",
-             y = paste0("Energy Intensity\n(",input$energy_units_int,"/unit)")) +
+             y = "")+
         theme_minimal(base_size = 14) +
         theme(
           text = element_text(family = "sans"),
