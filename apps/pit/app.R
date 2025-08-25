@@ -129,7 +129,7 @@ ui <- fluidPage(
                  br(),
                  br(),
                  downloadButton("downloadtab", "Click Here to Download Pinch Summary Table")
-
+                 
                ),
                mainPanel(
                  span(textOutput("error1"), style="color:red"),
@@ -291,10 +291,25 @@ ui <- fluidPage(
              sidebarLayout(
                sidebarPanel(
                  h3("Step 1: Technical Analysis"),
-                 selectInput("stream111", "Choose Source Stream", character(0)),
-                 selectInput("stream222", "Choose Sink Stream", character(0)),
-                 radioButtons('copmet','Select COP Calculation Methodolgy', choices = c("Enter Heat Pump COP", "Calculate COP from Temperatures")),
-                 
+                 radioButtons("t_or_s", "Perform Heat Pump Simulation using:", choices = c('Streams','Temperature Levels')),
+                 conditionalPanel(
+                   condition = "input.t_or_s == 'Streams'",
+                   selectInput("stream111", "Choose Source Stream", character(0)),
+                   selectInput("stream222", "Choose Sink Stream", character(0)),
+                   radioButtons('match', 'Match Streams:', choices = c("Completely", "Partially")),
+                   conditionalPanel(
+                     condition = "input.match == 'Partially'",
+                     numericInput("match_input", "Enter Percentage of Source Heat to use (%)", min = 1, max = 100, value = 100)
+                   ),
+                   numericInput("hxapp", "Specify Heat Exchanger Approach Temperature", min = 0.01, max = 100, value = 10)
+                 ),
+                 conditionalPanel(
+                   condition = "input.t_or_s == 'Temperature Levels'",
+                   h5(em("Please run GCC Tab before using Temperature Levels as inputs.")),
+                   numericInput("source_temp", "Select Source Temperature Level", value = 0),
+                   numericInput("sink_temp", "Select Sink Temperature Level", value = 0)
+                 ),
+                 radioButtons('copmet','Select COP Calculation Methodolgy', choices = c("Calculate COP from Temperatures", "Enter Heat Pump COP")),
                  bsCollapse(id = "collapsePanel2", open = "",
                             bsCollapsePanel(title = "Enter Heat Pump COP",
                                             numericInput("cop2", "", min = 1, value = 3)),
@@ -304,16 +319,9 @@ ui <- fluidPage(
                                             tags$small("(only available for select refrigerants and temperature ranges)")
                             )
                  ),
-                 radioButtons('match', 'Match Streams:', choices = c("Completely", "Partially")),
                  
-                 conditionalPanel(
-                   condition = "input.match == 'Partially'",
-                   numericInput("match_input", "Enter Percentage of Source Heat to use (%)", min = 1, max = 100, value = 100)
-                 ),
-                 
-                 numericInput("hxapp", "Specify Heat Exchanger Approach Temperature", min = 0.01, max = 100, value = 10),
                  actionButton("run2", "Run Technical Analysis"),
-                 h3("Step 2: Economic Analysis"),
+                 h3("Step 2: Energy Cost Analysis"),
                  selectInput("fuel_type", "Select Baseline Fuel", c("Natural Gas", "Propane", "Petroleum Coke", "Distillate or Light Fuel Oil", 
                                                                     "Coal", "Diesel", "Motor Gasoline")),
                  numericInput("ng_cost", "Enter Fuel Cost ($/MMBtu)", min = 0.001, value = 4),
@@ -453,6 +461,7 @@ ui <- fluidPage(
              ))
   )
 )
+# Server ----
 
 server <- function(input, output, session) {
   
@@ -473,7 +482,7 @@ server <- function(input, output, session) {
     updateTabsetPanel(session, "tabs", selected = "Main Pinch")
   })
   
-# Page 1 - Main Pinch ----
+  # Page 1 - Main Pinch ----
   
   hs <- reactiveValues()
   
@@ -536,7 +545,7 @@ server <- function(input, output, session) {
       filter(stream_type == "Needs Cooling")
     for (ii in  1:nrow(hold)) {
       if (hold$tin[ii] == hold$tout[ii]) {
-        hold$tout[ii] = hold$tout[ii] - 0.0001 
+        hold$tout[ii] = hold$tout[ii] - 0.0000001 
       }
     }
     hold
@@ -550,7 +559,7 @@ server <- function(input, output, session) {
       filter(stream_type == "Needs Heating")
     for (ii in  1:nrow(hold)) {
       if (hold$tin[ii] == hold$tout[ii]) {
-        hold$tout[ii] = hold$tout[ii] + 0.0001 
+        hold$tout[ii] = hold$tout[ii] + 0.0000001 
       }
     }
     hold
@@ -1135,7 +1144,7 @@ server <- function(input, output, session) {
     t_uni <- uni[[1, "tin"]]
     q_uni <- uni[[1, "q"]]
     data <- tibble(
-      'Title' = c('Heat Exchange Potential','Heat Pump - Source Potential','Heat Pump - Source Temperature',
+      'Metric' = c('Heat Exchange Potential','Heat Pump - Source Potential','Heat Pump - Source Temperature',
                   'Heat Pump - Sink Potential','Heat Pump - Sink Temperature','High Temperature Heating Requirement','Heat Pump Source Streams','Heat Exchange Streams - Needs Cooling',
                   'Heat Exchange Streams - Needs Heating','Heat Pump Sink Streams','High Temperature Heating Streams'),
       'Value' = c(all_q$qhx,all_q$qhp.so,wavg.source(),all_q$qhp.si,wavg.sink(),all_q$qbg, lb.hp.so(),lb.hx.c(), lb.hx.nh(), lb.hp.si(),lb.ht()),
@@ -1200,7 +1209,7 @@ server <- function(input, output, session) {
     }
     y_min = min(0,min(forPlot.c$tout) - 5,min(forPlot.h$tin) - 5)
     
-    tit <- paste0('Pinch Analysis for ',input$title)
+    tit <- paste0('Pinch Analysis for ',input$Metric)
     pinch <- ggplot() +
       geom_line(data = forPlot.c, aes(x = q_cum, y = tout, color = "Needs Cooling"),arrow = arrow(length=unit(0.30,"cm"), ends="first", type = "closed")) +
       geom_line(data = forPlot.h, aes(x = q_cum, y = tin, color = "Needs Heating"), arrow = arrow(length=unit(0.30,"cm"), ends="last", type = "closed")) +
@@ -1416,7 +1425,9 @@ server <- function(input, output, session) {
       write.csv(data(), file,fileEncoding="Windows-1252")
     })
   
-# Page 2 - GCC ----
+  # Page 2 - GCC ----
+  
+  gcc_data <- reactiveValues()
   
   gcc_plot <- reactive({
     req(input$file)
@@ -1539,7 +1550,7 @@ server <- function(input, output, session) {
       mutate(xh = ifelse(temp<min(forPlot.h.shift$tin), min(forPlot.h.shift$q_cum), xh)) %>% 
       mutate(xh = ifelse(temp>max(forPlot.h.shift$tin), max(forPlot.h.shift$q_cum), xh)) %>% 
       mutate(x = abs(xh-xc))
-    
+    gcc_data$gcc_table <- gcc
     
     y_max_limit = max(gcc$x)
     x_max_limit = max(gcc$temp)
@@ -1564,7 +1575,7 @@ server <- function(input, output, session) {
       scale_x_continuous(limits = c(0, x_max_limit)) +
       ggtitle("Grand Composite Curve")
     
-    gcc_plot <- p + coord_flip()
+    gcc_plot <- p + coord_flip() 
     
   })
   
@@ -1584,7 +1595,7 @@ server <- function(input, output, session) {
     })
   
   
-# Page 3 - Heat Exchanger ----
+  # Page 3 - Heat Exchanger ----
   
   observeEvent(input$file, {
     updateSelectInput(inputId = 'stream1', choices = unique(hold()$stream_no))}
@@ -1688,7 +1699,7 @@ server <- function(input, output, session) {
       req(input$file)
       req(input$pinchdt)
       results_hx <- tibble(
-        'Title' = c(),
+        'Metric' = c(),
         'Value' = c(),
         'Units' = c()
       )
@@ -1722,7 +1733,7 @@ server <- function(input, output, session) {
         req(input$file)
         req(input$pinchdt)
         results_hx <- tibble(
-          'Title' = c('Th,in','Th,out','Tc,in',
+          'Metric' = c('Th,in','Th,out','Tc,in',
                       'Tc,out','Q,hx'),
           'Value' = c(all_hx$th_in,all_hx$th_out,all_hx$tc_in,all_hx$tc_out,all_hx$q_hx),
           'Units' = c(t_uni,t_uni,t_uni,t_uni,q_uni)
@@ -1736,7 +1747,7 @@ server <- function(input, output, session) {
           req(input$file)
           req(input$pinchdt)
           results_hx <- tibble(
-            'Title' = c(),
+            'Metric' = c(),
             'Value' = c(),
             'Units' = c()
           )
@@ -1787,7 +1798,7 @@ server <- function(input, output, session) {
   
   
   
-# Page 4 - Heat Pump ----
+  # Page 4 - Heat Pump ----
   
   observeEvent(input$file, {
     updateSelectInput(inputId = 'stream111', choices = unique(hold()$stream_no))}
@@ -1804,137 +1815,423 @@ server <- function(input, output, session) {
   results_table <- reactiveValues()
   
   observeEvent(input$run2,{
-    stream11 <- as.numeric(input$stream111)
-    stream22 <- as.numeric(input$stream222)
-    output$stream_data <- renderText("Selected Stream Data")
-    output$technical_results <- renderText("Technical Results Table")
+    cop_table <- cop_table()
     output$hperror <- renderText ("")
     uni <- uni()
     t_uni <- uni[[1, "tin"]]
     q_uni <- uni[[1, "q"]]
-    streams_hp <- hold()
-    hxapp <- input$hxapp
-    hp <- streams_hp  %>% 
-      mutate(mcp = abs(q/(tout - tin)))
-    hp1 <- streams_hp %>% 
-      filter(stream_no == stream11 | stream_no == stream22) %>% 
-      mutate(mcp = round(abs(q/(tout - tin)),2)) %>% 
-      mutate(tin = round(tin,0)) %>% 
-      mutate(tout = round(tout,0)) %>% 
-      mutate(q = round(q,1))
-    
-    output$image_notes <- renderText("Notes: 1. Qevap: Q evaporator. 2. Qcond: Q Condenser")
-    hp1$stream_no <- formatC(hp1$stream_no, digits = 0)
-    hp1$stream_no <- as.character(hp1$stream_no)
-    hp1$stream_name <- as.character(hp1$stream_name) 
-    hp1$tin <- as.character(hp1$tin)
-    hp1$tout <- as.character(hp1$tout)
-    hp1$q <- as.character(hp1$q)
-    hp1$stream_type <- as.character(hp1$stream_type)
-    hp1$mcp <- as.character(hp1$mcp)
-    
-    if (grepl("/hr", q_uni)){
-      mcp_uni_df = paste(q_uni,t_uni)
-    } else {
-      mcp_uni_df <- paste(q_uni,"/",t_uni)
-    }
-    hp1 <- hp1 %>% 
-      add_row(stream_no = '(-)', stream_name = '(-)', tin = paste("(",t_uni,")"),
-              tout = paste("(",t_uni,")"),q = paste("(",q_uni,")"), stream_type = '(-)', mcp = paste("(",mcp_uni_df,")"),.before = 1)  %>% 
-      rename(
-        'S.No.' = stream_no,
-        'Stream Name' = stream_name,
-        'Temp,in' = tin,
-        'Temp,out' = tout,
-        'Q' = q,
-        'Stream Type' = stream_type,
-        'Mass Capacitance' = mcp
-      )
-    output$hptable1 <- renderTable({
-      
-      hp1
-    })
-    tsource_in <- hp[[stream11, "tin"]]
-    tsource_out <- hp[[stream11, "tout"]]
-    if (input$match == 'Partially') {
-      qsource_avail <- hp[[stream11, "q"]]*input$match_input/100
-    } else {
-      qsource_avail <- hp[[stream11, "q"]]
-    }
-    
-    
-    mcp_source <- hp[[stream11, "mcp"]]
-    tsink_in <- hp[[stream22, "tin"]]
-    tsink_out <- hp[[stream22, "tout"]]
-    qsink_req <- hp[[stream22, "q"]]
-    mcp_sink <- hp[[stream22, "mcp"]]
-    cop_table <- cop_table()
-    
     output$tcin_hp <- renderText({
-      ""
+      "    "
     })
     output$thin_hp  <- renderText({
-      ""
+      "    "
     })
+    
     output$thout_hp  <- renderText({
-      ""
+      "    "
     })
     output$tcout_hp  <- renderText({
-      ""
+      "    "
     })
     output$qsource <- renderText({
-      ""
+      "   "
     })
     output$qsink <- renderText({
-      ""
+      "   "
     })
     output$tsink <- renderText({
-      ""
+      "   "
     })
     output$tsource <- renderText({
-      ""
+      "   "
     })
     output$winhp <- renderText({
-      ""
+      "   "
     })
-    results_hp <- tibble(
-      'Title' = c(),
-      'Value' = c(),
-      'Units' = c()
-    )
-    
-    if (hp[[stream22, "stream_type"]] == "Needs Heating" & 
-        hp[[stream11, "stream_type"]] == "Needs Cooling") {
+    # Stream Inputs ----
+    if (input$t_or_s == "Streams"){
       
-      if (input$copmet == 'Enter Heat Pump COP') {
-        cop <- input$cop2
-        qsink_avail <- qsource_avail*(cop/(cop-1))
-        qsink_act <- min(qsink_avail, qsink_req)
-        qsource_act <- qsink_act*((cop-1)/cop)
-        tsource_out_act <- tsource_in - qsource_act/mcp_source
-        tsink_out_act <- (qsink_act/mcp_sink)+tsink_in
-        w_in <- qsink_act/cop
+      
+      stream11 <- as.numeric(input$stream111)
+      stream22 <- as.numeric(input$stream222)
+      output$stream_data <- renderText("Selected Stream Data")
+      output$technical_results <- renderText("Technical Results Table")
+      
+      streams_hp <- hold()
+      hxapp <- input$hxapp
+      hp <- streams_hp  %>% 
+        mutate(mcp = abs(q/(tout - tin)))
+      hp1 <- streams_hp %>% 
+        filter(stream_no == stream11 | stream_no == stream22) %>% 
+        mutate(mcp = round(abs(q/(tout - tin)),2)) %>% 
+        mutate(tin = round(tin,0)) %>% 
+        mutate(tout = round(tout,0)) %>% 
+        mutate(q = round(q,1))
+      
+      output$image_notes <- renderText("Notes: 1. Qevap: Q evaporator. 2. Qcond: Q Condenser")
+      hp1$stream_no <- formatC(hp1$stream_no, digits = 0)
+      hp1$stream_no <- as.character(hp1$stream_no)
+      hp1$stream_name <- as.character(hp1$stream_name) 
+      hp1$tin <- as.character(hp1$tin)
+      hp1$tout <- as.character(hp1$tout)
+      hp1$q <- as.character(hp1$q)
+      hp1$stream_type <- as.character(hp1$stream_type)
+      hp1$mcp <- as.character(hp1$mcp)
+      
+      if (grepl("/hr", q_uni)){
+        mcp_uni_df = paste(q_uni,t_uni)
+      } else {
+        mcp_uni_df <- paste(q_uni,"/",t_uni)
+      }
+      hp1 <- hp1 %>% 
+        add_row(stream_no = '(-)', stream_name = '(-)', tin = paste("(",t_uni,")"),
+                tout = paste("(",t_uni,")"),q = paste("(",q_uni,")"), stream_type = '(-)', mcp = paste("(",mcp_uni_df,")"),.before = 1)  %>% 
+        rename(
+          'S.No.' = stream_no,
+          'Stream Name' = stream_name,
+          'Temp,in' = tin,
+          'Temp,out' = tout,
+          'Q' = q,
+          'Stream Type' = stream_type,
+          'Mass Capacitance' = mcp
+        )
+      output$hptable1 <- renderTable({
+        
+        hp1
+      })
+      tsource_in <- hp[[stream11, "tin"]]
+      tsource_out <- hp[[stream11, "tout"]]
+      if (input$match == 'Partially') {
+        qsource_avail <- hp[[stream11, "q"]]*input$match_input/100
+      } else {
+        qsource_avail <- hp[[stream11, "q"]]
+      }
+      
+      
+      mcp_source <- hp[[stream11, "mcp"]]
+      tsink_in <- hp[[stream22, "tin"]]
+      tsink_out <- hp[[stream22, "tout"]]
+      qsink_req <- hp[[stream22, "q"]]
+      mcp_sink <- hp[[stream22, "mcp"]]
+      
+      
+      output$tcin_hp <- renderText({
+        ""
+      })
+      output$thin_hp  <- renderText({
+        ""
+      })
+      output$thout_hp  <- renderText({
+        ""
+      })
+      output$tcout_hp  <- renderText({
+        ""
+      })
+      output$qsource <- renderText({
+        ""
+      })
+      output$qsink <- renderText({
+        ""
+      })
+      output$tsink <- renderText({
+        ""
+      })
+      output$tsource <- renderText({
+        ""
+      })
+      output$winhp <- renderText({
+        ""
+      })
+      results_hp <- tibble(
+        'Metric' = c(),
+        'Value' = c(),
+        'Units' = c()
+      )
+      
+      if (hp[[stream22, "stream_type"]] == "Needs Heating" & 
+          hp[[stream11, "stream_type"]] == "Needs Cooling") {
+        
+        if (input$copmet == 'Enter Heat Pump COP') {
+          cop <- input$cop2
+          qsink_avail <- qsource_avail*(cop/(cop-1))
+          qsink_act <- min(qsink_avail, qsink_req)
+          qsource_act <- qsink_act*((cop-1)/cop)
+          tsource_out_act <- tsource_in - qsource_act/mcp_source
+          tsink_out_act <- (qsink_act/mcp_sink)+tsink_in
+          w_in <- qsink_act/cop
+          
+          
+        } else {
+          cop_g = 4
+          dc <- 1e10
+          cop_table <- cop_table %>% 
+            mutate(t_cond.t_evap = t_cond*t_evap) %>% 
+            mutate(t_cond_2 = t_cond^2) %>% 
+            mutate(t_evap_2 = t_evap^2)
+          
+          model1 <- lm(df~ t_cond + t_evap + t_cond.t_evap + t_cond_2 + t_evap_2, data = cop_table)
+          while (dc>0.1) {
+            cop <- cop_g
+            cop_h <- cop_g
+            
+            if (t_uni == '°F'){ 
+              t_evap_g = (tsource_out-32-hxapp)*(5/9)
+              t_cond_g = (tsink_out-32+hxapp)*(5/9)
+            } else {
+              t_evap_g = tsource_out-hxapp
+              t_cond_g = tsink_out+hxapp
+            }
+            
+            carnot_cop = (t_cond_g+273)/(t_cond_g-t_evap_g)
+            
+            lookup_vals <- tibble(
+              "t_cond" = t_cond_g,
+              "t_evap" = t_evap_g,
+              "t_cond.t_evap" = t_cond_g*t_evap_g,
+              "t_cond_2" = t_cond_g^2,
+              "t_evap_2" = t_evap_g^2
+            )
+            
+            lookup_vals$df <- as_tibble(predict(model1,lookup_vals))
+            
+            # lookup_table <- inner_join(lookup_vals,cop_table, by = c("t_cond","t_evap"))
+            
+            df <- as.numeric(lookup_vals$df)
+            
+            cop <- df*carnot_cop
+            
+            qsink_avail <- qsource_avail*(cop/(cop-1))
+            qsink_act <- min(qsink_avail,qsink_req)
+            qsource_act <- qsink_act*((cop-1)/cop)
+            tsource_out <- tsource_in - qsource_act/mcp_source
+            tsink_out <- (qsink_act/mcp_sink)+tsink_in
+            w_in <- qsink_act/cop
+            
+            if (t_uni == '°F'){ 
+              tsource_out_c = (tsource_out-32-hxapp)*(5/9)
+              dc <- abs(t_evap_g - tsource_out_c)
+            } else {
+              dc <- abs(t_evap_g - tsource_out +hxapp)
+            }
+            if(is.na(dc)){
+              tsource_out_act <- NA
+              tsink_out_act <- NA
+              break
+            }
+            cop_g <- cop
+          }
+          tsource_out_act <- tsource_out
+          tsink_out_act <- tsink_out
+          
+          if (t_evap_g < min(cop_table$t_evap) | t_evap_g > max(cop_table$t_evap)|
+              t_cond_g < min(cop_table$t_cond) | t_evap_g > max(cop_table$t_cond)) {
+            output$hperror <- renderText("Warning: COP calculation is extrapolated and may not be accurate.")
+          }
+        }
+        
+        if (t_uni == '°F'){ 
+          te <- tsource_out_act - hxapp
+          tc <- tsink_out_act + hxapp
+        } else {
+          te <- tsource_out_act - hxapp
+          tc <- tsink_out_act + hxapp
+        }
+        
+        cop_c <- cop - 1
+        cop_combined <- cop_c + cop
+        
+        win_uni <- "KW"
+        
+        if (q_uni == "MMBtu/hr") {
+          win = w_in*293.07107
+        } else if (q_uni == "kJ/hr") {
+          win = w_in*0.0002777778
+        } else if (q_uni == "kW") {
+          win = w_in
+        } else if (q_uni == "MW") {
+          win = w_in*1000
+        } else if (q_uni == "MJ/hr") {
+          win = w_in*0.277777778
+        } else {
+          win = w_in
+          win_uni = q_uni
+        }
+        
+        if (is.na(tsource_out_act) | is.na(tsink_out_act)) {
+          output$hperror <- renderText("Error: COP calculation not available for this temperature range. Consider manually enterting COP.")
+        } else if (tsink_out_act < tsource_out_act & cop>1) {
+          output$hperror <- renderText("Error: Source Temperature is higher than sink temperature. Consider using a Heat Exchanger between streams.")
+        } else if (tsink_out_act < tsource_out_act & cop<1) {
+          output$hperror <- renderText("Error: Calculated COP is less than 1. Lift may not be achievable.")
+        } else if (tc > 212){
+          output$hperror <- renderText("Warning: High Temperature at Condenser, a suitable Heat Pump may not be available.")
+          
+          output$tcin_hp <- renderText({
+            t <- round(tsource_in,0)
+            val <- paste0(t, " ",t_uni)
+            val
+          })
+          output$thin_hp  <- renderText({
+            t <- round(tsink_in,0)
+            val <- paste0(t, " ",t_uni)
+            val
+          })
+          output$thout_hp  <- renderText({
+            t <- round(tsink_out_act,0)
+            val <- paste0(t, " ",t_uni)
+            val
+          })
+          output$tcout_hp  <- renderText({
+            t <- round(tsource_out_act,0)
+            val <- paste0(t, " ",t_uni)
+            val
+          })
+          output$qsource <- renderText({
+            t <- round(qsource_act,1)
+            val <- paste0(t, " ",q_uni)
+            val
+          })
+          output$qsink <- renderText({
+            t <- round(qsink_act,1)
+            val <- paste0(t, " ",q_uni)
+            val
+          })
+          output$tsink <- renderText({
+            t <- round(tc,1)
+            val <- paste0(t, " ",t_uni)
+            val
+          })
+          output$tsource <- renderText({
+            t <- round(te,1)
+            val <- paste0(t, " ",t_uni)
+            val
+          })
+          output$winhp <- renderText({
+            
+            t <- round(win,1)
+            val <- paste0(t, " ",win_uni)
+            val
+          })
+          results_hp <- tibble(
+            'Metric' = c('Tso,in','Tso,out','Tsi,in',
+                        'Tsi,out','Q,source','Q,sink','W,in',"COP,h", "COP,c","COP,combined"),
+            'Value' = c(tsource_in,tsource_out_act,tsink_in,tsink_out_act,qsource_act,qsink_act, win,cop,cop_c,cop_combined),
+            'Units' = c(t_uni,t_uni,t_uni,t_uni,q_uni,q_uni,win_uni," "," "," ")
+          )
+        }
+        else {
+          
+          output$tcin_hp <- renderText({
+            t <- round(tsource_in,0)
+            val <- paste0(t, " ",t_uni)
+            val
+          })
+          output$thin_hp  <- renderText({
+            t <- round(tsink_in,0)
+            val <- paste0(t, " ",t_uni)
+            val
+          })
+          output$thout_hp  <- renderText({
+            t <- round(tsink_out_act,0)
+            val <- paste0(t, " ",t_uni)
+            val
+          })
+          output$tcout_hp  <- renderText({
+            t <- round(tsource_out_act,0)
+            val <- paste0(t, " ",t_uni)
+            val
+          })
+          output$qsource <- renderText({
+            t <- round(qsource_act,1)
+            val <- paste0(t, " ",q_uni)
+            val
+          })
+          output$qsink <- renderText({
+            t <- round(qsink_act,1)
+            val <- paste0(t, " ",q_uni)
+            val
+          })
+          output$tsink <- renderText({
+            t <- round(tc,1)
+            val <- paste0(t, " ",t_uni)
+            val
+          })
+          output$tsource <- renderText({
+            t <- round(te,1)
+            val <- paste0(t, " ",t_uni)
+            val
+          })
+          output$winhp <- renderText({
+            
+            
+            t <- round(win,1)
+            val <- paste0(t, " ",win_uni)
+            val
+          })
+          results_hp <- tibble(
+            'Metric' = c('Tso,in','Tso,out','Tsi,in',
+                        'Tsi,out','Q,source','Q,sink','W,in',"COP,h", "COP,c","COP,combined"),
+            'Value' = c(tsource_in,tsource_out_act,tsink_in,tsink_out_act,qsource_act,qsink_act, win,cop,cop_c,cop_combined),
+            'Units' = c(t_uni,t_uni,t_uni,t_uni,q_uni,q_uni,win_uni," "," "," ")
+          )
+        }
         
         
       } else {
-        cop_g = 4
-        dc <- 1e10
-        cop_table <- cop_table %>% 
-          mutate(t_cond.t_evap = t_cond*t_evap) %>% 
-          mutate(t_cond_2 = t_cond^2) %>% 
-          mutate(t_evap_2 = t_evap^2)
         
-        model1 <- lm(df~ t_cond + t_evap + t_cond.t_evap + t_cond_2 + t_evap_2, data = cop_table)
-        while (dc>0.1) {
-          cop <- cop_g
-          cop_h <- cop_g
+        
+        output$hperror <- renderText("error: Please verify that Source Stream is a Needs Cooling and 
+                                   Sink Stream is a Needs Heating Stream")
+      }
+      output$resulthp <- renderTable(results_hp)
+      results_table$results_hp_rv = results_hp
+    } else {
+      # Temperature Input ----
+      results_hp <- tibble(
+        'Metric' = c('T,source','T,sink','Q,source','Q,sink','W,in',"COP,h", "COP,c","COP,combined"),
+        'Value' = c("","","","", "","","",""),
+        'Units' = c("","","","",""," "," "," ")
+      )
+      gcc_table <- gcc_data$gcc_table
+      
+      source_temp <- input$source_temp
+      sink_temp <-input$sink_temp
+      pinch_temp <- coor$cst + input$pinchdt/2
+      source_table <- gcc_table[gcc_table[["temp"]] <= pinch_temp, ]
+      sink_table <- gcc_table[gcc_table[["temp"]] >= pinch_temp, ]
+      qsource_avail <- source_table[source_table$temp == source_temp, "x"]
+      qsink_req <- sink_table[sink_table$temp == sink_temp, "x"]
+      if (sink_temp > pinch_temp && sink_temp < max(gcc_table$temp) && source_temp < pinch_temp && source_temp > min(gcc_table$temp) ){
+        source_table_poss <- source_table[source_table[["temp"]] >= source_temp, ]
+        sink_table_poss <- sink_table[sink_table[["temp"]] <= sink_temp, ]
+          
+        if (input$copmet == 'Enter Heat Pump COP') {
+          cop <- input$cop2
+          qsink_avail <- qsource_avail*(cop/(cop-1))
+          qsink_act <- min(qsink_avail, qsink_req)
+          qsource_act <- qsink_act*((cop-1)/cop)
+          tsource_out_idx <- which.min(abs(source_table_poss$x - qsource_act))
+          tsource_out_act <- source_table_poss[tsource_out_idx, "temp"]
+          tsink_out_idx <- which.min(abs(sink_table_poss$x - qsink_act))
+          tsink_out_act <- sink_table_poss[tsink_out_idx, "temp"]
+          w_in <- qsink_act/cop
+          
+          
+          
+        } else {
+          cop_table <- cop_table %>% 
+            mutate(t_cond.t_evap = t_cond*t_evap) %>% 
+            mutate(t_cond_2 = t_cond^2) %>% 
+            mutate(t_evap_2 = t_evap^2)
+          
+          model1 <- lm(df~ t_cond + t_evap + t_cond.t_evap + t_cond_2 + t_evap_2, data = cop_table)
           
           if (t_uni == '°F'){ 
-            t_evap_g = (tsource_out-32-hxapp)*(5/9)
-            t_cond_g = (tsink_out-32+hxapp)*(5/9)
+            t_evap_g = (source_temp-32)*(5/9)
+            t_cond_g = (sink_temp-32)*(5/9)
           } else {
-            t_evap_g = tsource_out-hxapp
-            t_cond_g = tsink_out+hxapp
+            t_evap_g = source_temp
+            t_cond_g = sink_temp
           }
           
           carnot_cop = (t_cond_g+273)/(t_cond_g-t_evap_g)
@@ -1949,206 +2246,161 @@ server <- function(input, output, session) {
           
           lookup_vals$df <- as_tibble(predict(model1,lookup_vals))
           
-          # lookup_table <- inner_join(lookup_vals,cop_table, by = c("t_cond","t_evap"))
           
           df <- as.numeric(lookup_vals$df)
           
           cop <- df*carnot_cop
           
           qsink_avail <- qsource_avail*(cop/(cop-1))
-          qsink_act <- min(qsink_avail,qsink_req)
+          qsink_act <- min(qsink_avail, qsink_req)
           qsource_act <- qsink_act*((cop-1)/cop)
-          tsource_out <- tsource_in - qsource_act/mcp_source
-          tsink_out <- (qsink_act/mcp_sink)+tsink_in
+          tsource_out_idx <- which.min(abs(source_table_poss$x - qsource_act))
+          tsource_out_act <- source_table_poss[tsource_out_idx, "temp"] + input$pinchdt/2
+          tsink_out_idx <- which.min(abs(sink_table_poss$x - qsink_act))
+          tsink_out_act <- sink_table_poss[tsink_out_idx, "temp"] - input$pinchdt/2
           w_in <- qsink_act/cop
-          
-          if (t_uni == '°F'){ 
-            tsource_out_c = (tsource_out-32-hxapp)*(5/9)
-            dc <- abs(t_evap_g - tsource_out_c)
-          } else {
-            dc <- abs(t_evap_g - tsource_out +hxapp)
+
+          if (t_evap_g < min(cop_table$t_evap) | t_evap_g > max(cop_table$t_evap)|
+              t_cond_g < min(cop_table$t_cond) | t_evap_g > max(cop_table$t_cond)) {
+            output$hperror <- renderText("Warning: COP calculation is extrapolated and may not be accurate.")
           }
-          if(is.na(dc)){
-            tsource_out_act <- NA
-            tsink_out_act <- NA
-            break
-          }
-          cop_g <- cop
         }
-        tsource_out_act <- tsource_out
-        tsink_out_act <- tsink_out
+ 
+          te <- tsource_out_act - input$pinchdt/2
+          tc <- tsink_out_act + input$pinchdt/2
+
         
-        if (t_evap_g < min(cop_table$t_evap) | t_evap_g > max(cop_table$t_evap)|
-            t_cond_g < min(cop_table$t_cond) | t_evap_g > max(cop_table$t_cond)) {
-          output$hperror <- renderText("Warning: COP calculation is extrapolated and may not be accurate.")
+        cop_c <- cop - 1
+        cop_combined <- cop_c + cop
+        
+        win_uni <- "KW"
+        
+        if (q_uni == "MMBtu/hr") {
+          win = w_in*293.07107
+        } else if (q_uni == "kJ/hr") {
+          win = w_in*0.0002777778
+        } else if (q_uni == "kW") {
+          win = w_in
+        } else if (q_uni == "MW") {
+          win = w_in*1000
+        } else if (q_uni == "MJ/hr") {
+          win = w_in*0.277777778
+        } else {
+          win = w_in
+          win_uni = q_uni
         }
-      }
-      
-      if (t_uni == '°F'){ 
-        te <- tsource_out_act - hxapp
-        tc <- tsink_out_act + hxapp
-      } else {
-        te <- tsource_out_act - hxapp
-        tc <- tsink_out_act + hxapp
-      }
-      
-      cop_c <- cop - 1
-      cop_combined <- cop_c + cop
-      
-      win_uni <- "KW"
-      
-      if (q_uni == "MMBtu/hr") {
-        win = w_in*293.07107
-      } else if (q_uni == "kJ/hr") {
-        win = w_in*0.0002777778
-      } else if (q_uni == "kW") {
-        win = w_in
-      } else if (q_uni == "MW") {
-        win = w_in*1000
-      } else if (q_uni == "MJ/hr") {
-        win = w_in*0.277777778
-      } else {
-        win = w_in
-        win_uni = q_uni
-      }
-      
-      if (is.na(tsource_out_act) | is.na(tsink_out_act)) {
-        output$hperror <- renderText("Error: COP calculation not available for this temperature range. Consider manually enterting COP.")
-      } else if (tsink_out_act < tsource_out_act & cop>1) {
-        output$hperror <- renderText("Error: Source Temperature is higher than sink temperature. Consider using a Heat Exchanger between streams.")
-      } else if (tsink_out_act < tsource_out_act & cop<1) {
-        output$hperror <- renderText("Error: Calculated COP is less than 1. Lift may not be achievable.")
-      } else if (tc > 212){
-        output$hperror <- renderText("Warning: High Temperature at Condenser, a suitable Heat Pump may not be available.")
         
-        output$tcin_hp <- renderText({
-          t <- round(tsource_in,0)
-          val <- paste0(t, " ",t_uni)
-          val
-        })
-        output$thin_hp  <- renderText({
-          t <- round(tsink_in,0)
-          val <- paste0(t, " ",t_uni)
-          val
-        })
-        output$thout_hp  <- renderText({
-          t <- round(tsink_out_act,0)
-          val <- paste0(t, " ",t_uni)
-          val
-        })
-        output$tcout_hp  <- renderText({
-          t <- round(tsource_out_act,0)
-          val <- paste0(t, " ",t_uni)
-          val
-        })
-        output$qsource <- renderText({
-          t <- round(qsource_act,1)
-          val <- paste0(t, " ",q_uni)
-          val
-        })
-        output$qsink <- renderText({
-          t <- round(qsink_act,1)
-          val <- paste0(t, " ",q_uni)
-          val
-        })
-        output$tsink <- renderText({
-          t <- round(tc,1)
-          val <- paste0(t, " ",t_uni)
-          val
-        })
-        output$tsource <- renderText({
-          t <- round(te,1)
-          val <- paste0(t, " ",t_uni)
-          val
-        })
-        output$winhp <- renderText({
+        if (is.na(tsource_out_act) | is.na(tsink_out_act)) {
+          output$hperror <- renderText("Error: COP calculation not available for this temperature range. Consider manually enterting COP.")
+        } else if (tsink_out_act < tsource_out_act & cop>1) {
+          output$hperror <- renderText("Error: Source Temperature is higher than sink temperature. Consider using a Heat Exchanger between streams.")
+        } else if (tsink_out_act < tsource_out_act & cop<1) {
+          output$hperror <- renderText("Error: Calculated COP is less than 1. Lift may not be achievable.")
+        } else if (tc > 212){
+          output$hperror <- renderText("Warning: High Temperature at Condenser, a suitable Heat Pump may not be available.")
           
-          t <- round(win,1)
-          val <- paste0(t, " ",win_uni)
-          val
-        })
-        results_hp <- tibble(
-          'Title' = c('Tso,in','Tso,out','Tsi,in',
-                      'Tsi,out','Q,source','Q,sink','W,in',"COP,h", "COP,c","COP,combined"),
-          'Value' = c(tsource_in,tsource_out_act,tsink_in,tsink_out_act,qsource_act,qsink_act, win,cop,cop_c,cop_combined),
-          'Units' = c(t_uni,t_uni,t_uni,t_uni,q_uni,q_uni,win_uni," "," "," ")
-        )
+          output$tcin_hp <- renderText({
+            ""
+          })
+          output$thin_hp  <- renderText({
+            ""
+          })
+          
+          output$thout_hp  <- renderText({
+            ""
+          })
+          output$tcout_hp  <- renderText({
+            ""
+          })
+          output$qsource <- renderText({
+            t <- round(qsource_act,1)
+            val <- paste0(t, " ",q_uni)
+            val
+          })
+          output$qsink <- renderText({
+            t <- round(qsink_act,1)
+            val <- paste0(t, " ",q_uni)
+            val
+          })
+          output$tsink <- renderText({
+            t <- round(tc,1)
+            val <- paste0(t, " ",t_uni)
+            val
+          })
+          output$tsource <- renderText({
+            t <- round(te,1)
+            val <- paste0(t, " ",t_uni)
+            val
+          })
+          output$winhp <- renderText({
+            
+            t <- round(win,1)
+            val <- paste0(t, " ",win_uni)
+            val
+          })
+          results_hp <- tibble(
+            'Metric' = c('T,source','T,sink','Q,source','Q,sink','W,in',"COP,h", "COP,c","COP,combined"),
+            'Value' = c(te,tc,qsource_act,qsink_act, win,cop,cop_c,cop_combined),
+            'Units' = c(t_uni,t_uni,q_uni,q_uni,win_uni," "," "," ")
+          )
+        }
+        else {
+          output$tcin_hp <- renderText({
+            "-"
+          })
+          output$thin_hp  <- renderText({
+            "-"
+          })
+
+          output$thout_hp  <- renderText({
+            "-"
+          })
+          output$tcout_hp  <- renderText({
+            "-"
+          })
+          output$qsource <- renderText({
+            t <- round(qsource_act,1)
+            val <- paste0(t, " ",q_uni)
+            val
+          })
+          output$qsink <- renderText({
+            t <- round(qsink_act,1)
+            val <- paste0(t, " ",q_uni)
+            val
+          })
+          output$tsink <- renderText({
+            t <- round(tc,1)
+            val <- paste0(t, " ",t_uni)
+            val
+          })
+          output$tsource <- renderText({
+            t <- round(te,1)
+            val <- paste0(t, " ",t_uni)
+            val
+          })
+          output$winhp <- renderText({
+            
+            
+            t <- round(win,1)
+            val <- paste0(t, " ",win_uni)
+            val
+          })
+          results_hp <- tibble(
+            'Metric' = c('T,source','T,sink','Q,source','Q,sink','W,in',"COP,h", "COP,c","COP,combined"),
+            'Value' = c(te,tc,qsource_act,qsink_act, win,cop,cop_c,cop_combined),
+            'Units' = c(t_uni,t_uni,q_uni,q_uni,win_uni," "," "," ")
+          )
+        }
       }
+      
+
+      
       else {
-        
-        output$tcin_hp <- renderText({
-          t <- round(tsource_in,0)
-          val <- paste0(t, " ",t_uni)
-          val
-        })
-        output$thin_hp  <- renderText({
-          t <- round(tsink_in,0)
-          val <- paste0(t, " ",t_uni)
-          val
-        })
-        output$thout_hp  <- renderText({
-          t <- round(tsink_out_act,0)
-          val <- paste0(t, " ",t_uni)
-          val
-        })
-        output$tcout_hp  <- renderText({
-          t <- round(tsource_out_act,0)
-          val <- paste0(t, " ",t_uni)
-          val
-        })
-        output$qsource <- renderText({
-          t <- round(qsource_act,1)
-          val <- paste0(t, " ",q_uni)
-          val
-        })
-        output$qsink <- renderText({
-          t <- round(qsink_act,1)
-          val <- paste0(t, " ",q_uni)
-          val
-        })
-        output$tsink <- renderText({
-          t <- round(tc,1)
-          val <- paste0(t, " ",t_uni)
-          val
-        })
-        output$tsource <- renderText({
-          t <- round(te,1)
-          val <- paste0(t, " ",t_uni)
-          val
-        })
-        output$winhp <- renderText({
-          
-          
-          t <- round(win,1)
-          val <- paste0(t, " ",win_uni)
-          val
-        })
-        results_hp <- tibble(
-          'Title' = c('Tso,in','Tso,out','Tsi,in',
-                      'Tsi,out','Q,source','Q,sink','W,in',"COP,h", "COP,c","COP,combined"),
-          'Value' = c(tsource_in,tsource_out_act,tsink_in,tsink_out_act,qsource_act,qsink_act, win,cop,cop_c,cop_combined),
-          'Units' = c(t_uni,t_uni,t_uni,t_uni,q_uni,q_uni,win_uni," "," "," ")
-        )
+        output$hperror <- renderText("error: Integration is not across the pinch point or the selected temperature levels are not available.")
       }
-      
-      
-    } else {
-      
-      
-      output$hperror <- renderText("error: Please verify that Source Stream is a Needs Cooling and 
-                                   Sink Stream is a Needs Heating Stream")
-    }
-    #results_hp$Value <- formatC(results_hp$Value, digits = 3, format = "g")
-    output$resulthp <- renderTable(results_hp)
-    results_table$results_hp_rv = results_hp
-    
-    
-    # output$downloadtabhp <- downloadHandler(
-    #   filename = "Heat Pump Results.csv",
-    #   content = function(file) {
-    #     write.csv(results_hp, file,fileEncoding="Windows-1252")
-    #   })
-    
+      output$resulthp <- renderTable(results_hp)
+      results_table$results_hp_rv = results_hp
+      }
   })
   
   observeEvent(input$run3, {
@@ -2159,20 +2411,20 @@ server <- function(input, output, session) {
     oper_hours = input$oper_hours
     output$economic_results <- renderText("Economic Results Table")
     
-    q_cond_value <- results_hp$Value[results_hp$Title == "Q,sink"]
-    w_in_value <- results_hp$Value[results_hp$Title == "W,in"]
+    q_cond_value <- results_hp$Value[results_hp$Metric == "Q,sink"][[1]]
+    w_in_value <- results_hp$Value[results_hp$Metric == "W,in"][[1]]
     
-    ng_cost = q_cond_value*ng_price*oper_hours/(input$eff_heat/100)
+    fuel_cost = q_cond_value*ng_price*oper_hours/(input$eff_heat/100)
     elec_cost = w_in_value*elec_price*oper_hours
-    energy_savings = ng_cost - elec_cost
+    energy_savings = fuel_cost - elec_cost
     
     hp_cost = q_cond_value*293.07107*1.2*hp_cost
     
     simple_payback = max(0,hp_cost/energy_savings)
     
     econ_results = tibble(
-      'Title' = c("Natural Gas Cost", "Electricity Cost", "Energy Cost Savings"),
-      'Value' = c(ng_cost, elec_cost, energy_savings),
+      'Metric' = c("Fuel Cost", "Electricity Cost", "Energy Cost Savings"),
+      'Value' = c(fuel_cost, elec_cost, energy_savings),
       'Units' = c("($)","($)","($)"))
     
     output$econ_table <- renderTable({
@@ -2188,15 +2440,15 @@ server <- function(input, output, session) {
     elec_ef = input$elec_ef
     oper_hours = input$oper_hours
     
-    q_cond_value <- results_hp$Value[results_hp$Title == "Q,sink"]
-    q_cond_units <- results_hp$Units[results_hp$Title == "Q,sink"]
-    w_in_value <- results_hp$Value[results_hp$Title == "W,in"]
+    q_cond_value <- results_hp$Value[results_hp$Metric == "Q,sink"][[1]]
+    q_cond_units <- results_hp$Units[results_hp$Metric == "Q,sink"][[1]]
+    w_in_value <- results_hp$Value[results_hp$Metric == "W,in"][[1]]
     
     output$emissions_results <- renderText("Emissions Results Table")
     
     emissions_data <- data.frame(
-     'Title'= c("Natural Gas", "Propane", "Petroleum Coke", "Distillate or Light Fuel Oil", 
-                "Coal", "Diesel", "Motor Gasoline")
+      'Metric'= c("Natural Gas", "Propane", "Petroleum Coke", "Distillate or Light Fuel Oil", 
+                 "Coal", "Diesel", "Motor Gasoline")
     )
     emissions_data <- emissions_data %>% 
       mutate(      'kJ/hr' = c(5.0E-08, 6.0E-08, 9.7E-08, 7.0E-08, 9.1E-08, 7.0E-08, 6.7E-08),
@@ -2205,16 +2457,16 @@ server <- function(input, output, session) {
                    'MW' = kW*1000,
                    'MJ/hr' = `kJ/hr`*1000)
     
-    fuel_ef = emissions_data[emissions_data$Title == input$fuel_type, q_cond_units]*1000 #convert from MT to kg.
+    fuel_ef = emissions_data[emissions_data$Metric == input$fuel_type, q_cond_units]*1000 #convert from MT to kg.
     
     
-    ng_emissions = q_cond_value*fuel_ef*oper_hours/(input$eff_heat/100)
+    fuel_emissions = q_cond_value*fuel_ef*oper_hours/(input$eff_heat/100)
     elec_emisions = w_in_value*elec_ef*oper_hours
-    emissions_savings = ng_emissions - elec_emisions
+    emissions_savings = fuel_emissions - elec_emisions
     
     emission_results = tibble(
-      'Title' = c("Natural Gas Emissions", "Electricity Emissions", "Emissions Savings"),
-      'Value' = c(ng_emissions, elec_emisions, emissions_savings),
+      'Metric' = c("Fuel Emissions", "Electricity Emissions", "Emissions Savings"),
+      'Value' = c(fuel_emissions, elec_emisions, emissions_savings),
       'Units' = c("(kg CO2)","(kg CO2)","(kg CO2)"))
     
     emission_results$Value <- round(emission_results$Value / 10) * 10      
