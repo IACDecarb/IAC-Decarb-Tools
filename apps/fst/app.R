@@ -2800,6 +2800,7 @@ server <- function(input, output, session) {
         #Summarize all_products_breakdown by energy costs of each energy source types, and make the dataframe wider to be able to index in the
         #calculated_sentences dataframe below
         energy_costs_summarized <- all_products_breakdown %>%
+          mutate(product_name = factor(product_name, levels = unique(product_name))) %>% 
           group_by(product_name, energy_source) %>%
           summarise(by_source_energy_costs_intensity = sum(energy_cost_based_intensity)) %>%
           pivot_wider(names_from = "energy_source", values_from = "by_source_energy_costs_intensity")
@@ -3400,8 +3401,9 @@ server <- function(input, output, session) {
           
           #Summarize all_products_breakdown by energy costs of each energy source types for dollar, and make the dataframe wider to be able to index in the
           #calculated_sentences dataframe below
-          energy_costs_summarized <- all_products_breakdown %>%
-            group_by(product_number, product_name, energy_source) %>%
+          energy_costs_summarized <<- all_products_breakdown %>%
+            mutate(product_name = factor(product_name, levels = unique(product_name))) %>% 
+            group_by( product_name, energy_source) %>%
             summarise(
               by_source_energy_costs_intensity_qty = sum(revenue_based_energy_costs_intensity_qty)
             ) %>%
@@ -3821,8 +3823,9 @@ server <- function(input, output, session) {
           
           #Summarize all_products_breakdown by energy costs of each energy source types for dollar, and make the dataframe wider to be able to index in the
           #calculated_sentences dataframe below
-          energy_costs_summarized <- all_products_breakdown %>%
-            group_by(product_number, product_name, energy_source) %>%
+          energy_costs_summarized <<- all_products_breakdown %>%
+            mutate(product_name = factor(product_name, levels = unique(product_name))) %>% 
+            group_by(product_name, energy_source) %>%
             summarise(
               by_source_energy_costs_intensity_dollar = sum(revenue_based_energy_costs_intensity_dollar)
             ) %>%
@@ -4299,7 +4302,7 @@ server <- function(input, output, session) {
     }
     
     output$enPlot <- renderPlotly({
-      all_products_summarized_plot <<- all_products_summarized %>%
+      all_products_summarized_plot <- all_products_summarized %>%
         select(1:2, contains("energy intensity")) %>%
         pivot_longer(cols = !c(1, 2),
                      names_to = "intensity_name",
