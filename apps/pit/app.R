@@ -545,7 +545,7 @@ server <- function(input, output, session) {
       filter(stream_type == "Needs Cooling")
     for (ii in  1:nrow(hold)) {
       if (hold$tin[ii] == hold$tout[ii]) {
-        hold$tout[ii] = hold$tout[ii] - 0.0000001 
+        hold$tout[ii] = hold$tout[ii]
       }
     }
     hold
@@ -559,7 +559,7 @@ server <- function(input, output, session) {
       filter(stream_type == "Needs Heating")
     for (ii in  1:nrow(hold)) {
       if (hold$tin[ii] == hold$tout[ii]) {
-        hold$tout[ii] = hold$tout[ii] + 0.0000001 
+        hold$tout[ii] = hold$tout[ii]
       }
     }
     hold
@@ -1449,8 +1449,7 @@ server <- function(input, output, session) {
     forPlot.h.shift <- forPlot.h %>% 
       mutate(tin = tin + (0.5*pinchdt))
     
-    min_temp <- min(min(forPlot.h.shift$tin),min(forPlot.c.shift$tout))
-    max_temp <- max(max(forPlot.h.shift$tin),max(forPlot.c.shift$tout))
+    
     
     
     line_seg_fc<- tibble(
@@ -1466,9 +1465,11 @@ server <- function(input, output, session) {
       line_seg_fc[g,'endy'] <- forPlot.c.shift[g+1, "tout"]
     }
     
+    
     line_seg_fc <- line_seg_fc %>% 
-      mutate(slope = (endy-starty)/(endx-startx)) %>% 
-      mutate(intercept = starty - (slope*startx))
+      mutate(starty = if_else(starty == endy, starty - 0.00001, starty),
+             slope = (endy-starty)/(endx-startx),
+             intercept = starty - (slope*startx))
     
     line_seg_fh<- tibble(
       'startx' = 0,
@@ -1484,10 +1485,12 @@ server <- function(input, output, session) {
     }
     
     line_seg_fh <- line_seg_fh %>% 
-      mutate(slope = (endy-starty)/(endx-startx)) %>% 
-      mutate(intercept = starty - (slope*startx))
+      mutate(starty = if_else(starty == endy, endy + 0.00001, starty),
+             slope = (endy-starty)/(endx-startx),
+             intercept = starty - (slope*startx))
     
-    
+    min_temp <- min(line_seg_fc$starty)
+    max_temp <- max(line_seg_fh$endy)
     
     gcc <- tibble(
       'temp' = seq(min_temp,max_temp, by=0.1),
@@ -1574,6 +1577,7 @@ server <- function(input, output, session) {
       scale_y_continuous(limits = c(0, y_max_limit)) +
       scale_x_continuous(limits = c(0, x_max_limit)) +
       ggtitle("Grand Composite Curve")
+    
     
     gcc_plot <- p + coord_flip() 
     
