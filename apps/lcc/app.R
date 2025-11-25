@@ -1,3 +1,20 @@
+# List of required CRAN packages
+packages <- c("readxl", "janitor", "ggplot2", "scales", "ggrepel", "stringr", 
+              "dplyr", "pals", "gridGraphics", "gridExtra", "ggpubr", "shiny", 
+              "viridis", "shinythemes", "shinyBS", "devtools")
+
+# Install CRAN packages if not already installed
+for (pkg in packages) {
+  if (!(pkg %in% installed.packages()[, "Package"])) {
+    install.packages(pkg)
+  }
+}
+
+# Special handling for ggmacc (GitHub)
+if (!("ggmacc" %in% installed.packages()[, "Package"])) {
+  devtools::install_github("aj-sykes92/ggmacc")
+}
+
 ##Application starts here
 library(ggmacc)
 library(readxl)
@@ -305,7 +322,7 @@ server <- function(input, output, session){
   
   sen1 <- reactive({
     req(input$file)
-    s1 <- read_excel(input$file$datapath, sheet = "Inputs for Avoided CO2", range = "d22:ar200")
+    s1 <- read_excel(input$file$datapath, sheet = "Inputs for Avoided CO2", range = "d22:bb200")
     s1 <- clean_names(s1) 
     s1 <- s1[!is.na(s1$assessment_recommendation) & s1$assessment_recommendation != "", ]
     s1 <- s1 %>%
@@ -316,14 +333,14 @@ server <- function(input, output, session){
     
     if (input$type == "Summarized") {
       s1 <- s1 %>% 
-        group_by(decarbonization_pillar) %>% 
+        group_by(decarbonization_measure_category) %>% 
         summarise(
           total_cost = sum(annualized_total_costs),
           annualized_avoided_co2e = sum(annualized_avoided_co2e),
           levelized_cost_of_avoided_co2e = total_cost/annualized_avoided_co2e
         )
       s1 <- s1 %>% 
-        rename(assessment_recommendation=decarbonization_pillar)
+        rename(assessment_recommendation=decarbonization_measure_category)
     }
     else {
       s1 <- s1
@@ -446,7 +463,7 @@ server <- function(input, output, session){
   
   sen1_energy <- reactive({
     req(input$file)
-    s1 <- read_excel(input$file$datapath, sheet = "Inputs for Conserved Energy", range = "d11:ae200")
+    s1 <- read_excel(input$file$datapath, sheet = "Inputs for Conserved Energy", range = "d11:ak200")
     s1 <- clean_names(s1) 
     s1 <- s1[!is.na(s1$assessment_recommendation) & s1$assessment_recommendation != "", ]
     
@@ -455,7 +472,7 @@ server <- function(input, output, session){
     } else {
       conv_factor = 1
     }
-      
+    
     
     s1 <- s1 %>%
       mutate(annualized_conserved_energy = as.numeric(annual_conserved_energy_mm_btu)*conv_factor) %>% 
