@@ -3173,7 +3173,7 @@ server <- function(input, output, session) {
     req(input$file)
     num <- input$products_num
     
-    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:o189") %>%
+    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:aa189") %>%
       clean_names()
     
     
@@ -3773,7 +3773,7 @@ server <- function(input, output, session) {
     }
     
     
-    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:o189")
+    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:aa189")
     
     aa <- clean_names(aa)
     
@@ -3781,15 +3781,16 @@ server <- function(input, output, session) {
       filter(!is.na(source)) %>%
       select(
         source,
-        total_energy_mm_btu_yr,
-        co2e_emissions_mt_co2e_yr,
-        total_energy_costs_yr,
+        total_energy_baseline_mm_btu_yr,
+        co2e_emissions_baseline_mt_co2e_yr,
+        total_energy_costs_baseline_yr,
         energy_source
       )
     
+    
     if (input$energy_units_int == "MWh") {
       aa <- aa %>%
-        mutate(total_energy_mm_btu_yr = total_energy_mm_btu_yr * 0.293071)
+        mutate(total_energy_baseline_mm_btu_yr = total_energy_baseline_mm_btu_yr * 0.293071)
     }
     
     aa <- aa
@@ -3866,9 +3867,9 @@ server <- function(input, output, session) {
           source = df$source,
           presence = results,
           energy_source = df$energy_source,
-          total_energy_mm_btu_yr = df$total_energy_mm_btu_yr,
-          co2e_emissions_mt_co2e_yr = df$co2e_emissions_mt_co2e_yr,
-          total_energy_costs_yr = df$total_energy_costs_yr,
+          total_energy_baseline_mm_btu_yr = df$total_energy_baseline_mm_btu_yr,
+          co2e_emissions_baseline_mt_co2e_yr = df$co2e_emissions_baseline_mt_co2e_yr,
+          total_energy_costs_baseline_yr = df$total_energy_costs_baseline_yr,
           stringsAsFactors = FALSE
         )
         
@@ -3878,7 +3879,7 @@ server <- function(input, output, session) {
         product_df$qty_based_energy <- mapply(
           apply_proportions,
           product_df$presence,
-          product_df$total_energy_mm_btu_yr,
+          product_df$total_energy_baseline_mm_btu_yr,
           MoreArgs = list(values = product_qties)
         )
         
@@ -3888,7 +3889,7 @@ server <- function(input, output, session) {
         product_df$qty_based_emissions <- mapply(
           apply_proportions,
           product_df$presence,
-          product_df$co2e_emissions_mt_co2e_yr,
+          product_df$co2e_emissions_baseline_mt_co2e_yr,
           MoreArgs = list(values = product_qties)
         )
         
@@ -3923,7 +3924,7 @@ server <- function(input, output, session) {
       #Get the mass or revenue based ratio from energy breakdown and apply against costs
       all_products_breakdown <- all_products_breakdown %>%
         mutate(
-          qty_based_energy_costs = (qty_based_energy / total_energy_mm_btu_yr) * total_energy_costs_yr,
+          qty_based_energy_costs = (qty_based_energy / total_energy_baseline_mm_btu_yr) * total_energy_costs_baseline_yr,
           energy_cost_based_intensity = qty_based_energy_costs / product_qty
         ) %>%
         relocate(qty_based_energy_costs, .after = qty_based_energy)
@@ -4278,32 +4279,29 @@ server <- function(input, output, session) {
               .cols = qty_based_energy_intensity_mmbtu_ton
             )
         }
-        
-        names(all_products_breakdown)
+
         
         download_excel_file <- all_products_breakdown %>%
-          mutate(qty_weight_proportion = qty_based_energy / total_energy_mm_btu_yr) %>%
+          mutate(qty_weight_proportion = qty_based_energy / total_energy_baseline_mm_btu_yr) %>%
           rename(
             associated_products = presence,
-            all_products_energy_consumption_mmbtu_yr = total_energy_mm_btu_yr,
+            all_products_energy_consumption_mmbtu_yr = total_energy_baseline_mm_btu_yr,
             qty_based_energy_consumption_mmbtu_yr = qty_based_energy,
             qty_based_energy_intensity_mmbtu_per_mt = qty_based_en_intensity,
-            all_products_co2e_emissions_mt_co2e_yr = co2e_emissions_mt_co2e_yr,
+            all_products_co2e_emissions_baseline_mt_co2e_yr = co2e_emissions_baseline_mt_co2e_yr,
             qty_based_emissions_mt_co2e_yr = qty_based_emissions,
             qty_based_ei_mt_co2e_per_mt = qty_based_em_intensity,
           ) %>%
           relocate(energy_source, .after = source) %>%
-          relocate(total_energy_costs_yr, .after = all_products_energy_consumption_mmbtu_yr) %>%
-          relocate(qty_weight_proportion, .after = total_energy_costs_yr) %>%
+          relocate(total_energy_costs_baseline_yr, .after = all_products_energy_consumption_mmbtu_yr) %>%
+          relocate(qty_weight_proportion, .after = total_energy_costs_baseline_yr) %>%
           relocate(qty_based_energy_consumption_mmbtu_yr, .after = qty_weight_proportion) %>%
           relocate(qty_based_energy_intensity_mmbtu_per_mt, .after = qty_based_energy_consumption_mmbtu_yr) %>%
-          relocate(all_products_co2e_emissions_mt_co2e_yr, .after = total_energy_costs_yr) %>%
+          relocate(all_products_co2e_emissions_baseline_mt_co2e_yr, .after = total_energy_costs_baseline_yr) %>%
           relocate(energy_cost_based_intensity, .after = qty_based_energy_costs)
         
-        names(download_excel_file)
-        
-        
-        colnames(download_excel_file) <-  c(
+
+          colnames(download_excel_file) <-  c(
           "Product",
           "Product Name",
           "Quantity",
@@ -4440,9 +4438,9 @@ server <- function(input, output, session) {
           source = df$source,
           presence = results,
           energy_source = df$energy_source,
-          total_energy_mm_btu_yr = df$total_energy_mm_btu_yr,
-          co2e_emissions_mt_co2e_yr = df$co2e_emissions_mt_co2e_yr,
-          total_energy_costs_yr = df$total_energy_costs_yr,
+          total_energy_baseline_mm_btu_yr = df$total_energy_baseline_mm_btu_yr,
+          co2e_emissions_baseline_mt_co2e_yr = df$co2e_emissions_baseline_mt_co2e_yr,
+          total_energy_costs_baseline_yr = df$total_energy_costs_baseline_yr,
           stringsAsFactors = FALSE
         )
         
@@ -4452,7 +4450,7 @@ server <- function(input, output, session) {
         product_df$qty_based_energy <- mapply(
           apply_proportions,
           product_df$presence,
-          product_df$total_energy_mm_btu_yr,
+          product_df$total_energy_baseline_mm_btu_yr,
           MoreArgs = list(values = product_qties)
         )
         
@@ -4460,7 +4458,7 @@ server <- function(input, output, session) {
         product_df$qty_based_emissions <- mapply(
           apply_proportions,
           product_df$presence,
-          product_df$co2e_emissions_mt_co2e_yr,
+          product_df$co2e_emissions_baseline_mt_co2e_yr,
           MoreArgs = list(values = product_qties)
         )
         
@@ -4468,14 +4466,14 @@ server <- function(input, output, session) {
         product_df$revenue_based_energy <- mapply(
           apply_proportions,
           product_df$presence,
-          product_df$total_energy_mm_btu_yr,
+          product_df$total_energy_baseline_mm_btu_yr,
           MoreArgs = list(values = product_revenues)
         )
         
         product_df$revenue_based_emissions <- mapply(
           apply_proportions,
           product_df$presence,
-          product_df$co2e_emissions_mt_co2e_yr,
+          product_df$co2e_emissions_baseline_mt_co2e_yr,
           MoreArgs = list(values = product_revenues)
         )
         
@@ -4494,8 +4492,8 @@ server <- function(input, output, session) {
           product_df$revenue_based_energy_intensity_dollar <- product_df$revenue_based_energy / product_revenues[i]
           product_df$revenue_based_em_intensity_dollar <- product_df$revenue_based_emissions / product_revenues[i]
           product_df$revenue_based_energy_costs_intensity_dollar <- ((
-            product_df$revenue_based_energy / product_df$total_energy_mm_btu_yr
-          ) * product_df$total_energy_costs_yr
+            product_df$revenue_based_energy / product_df$total_energy_baseline_mm_btu_yr
+          ) * product_df$total_energy_costs_baseline_yr
           ) / product_revenues[i]
         }
         
@@ -4519,9 +4517,9 @@ server <- function(input, output, session) {
       #Get the mass or revenue based ratio from energy breakdown and apply against costs
       all_products_breakdown <- all_products_breakdown %>%
         mutate(
-          qty_based_energy_costs = (qty_based_energy / total_energy_mm_btu_yr) * total_energy_costs_yr,
-          revenue_based_energy_costs = (revenue_based_energy / total_energy_mm_btu_yr) *
-            total_energy_costs_yr,
+          qty_based_energy_costs = (qty_based_energy / total_energy_baseline_mm_btu_yr) * total_energy_costs_baseline_yr,
+          revenue_based_energy_costs = (revenue_based_energy / total_energy_baseline_mm_btu_yr) *
+            total_energy_costs_baseline_yr,
           qty_based_energy_costs_intensity = qty_based_energy_costs /
             product_qty,
           revenue_based_energy_costs_intensity_qty = revenue_based_energy_costs /
@@ -4552,7 +4550,7 @@ server <- function(input, output, session) {
           
           #Summarize all_products_breakdown by energy costs of each energy source types for dollar, and make the dataframe wider to be able to index in the
           #calculated_sentences dataframe below
-          energy_costs_summarized <<- all_products_breakdown %>%
+          energy_costs_summarized <- all_products_breakdown %>%
             mutate(product_name = factor(product_name, levels = unique(product_name))) %>% 
             group_by( product_name, energy_source) %>%
             summarise(
@@ -4902,21 +4900,20 @@ server <- function(input, output, session) {
                 qty_based_energy_costs_intensity
               )
             ) %>%
-            mutate(revenue_weight_proportion = revenue_based_energy / total_energy_mm_btu_yr) %>%
+            mutate(revenue_weight_proportion = revenue_based_energy / total_energy_baseline_mm_btu_yr) %>%
             rename(
               associated_products = presence,
-              all_products_energy_consumption_mmbtu_yr = total_energy_mm_btu_yr,
+              all_products_energy_consumption_mmbtu_yr = total_energy_baseline_mm_btu_yr,
               revenue_based_energy_consumption_mmbtu_yr = revenue_based_energy,
               revenue_based_energy_intensity_mmbtu_per_mt_qty = revenue_based_energy_intensity_qty
             ) %>%
             relocate(energy_source, .after = source) %>%
-            relocate(total_energy_costs_yr, .after = all_products_energy_consumption_mmbtu_yr) %>%
+            relocate(total_energy_costs_baseline_yr, .after = all_products_energy_consumption_mmbtu_yr) %>%
             relocate(revenue_weight_proportion, .before = revenue_based_energy_consumption_mmbtu_yr) %>%
             relocate(revenue_based_energy_intensity_mmbtu_per_mt_qty,
                      .after = revenue_based_energy_consumption_mmbtu_yr) %>%
             relocate(revenue_based_energy_costs_intensity_qty, .after = revenue_based_energy_costs)
-          
-          names(download_excel_file)
+
           
           colnames(download_excel_file) <-  c(
             "Product",
@@ -4974,7 +4971,7 @@ server <- function(input, output, session) {
           
           #Summarize all_products_breakdown by energy costs of each energy source types for dollar, and make the dataframe wider to be able to index in the
           #calculated_sentences dataframe below
-          energy_costs_summarized <<- all_products_breakdown %>%
+          energy_costs_summarized <- all_products_breakdown %>%
             mutate(product_name = factor(product_name, levels = unique(product_name))) %>% 
             group_by(product_name, energy_source) %>%
             summarise(
@@ -5139,7 +5136,6 @@ server <- function(input, output, session) {
             ungroup() %>%
             select(-product_number)
           
-          names(all_products_summarized)
           
           if (input$en == TRUE &&
               input$ec == FALSE && input$em == FALSE) {
@@ -5383,16 +5379,16 @@ server <- function(input, output, session) {
                 qty_based_energy_costs_intensity
               )
             ) %>%
-            mutate(revenue_weight_proportion = revenue_based_energy / total_energy_mm_btu_yr) %>%
+            mutate(revenue_weight_proportion = revenue_based_energy / total_energy_baseline_mm_btu_yr) %>%
             rename(
               associated_products = presence,
-              all_products_energy_consumption_mmbtu_yr = total_energy_mm_btu_yr,
+              all_products_energy_consumption_mmbtu_yr = total_energy_baseline_mm_btu_yr,
               revenue_based_energy_consumption_mmbtu_yr = revenue_based_energy,
               revenue_based_energy_intensity_mmbtu_per_dollar = revenue_based_energy_intensity_dollar,
               revenue_based_energy_intensity_mmbtu_per_mt_qty = revenue_based_energy_intensity_qty
             )  %>%
             relocate(energy_source, .after = source) %>%
-            relocate(total_energy_costs_yr, .after = all_products_energy_consumption_mmbtu_yr) %>%
+            relocate(total_energy_costs_baseline_yr, .after = all_products_energy_consumption_mmbtu_yr) %>%
             relocate(revenue_weight_proportion, .before = revenue_based_energy_consumption_mmbtu_yr) %>%
             relocate(revenue_based_energy_intensity_mmbtu_per_dollar,
                      .after = revenue_based_energy_consumption_mmbtu_yr) %>%
@@ -5403,8 +5399,6 @@ server <- function(input, output, session) {
                      .after = revenue_based_energy_costs) %>%
             relocate(revenue_based_energy_costs_intensity_qty, .after = revenue_based_energy_costs_intensity_dollar) %>%
             relocate(revenue_based_em_intensity_dollar, .after = revenue_based_emissions)
-          
-          names(download_excel_file)
           
           colnames(download_excel_file) <-  c(
             "Product",
