@@ -4,7 +4,6 @@ library(htmlwidgets)
 library(readxl)
 library(networkD3)
 library(tidyverse)
-library(webshot)
 library(magick)
 library(viridis)
 library(shinythemes)
@@ -20,8 +19,8 @@ library(bslib)
 library(shinyFeedback)
 library(plotly)
 library(scales)
-
-install_phantomjs(force = T)
+library(webshot2)
+library(chromote)
 
 linebreaks <- function(n) {
   HTML(strrep(br(), n))
@@ -94,7 +93,7 @@ format_sentences_bullet <- function(sentences) {
   return(bullets)
 }
 
-
+# UI ----
 
 ui <- fluidPage(
   theme = shinytheme("flatly"),
@@ -333,8 +332,17 @@ ui <- fluidPage(
           
         ),
         mainPanel(
-          div(uiOutput("output_text_e"), class = "output-text"),
-          div(style = "position: relative; padding-bottom: 100px; width: 100%; max-height: 100%; preserveAspectRatio='xMinYMin meet';  background-color: #f8f8f8;", uiOutput("diagram_energy"))
+          tabsetPanel(id = "tab_e",
+            tabPanel("Baseline",
+                     div(uiOutput("output_text_e"), class = "output-text"),
+                     div(style = "position: relative; padding-bottom: 100px; width: 100%; max-height: 100%; preserveAspectRatio='xMinYMin meet';  background-color: #f8f8f8;", uiOutput("diagram_energy"))
+            ),
+            tabPanel("With Savings",
+                     div(uiOutput("output_text_e_new"), class = "output-text"),
+                     div(style = "position: relative; padding-bottom: 100px; width: 100%; max-height: 100%; preserveAspectRatio='xMinYMin meet';  background-color: #f8f8f8;", uiOutput("diagram_energy_new"))
+            )
+          )
+          
         )
         
       ),
@@ -398,8 +406,16 @@ ui <- fluidPage(
           
         ),
         mainPanel(
-          div(uiOutput("output_text_ec"), class = "output-text"),
-          div(style = "position: relative; padding-bottom: 100px; width: 100%; max-height: 100%; preserveAspectRatio='xMinYMin meet';  background-color: #f8f8f8;", uiOutput("diagram_energy_costs"))
+          tabsetPanel(id = "tab_ec",
+            tabPanel("Baseline",
+                     div(uiOutput("output_text_ec"), class = "output-text"),
+                     div(style = "position: relative; padding-bottom: 100px; width: 100%; max-height: 100%; preserveAspectRatio='xMinYMin meet';  background-color: #f8f8f8;", uiOutput("diagram_energy_costs"))
+            ),
+            tabPanel("With Savings",
+                     div(uiOutput("output_text_ec_new"), class = "output-text"),
+                     div(style = "position: relative; padding-bottom: 100px; width: 100%; max-height: 100%; preserveAspectRatio='xMinYMin meet';  background-color: #f8f8f8;", uiOutput("diagram_energy_costs_new"))
+            )
+          )
         )
         
       ),
@@ -459,8 +475,16 @@ ui <- fluidPage(
           
         ),
         mainPanel(
-          div(uiOutput("output_text"), class = "output-text"),
-          div(style = "position: relative; width: 100%; max-height: 100%; preserveAspectRatio='xMinYMin meet';  background-color: #f8f8f8;", uiOutput("diagram")),
+          tabsetPanel(id = "tab",
+            tabPanel("Baseline",
+                     div(uiOutput("output_text"), class = "output-text"),
+                     div(style = "position: relative; width: 100%; max-height: 100%; preserveAspectRatio='xMinYMin meet';  background-color: #f8f8f8;", uiOutput("diagram")),
+            ),
+            tabPanel("With Savings",
+                     div(uiOutput("output_text_new"), class = "output-text"),
+                     div(style = "position: relative; width: 100%; max-height: 100%; preserveAspectRatio='xMinYMin meet';  background-color: #f8f8f8;", uiOutput("diagram_new")),
+            )
+          ),
           br(),
           span(textOutput("titleef"), style = "font-size: 21px; margin-left: 10px;"),
           div(style = "padding-bottom: 100px;", tableOutput("table1"))
@@ -588,6 +612,7 @@ ui <- fluidPage(
   )
 )
 
+# Server ----
 
 server <- function(input, output, session) {
   excelFilePath <- "Facility Sankey Tool - Input Sheet.xlsx"
@@ -616,113 +641,2395 @@ server <- function(input, output, session) {
     }
   )
   
-  # Read the uploaded nodes Excel file
-  nodes_data <- reactive({
+  units_conversion_e <- reactive({
+    if (input$units_e == "MWh/yr" & input$perc_e != "Percentage") {
+      0.293071 # Conversion factor
+    } else {
+      1
+    }
+  })
+  
+  
+  get_nodes_data <- function(filepath, total_name, emission, show_savings = TRUE) {
+    aa <- readxl::read_excel(filepath, sheet = "Results", range = "a6:aa189")
+    aa <- janitor::clean_names(aa)
+    if (emission == TRUE){
+      aa <- aa %>% filter(!is.na(source))
+    } else{
+      aa <- aa %>% filter(!is.na(energy_source))
+    }
+    
+    end.use <- tibble::tibble("Name" = aa$source)
+    ene.src <- tibble::tibble("Name" = unique(aa$energy_source)) %>%
+      na.omit()
+    
+    
+    
+    if (emission == TRUE){
+      ene_sav <- aa %>% 
+        filter(!is.na(co2e_emissions_savings_mt_co2e_yr) & co2e_emissions_savings_mt_co2e_yr != 0)
+    } else{
+      ene_sav <- aa %>% 
+        filter(!is.na(energy_savings) & energy_savings != 0)
+    }
+    
+    non_ele <- ene.src %>% filter(Name != "Electricity")
+    
+    n_src <- nrow(ene.src)
+    
+    # Create nodes based on whether there are savings AND show_savings parameter
+    nodes.hh <- tibble::tibble("Name" = "")
+    
+    if (nrow(ene_sav) > 0 && show_savings) {
+      # With savings: include Total Baseline
+      nodes.hh[1, "Name"] <- "Total Baseline"
+      nodes.hh[2, "Name"] <- total_name
+      nodes.hh[3, "Name"] <- paste0(total_name, " Saved")
+      
+      if (emission == TRUE) {
+        # For emissions: breakdown by category (Energy, Process, Fugitive)
+        energy_savings <- ene_sav %>% filter(energy_or_emissions_category == "Energy")
+        if (nrow(energy_savings) > 0) {
+          nodes.hh[nrow(nodes.hh) + 1, "Name"] <- "Energy Saved"
+        }
+        
+        process_savings <- ene_sav %>% filter(energy_or_emissions_category == "Process")
+        if (nrow(process_savings) > 0) {
+          nodes.hh[nrow(nodes.hh) + 1, "Name"] <- "Process Saved"
+        }
+        
+        fugitive_savings <- ene_sav %>% filter(energy_or_emissions_category == "Fugitive")
+        if (nrow(fugitive_savings) > 0) {
+          nodes.hh[nrow(nodes.hh) + 1, "Name"] <- "Fugitive Saved"
+        }
+        # Then breakdown Energy Saved into Electricity and Fuel
+        ele_savings <- energy_savings %>% filter(energy_source == "Electricity")
+        if (nrow(ele_savings) > 0) {
+          nodes.hh[nrow(nodes.hh) + 1, "Name"] <- "Electricity Saved"
+        }
+        
+        fuel_savings <- energy_savings %>% filter(energy_source != "Electricity")
+        if (nrow(fuel_savings) > 0) {
+          nodes.hh[nrow(nodes.hh) + 1, "Name"] <- "Fuel Saved"
+        }
+      } else {
+        # For energy/cost: breakdown by Electricity and Fuel only
+        ele_savings <- ene_sav %>% filter(energy_source == "Electricity")
+        if (nrow(ele_savings) > 0) {
+          nodes.hh[4, "Name"] <- "Electricity Saved"
+        }
+        
+        fuel_savings <- ene_sav %>% filter(energy_source != "Electricity")
+        if (nrow(fuel_savings) > 0) {
+          nodes.hh[nrow(nodes.hh) + 1, "Name"] <- "Fuel Saved"
+        }
+      }
+    } else {
+      # Without savings or show_savings=FALSE: start with Total Energy only
+      nodes.hh[1, "Name"] <- total_name
+    }
+    
+    if (!rlang::is_empty(non_ele$Name)) {
+      nodes.hh[nrow(nodes.hh) + 1, "Name"] <- "Fuel"
+    }
+    
+    if (emission == TRUE){
+      em.src <- tibble('Name' = unique(aa$`energy_or_emissions_category`))
+      nodes.h <- rbind(nodes.hh, ene.src, end.use, em.src)
+    } else{
+      nodes.h <- rbind(nodes.hh, ene.src, end.use)
+    }
+    
+    
+    nodes <- nodes.h %>%
+      filter(!is.na(Name)) %>%
+      mutate("No" = row_number()) %>%
+      select(No, Name)
+    
+    return(nodes)
+  }
+  
+  # Emissions Tab ----
+  units_conversion <- reactive({
+    if (input$units == "lbs. of CO₂e/yr" &
+        input$perc != "Percentage") {
+      2204.6226218 # Conversion factor
+      
+    } else {
+      1
+    }
+  })
+  
+  
+  # Read the uploaded links Excel file
+  ef <- reactive({
     req(input$file)
     
-    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:o189")
+    
+    bb <- read_excel(input$file$datapath, sheet = 'Emission Inputs (Optional)', range = "l10:r27")
+    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:aa189")
+    
     
     aa <- clean_names(aa)
     aa <- aa %>%
       filter(!is.na(source))
+    ene.src <- tibble('Name' = unique(aa$`energy_source`))
+    bb1 <- bb %>%
+      filter(!is.na(Title))
+    fortable <- aa %>%
+      mutate(efta = paste0(energy_source, units)) %>%
+      select(efta) %>%
+      filter(!is.na(efta))
+    
+    result <- merge(bb1,
+                    ene.src,
+                    by.x = "Title",
+                    by.y = "Name",
+                    all = FALSE)
+    
+    long_data <- melt(
+      result,
+      id.vars = c("Title", "Source"),
+      variable.name = "Units",
+      value.name = "Factors"
+    )
+    
+    display_data <- merge(bb1,
+                          ene.src,
+                          by.x = "Title",
+                          by.y = "Name",
+                          all = FALSE)
+    
+    dd1 <- long_data %>%
+      mutate(efta = paste0(Title, Units))
+    
+    dd2 <- tibble('efta' = unique(fortable$`efta`))
+    
+    result2 <- merge(dd1, dd2, by = "efta", all = FALSE)
+    result2 <- result2 %>%
+      select(-efta) %>%
+      select(Title, Factors, Units, Source) %>%
+      mutate(Units = paste0("MTCO₂e/", Units))
+    result2$Factors <- signif(result2$Factors, 3)
+    result2$Factors <- format(result2$Factors, scientific = T)
+    
+    result2
+  })
+  
+  
+  tef <- reactive({
+    ef <- ef()
+    if (is_empty(ef$Factors)) {
+      ""
+    } else{
+      "Emission Factors Used"
+    }
+  })
+  
+  output$titleef <- renderText({
+    text <- tef()
+  })
+  
+  output$table1 <- renderTable({
+    # Set to 0 to always display in scientific notation
+    ef()
+  })
+  
+  temp <- reactive({
+    req(input$file)
+    
+    
+    temp <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:aa189")
+    temp <- clean_names(temp)
+    temp <- temp %>%
+      filter(!is.na(source))
+    temp
+  })
+  
+  # Reactive for nodes data - Baseline tab (no savings nodes)
+  nodes_data <- reactive({
+    req(input$file)
+    get_nodes_data(input$file$datapath, 'Total Emissions', TRUE, show_savings = FALSE)
+  })
+  
+  # Reactive for nodes data - New tab (with savings nodes)
+  nodes_data_new <- reactive({
+    req(input$file)
+    get_nodes_data(input$file$datapath, 'Total Emissions', TRUE, show_savings = TRUE)
+  })
+  
+  # Links reactive for Emissions Baseline tab
+  links_data <- reactive({
+    req(input$file)
+    show_savings <- FALSE  # For Baseline tab
+    
+    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:aa189")
+    
+    aa <- clean_names(aa)
     aa <- aa %>%
-      mutate(
-        energy_or_emissions_category = if_else(
-          energy_or_emissions_category == "Conserved Energy",
-          "Avoided Emissions",
-          energy_or_emissions_category
-        )
-      )
+      filter(!is.na(source))
     
     end.use <- tibble('Name' = aa$`source`)
     ene.src <- tibble('Name' = unique(aa$`energy_source`))
-    em.src <- tibble('Name' = unique(aa$`energy_or_emissions_category`))
     ene.src <- na.omit(ene.src)
     n_src <- nrow(ene.src)
+    
+    # Get energy savings data
+    ene_sav <- aa %>% 
+      filter(!is.na(co2e_emissions_savings_mt_co2e_yr & co2e_emissions_savings_mt_co2e_yr != 0))
+    em.src <- tibble('Name' = unique(aa$`energy_or_emissions_category`))
+    
+    # Check if there are savings and if we should show them
+    has_savings <- nrow(ene_sav) > 0 && show_savings
+    
+    # Create nodes structure
     nodes.hh <- tibble("Name" = "")
-    nodes.hh[1, 'Name'] <- 'Total'
-    non_ele <- ene.src %>%
+    
+    # Track node indices
+    total_baseline_idx <- NULL
+    total_emissions_idx <- NULL
+    total_emissions_saved_idx <- NULL
+    energy_saved_idx <- NULL
+    process_saved_idx <- NULL
+    fugitive_saved_idx <- NULL
+    electricity_saved_idx <- NULL
+    fuel_saved_idx <- NULL
+    total_name = "Total Emissions"
+    
+    if (has_savings) {
+      nodes.hh[1, 'Name'] <- 'Total Baseline'
+      nodes.hh[2, "Name"] <- total_name
+      nodes.hh[3, "Name"] <- paste0(total_name, " Saved")
+      total_baseline_idx <- 1
+      total_emissions_idx <- 2
+      total_emissions_saved_idx <- 3
       
+      # Check for savings by category
+      energy_savings <- ene_sav %>% filter(energy_or_emissions_category == "Energy")
+      if (nrow(energy_savings) > 0) {
+        nodes.hh[nrow(nodes.hh) + 1, 'Name'] <- 'Energy Saved'
+        energy_saved_idx <- nrow(nodes.hh)
+      }
+      
+      process_savings <- ene_sav %>% filter(energy_or_emissions_category == "Process")
+      if (nrow(process_savings) > 0) {
+        nodes.hh[nrow(nodes.hh) + 1, 'Name'] <- 'Process Saved'
+        process_saved_idx <- nrow(nodes.hh)
+      }
+      
+      fugitive_savings <- ene_sav %>% filter(energy_or_emissions_category == "Fugitive")
+      if (nrow(fugitive_savings) > 0) {
+        nodes.hh[nrow(nodes.hh) + 1, 'Name'] <- 'Fugitive Saved'
+        fugitive_saved_idx <- nrow(nodes.hh)
+      }
+      
+      # If there's Energy Saved, add Electricity and Fuel breakdown
+      if (!is.null(energy_saved_idx)) {
+        ele_savings <- energy_savings %>% filter(energy_source == "Electricity")
+        if (nrow(ele_savings) > 0) {
+          nodes.hh[nrow(nodes.hh) + 1, 'Name'] <- 'Electricity Saved'
+          electricity_saved_idx <- nrow(nodes.hh)
+        }
+        
+        fuel_savings <- energy_savings %>% filter(energy_source != "Electricity")
+        if (nrow(fuel_savings) > 0) {
+          nodes.hh[nrow(nodes.hh) + 1, 'Name'] <- 'Fuel Saved'
+          fuel_saved_idx <- nrow(nodes.hh)
+        }
+      }
+    } else {
+      # No savings: start with Total Emissions only
+      nodes.hh[1, 'Name'] <- total_name
+      total_emissions_idx <- 1
+    }
+    
+    non_ele <- ene.src %>%
       filter(Name != 'Electricity')
     
+    fuel_link_val <- numeric(0)
     if (!is_empty(non_ele$Name)) {
-      nodes.hh[2, 'Name'] <- 'Fuel'
+      nodes.hh[nrow(nodes.hh) + 1, 'Name'] <- 'Fuel'
+      fuel_link_val = nrow(nodes.hh)
     }
+    
     nodes.h <- rbind(nodes.hh, ene.src, end.use, em.src)
     
     nodes <- nodes.h %>%
       filter(!is.na(Name)) %>%
       mutate('No' = row_number()) %>%
       select(No, Name)
-    nodes
+    
+    links.h <- tibble(
+      'No' = 0,
+      'Source' = 0,
+      'Target' = 0,
+      'Value' = 0
+    )
+    
+    link_counter <- 0
+    
+    # 1. Add links from Total Baseline (only if savings exist)
+    if (has_savings) {
+      # Total Baseline -> Total Emissions
+      link_counter <- link_counter + 1
+      links.h[link_counter, ] <- list(link_counter, total_baseline_idx - 1, total_emissions_idx - 1, 0)
+      
+      # Total Baseline -> Total Emissions Saved
+      link_counter <- link_counter + 1
+      links.h[link_counter, ] <- list(link_counter, total_baseline_idx - 1, total_emissions_saved_idx - 1, 0)
+    }
+    
+    # 2. Add links from Total Emissions Saved to category savings (Energy, Process, Fugitive)
+    if (has_savings) {
+      if (!is.null(energy_saved_idx)) {
+        link_counter <- link_counter + 1
+        links.h[link_counter, ] <- list(link_counter, total_emissions_saved_idx - 1, energy_saved_idx - 1, 0)
+      }
+      
+      if (!is.null(process_saved_idx)) {
+        link_counter <- link_counter + 1
+        links.h[link_counter, ] <- list(link_counter, total_emissions_saved_idx - 1, process_saved_idx - 1, 0)
+      }
+      
+      if (!is.null(fugitive_saved_idx)) {
+        link_counter <- link_counter + 1
+        links.h[link_counter, ] <- list(link_counter, total_emissions_saved_idx - 1, fugitive_saved_idx - 1, 0)
+      }
+      
+      # 3. Add links from Energy Saved to Electricity/Fuel Saved
+      if (!is.null(energy_saved_idx)) {
+        if (!is.null(electricity_saved_idx)) {
+          link_counter <- link_counter + 1
+          links.h[link_counter, ] <- list(link_counter, energy_saved_idx - 1, electricity_saved_idx - 1, 0)
+        }
+        
+        if (!is.null(fuel_saved_idx)) {
+          link_counter <- link_counter + 1
+          links.h[link_counter, ] <- list(link_counter, energy_saved_idx - 1, fuel_saved_idx - 1, 0)
+        }
+      }
+    }
+    
+    # 4. Add existing energy flow links (from energy sources to end uses)
+    aa.e <- aa %>%
+      filter(energy_or_emissions_category == "Energy")
+    
+    for (i in 1:nrow(aa.e)) {
+      link_counter <- link_counter + 1
+      links.h[link_counter, 'No'] <- link_counter
+      
+      for (j in 1:nrow(nodes)) {
+        if (aa.e[i, 'source'] == nodes[j, 'Name']) {
+          links.h[link_counter, 'Target'] <- nodes[[j, 'No']] - 1
+        }
+      }
+      for (j in 1:nrow(nodes)) {
+        if (aa.e[i, 'energy_source'] == nodes[j, 'Name']) {
+          links.h[link_counter, 'Source'] <- nodes[[j, 'No']] - 1
+        }
+      }
+      
+      if (input$perc == "Percentage") {
+        links.h[link_counter, 'Value'] <- aa.e[i, 'percentage_of_total_emissions_baseline'] * 100
+      } else {
+        links.h[link_counter, 'Value'] <- aa.e[i, 'co2e_emissions_baseline_mt_co2e_yr']
+      }
+    }
+    
+    # 5. Calculate and add aggregated links from Energy category to energy sources
+    skip_rows <- if (has_savings) {
+      # Count all the baseline/saved links
+      count <- 2  # Total Baseline -> Total Emissions, Total Baseline -> Total Emissions Saved
+      if (!is.null(energy_saved_idx)) count <- count + 1
+      if (!is.null(process_saved_idx)) count <- count + 1
+      if (!is.null(fugitive_saved_idx)) count <- count + 1
+      if (!is.null(electricity_saved_idx)) count <- count + 1
+      if (!is.null(fuel_saved_idx)) count <- count + 1
+      count
+    } else {
+      0
+    }
+    
+    links.hh <- links.h %>%
+      filter(No > skip_rows) %>%
+      group_by(Source) %>%
+      summarise(Value = sum(Value))
+    
+    ele <- nodes %>% filter(Name == 'Electricity')
+    energy_idx <- nodes %>% filter(Name == 'Energy')
+    
+    if (!is_empty(ele$No)) {
+      ele_link_val <- as.numeric(ele$No - 1)
+      ele_link <- links.hh %>% filter(Source == ele_link_val)
+      links.hh <- links.hh %>% filter(Source != ele_link_val)
+      
+      if (nrow(ele_link) > 0) {
+        link_counter <- link_counter + 1
+        links.h[link_counter, ] <- list(link_counter, energy_idx$No - 1, ele_link_val, ele_link$Value)
+      }
+    }
+    
+    # Add fuel links
+    if (!is_empty(fuel_link_val) && nrow(links.hh) > 0) {
+      fuel_total <- sum(links.hh$Value)
+      link_counter <- link_counter + 1
+      links.h[link_counter, ] <- list(link_counter, energy_idx$No - 1, fuel_link_val - 1, fuel_total)
+      
+      for (k in 1:nrow(links.hh)) {
+        link_counter <- link_counter + 1
+        links.h[link_counter, ] <- list(link_counter, fuel_link_val - 1, links.hh$Source[k], links.hh$Value[k])
+      }
+    }
+    
+    # 6. Calculate values for savings links (only if savings exist)
+    if (has_savings) {
+      # Total Emissions Saved value
+      total_savings <- sum(ene_sav$co2e_emissions_savings_mt_co2e_yr, na.rm = TRUE)
+      baseline_to_saved_link <- which(links.h$Source == (total_baseline_idx - 1) & 
+                                        links.h$Target == (total_emissions_saved_idx - 1))
+      if (length(baseline_to_saved_link) > 0) {
+        links.h[baseline_to_saved_link, 'Value'] <- total_savings
+      }
+      
+      # Energy Saved value
+      if (!is.null(energy_saved_idx)) {
+        energy_sav_total <- sum(ene_sav$co2e_emissions_savings_mt_co2e_yr[ene_sav$energy_or_emissions_category == "Energy"], na.rm = TRUE)
+        energy_sav_link <- which(links.h$Source == (total_emissions_saved_idx - 1) & 
+                                   links.h$Target == (energy_saved_idx - 1))
+        if (length(energy_sav_link) > 0) {
+          links.h[energy_sav_link, 'Value'] <- energy_sav_total
+        }
+        
+        # Electricity and Fuel saved values
+        if (!is.null(electricity_saved_idx)) {
+          ele_sav_total <- sum(ene_sav$co2e_emissions_savings_mt_co2e_yr[ene_sav$energy_or_emissions_category == "Energy" & 
+                                                                           ene_sav$energy_source == "Electricity"], na.rm = TRUE)
+          ele_sav_link <- which(links.h$Source == (energy_saved_idx - 1) & 
+                                  links.h$Target == (electricity_saved_idx - 1))
+          if (length(ele_sav_link) > 0) {
+            links.h[ele_sav_link, 'Value'] <- ele_sav_total
+          }
+        }
+        
+        if (!is.null(fuel_saved_idx)) {
+          fuel_sav_total <- sum(ene_sav$co2e_emissions_savings_mt_co2e_yr[ene_sav$energy_or_emissions_category == "Energy" & 
+                                                                            ene_sav$energy_source != "Electricity"], na.rm = TRUE)
+          fuel_sav_link <- which(links.h$Source == (energy_saved_idx - 1) & 
+                                   links.h$Target == (fuel_saved_idx - 1))
+          if (length(fuel_sav_link) > 0) {
+            links.h[fuel_sav_link, 'Value'] <- fuel_sav_total
+          }
+        }
+      }
+      
+      # Process Saved value
+      if (!is.null(process_saved_idx)) {
+        process_sav_total <- sum(ene_sav$co2e_emissions_savings_mt_co2e_yr[ene_sav$energy_or_emissions_category == "Process"], na.rm = TRUE)
+        process_sav_link <- which(links.h$Source == (total_emissions_saved_idx - 1) & 
+                                    links.h$Target == (process_saved_idx - 1))
+        if (length(process_sav_link) > 0) {
+          links.h[process_sav_link, 'Value'] <- process_sav_total
+        }
+      }
+      
+      # Fugitive Saved value
+      if (!is.null(fugitive_saved_idx)) {
+        fugitive_sav_total <- sum(ene_sav$co2e_emissions_savings_mt_co2e_yr[ene_sav$energy_or_emissions_category == "Fugitive"], na.rm = TRUE)
+        fugitive_sav_link <- which(links.h$Source == (total_emissions_saved_idx - 1) & 
+                                     links.h$Target == (fugitive_saved_idx - 1))
+        if (length(fugitive_sav_link) > 0) {
+          links.h[fugitive_sav_link, 'Value'] <- fugitive_sav_total
+        }
+      }
+      
+      # Update Total Baseline -> Total Emissions link
+      total_emissions_consumption <- sum(aa.e$co2e_emissions_baseline_mt_co2e_yr, na.rm = TRUE)
+      baseline_to_emissions_link <- which(links.h$Source == (total_baseline_idx - 1) & 
+                                            links.h$Target == (total_emissions_idx - 1))
+      if (length(baseline_to_emissions_link) > 0) {
+        links.h[baseline_to_emissions_link, 'Value'] <- total_emissions_consumption
+      }
+    }
+    
+    # 7. Add non-energy emission flows (Process and Fugitive)
+    ene <- nodes %>% filter(Name == 'Energy')
+    ene_link_val <- as.numeric(ene$No - 1)
+    
+    aa.ne <- aa %>%
+      filter(energy_or_emissions_category != "Energy")
+    
+    if (!is_empty(aa.ne$source)) {
+      o <- 0
+      for (q in (nrow(links.h) + 1):(nrow(links.h) + nrow(aa.ne))) {
+        o <- o + 1
+        links.h[q, 'No'] <- q
+        for (j in 1:nrow(nodes)) {
+          if (aa.ne[o, 'source'] == nodes[j, 'Name']) {
+            links.h[q, 'Target'] <- nodes[[j, 'No']] - 1
+          }
+        }
+        for (j in 1:nrow(nodes)) {
+          if (aa.ne[o, 'energy_or_emissions_category'] == nodes[j, 'Name']) {
+            links.h[q, 'Source'] <- nodes[[j, 'No']] - 1
+          }
+        }
+        if (input$perc == "Percentage") {
+          links.h[q, 'Value'] <- aa.ne[o, 'percentage_of_total_emissions_baseline'] * 100
+        } else {
+          links.h[q, 'Value'] <- aa.ne[o, 'co2e_emissions_baseline_mt_co2e_yr']
+        }
+      }
+    }
+    
+    # 8. Add links from Total Emissions to emission categories
+    pr_link_val <- numeric(0)
+    fg_link_val <- numeric(0)
+    
+    pr <- nodes %>% filter(Name == 'Process')
+    fg <- nodes %>% filter(Name == 'Fugitive')
+    filter_criteria <- c()
+    
+    if (!is_empty(pr$No)) {
+      pr_link_val <- as.numeric(pr$No - 1)
+      filter_criteria <- c(filter_criteria, pr_link_val)
+    }
+    
+    if (!is_empty(fg$No)) {
+      fg_link_val <- as.numeric(fg$No - 1)
+      filter_criteria <- c(filter_criteria, fg_link_val)
+    }
+    
+    # Always include ene_link_val
+    filter_criteria <- c(filter_criteria, ene_link_val)
+    
+    # Apply the filter and summarise
+    links.t <- links.h %>%
+      filter(Source %in% filter_criteria) %>%
+      group_by(Source) %>%
+      summarise(Value = sum(Value))
+    
+    total_fields <- as.numeric(!is_empty(pr_link_val)) + as.numeric(!is_empty(ene_link_val)) +
+      as.numeric(!is_empty(fg_link_val))
+    
+    v <- 0
+    for (m in (nrow(links.h) + 1):(nrow(links.h) + total_fields)) {
+      v <- v + 1
+      links.h[m, 'No'] <- m
+      links.h[m, 'Target'] <- links.t[v, 'Source']
+      links.h[m, 'Source'] <- total_emissions_idx - 1
+      links.h[m, 'Value'] <- links.t[v, 'Value']
+    }
+    
+    links <- links.h
+    links <- links %>%
+      filter(No > 0, !is.na(Value), Value > 0) %>%
+      mutate(
+        Value = round(Value * units_conversion(), input$precision),
+        label = paste0(Source, " → ", Target, ": ", Value)
+      ) %>%
+      arrange(Source)
+    
+    return(links)
   })
+  
+  # Links reactive for Emissions New tab (with savings)
+  links_data_new <- reactive({
+    req(input$file)
+    show_savings <- TRUE  # For New tab
+    
+    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:aa189")
+    
+    aa <- clean_names(aa)
+    aa <- aa %>%
+      filter(!is.na(source))
+    
+    end.use <- tibble('Name' = aa$`source`)
+    ene.src <- tibble('Name' = unique(aa$`energy_source`))
+    ene.src <- na.omit(ene.src)
+    n_src <- nrow(ene.src)
+    
+    # Get energy savings data
+    ene_sav <- aa %>% 
+      filter(!is.na(co2e_emissions_savings_mt_co2e_yr) & co2e_emissions_savings_mt_co2e_yr != 0)
+    em.src <- tibble('Name' = unique(aa$`energy_or_emissions_category`))
+    
+    # Check if there are savings and if we should show them
+    has_savings <- nrow(ene_sav) > 0 && show_savings
+    
+    # Create nodes structure
+    nodes.hh <- tibble("Name" = "")
+    
+    # Track node indices
+    total_baseline_idx <- NULL
+    total_emissions_idx <- NULL
+    total_emissions_saved_idx <- NULL
+    energy_saved_idx <- NULL
+    process_saved_idx <- NULL
+    fugitive_saved_idx <- NULL
+    electricity_saved_idx <- NULL
+    fuel_saved_idx <- NULL
+    total_name = "Total Emissions"
+    
+    if (has_savings) {
+      nodes.hh[1, 'Name'] <- 'Total Baseline'
+      nodes.hh[2, "Name"] <- total_name
+      nodes.hh[3, "Name"] <- paste0(total_name, " Saved")
+      total_baseline_idx <- 1
+      total_emissions_idx <- 2
+      total_emissions_saved_idx <- 3
+      
+      # Check for savings by category
+      energy_savings <- ene_sav %>% filter(energy_or_emissions_category == "Energy")
+      if (nrow(energy_savings) > 0) {
+        nodes.hh[nrow(nodes.hh) + 1, 'Name'] <- 'Energy Saved'
+        energy_saved_idx <- nrow(nodes.hh)
+      }
+      
+      process_savings <- ene_sav %>% filter(energy_or_emissions_category == "Process")
+      if (nrow(process_savings) > 0) {
+        nodes.hh[nrow(nodes.hh) + 1, 'Name'] <- 'Process Saved'
+        process_saved_idx <- nrow(nodes.hh)
+      }
+      
+      fugitive_savings <- ene_sav %>% filter(energy_or_emissions_category == "Fugitive")
+      if (nrow(fugitive_savings) > 0) {
+        nodes.hh[nrow(nodes.hh) + 1, 'Name'] <- 'Fugitive Saved'
+        fugitive_saved_idx <- nrow(nodes.hh)
+      }
+      
+      # If there's Energy Saved, add Electricity and Fuel breakdown
+      if (!is.null(energy_saved_idx)) {
+        ele_savings <- energy_savings %>% filter(energy_source == "Electricity")
+        if (nrow(ele_savings) > 0) {
+          nodes.hh[nrow(nodes.hh) + 1, 'Name'] <- 'Electricity Saved'
+          electricity_saved_idx <- nrow(nodes.hh)
+        }
+        
+        fuel_savings <- energy_savings %>% filter(energy_source != "Electricity")
+        if (nrow(fuel_savings) > 0) {
+          nodes.hh[nrow(nodes.hh) + 1, 'Name'] <- 'Fuel Saved'
+          fuel_saved_idx <- nrow(nodes.hh)
+        }
+      }
+    } else {
+      # No savings: start with Total Emissions only
+      nodes.hh[1, 'Name'] <- total_name
+      total_emissions_idx <- 1
+    }
+    
+    non_ele <- ene.src %>%
+      filter(Name != 'Electricity')
+    
+    fuel_link_val <- numeric(0)
+    if (!is_empty(non_ele$Name)) {
+      nodes.hh[nrow(nodes.hh) + 1, 'Name'] <- 'Fuel'
+      fuel_link_val = nrow(nodes.hh)
+    }
+    
+    nodes.h <- rbind(nodes.hh, ene.src, end.use, em.src)
+    
+    nodes <- nodes.h %>%
+      filter(!is.na(Name)) %>%
+      mutate('No' = row_number()) %>%
+      select(No, Name)
+    
+    links.h <- tibble(
+      'No' = 0,
+      'Source' = 0,
+      'Target' = 0,
+      'Value' = 0
+    )
+    
+    link_counter <- 0
+    
+    # 1. Add links from Total Baseline (only if savings exist)
+    if (has_savings) {
+      # Total Baseline -> Total Emissions
+      link_counter <- link_counter + 1
+      links.h[link_counter, ] <- list(link_counter, total_baseline_idx - 1, total_emissions_idx - 1, 0)
+      
+      # Total Baseline -> Total Emissions Saved
+      link_counter <- link_counter + 1
+      links.h[link_counter, ] <- list(link_counter, total_baseline_idx - 1, total_emissions_saved_idx - 1, 0)
+    }
+    
+    # 2. Add links from Total Emissions Saved to category savings (Energy, Process, Fugitive)
+    if (has_savings) {
+      if (!is.null(energy_saved_idx)) {
+        link_counter <- link_counter + 1
+        links.h[link_counter, ] <- list(link_counter, total_emissions_saved_idx - 1, energy_saved_idx - 1, 0)
+      }
+      
+      if (!is.null(process_saved_idx)) {
+        link_counter <- link_counter + 1
+        links.h[link_counter, ] <- list(link_counter, total_emissions_saved_idx - 1, process_saved_idx - 1, 0)
+      }
+      
+      if (!is.null(fugitive_saved_idx)) {
+        link_counter <- link_counter + 1
+        links.h[link_counter, ] <- list(link_counter, total_emissions_saved_idx - 1, fugitive_saved_idx - 1, 0)
+      }
+      
+      # 3. Add links from Energy Saved to Electricity/Fuel Saved
+      if (!is.null(energy_saved_idx)) {
+        if (!is.null(electricity_saved_idx)) {
+          link_counter <- link_counter + 1
+          links.h[link_counter, ] <- list(link_counter, energy_saved_idx - 1, electricity_saved_idx - 1, 0)
+        }
+        
+        if (!is.null(fuel_saved_idx)) {
+          link_counter <- link_counter + 1
+          links.h[link_counter, ] <- list(link_counter, energy_saved_idx - 1, fuel_saved_idx - 1, 0)
+        }
+      }
+    }
+    
+    # 4. Add existing energy flow links (from energy sources to end uses) - use NEW values
+    aa.e <- aa %>%
+      filter(energy_or_emissions_category == "Energy")
+    
+    for (i in 1:nrow(aa.e)) {
+      link_counter <- link_counter + 1
+      links.h[link_counter, 'No'] <- link_counter
+      
+      for (j in 1:nrow(nodes)) {
+        if (aa.e[i, 'source'] == nodes[j, 'Name']) {
+          links.h[link_counter, 'Target'] <- nodes[[j, 'No']] - 1
+        }
+      }
+      for (j in 1:nrow(nodes)) {
+        if (aa.e[i, 'energy_source'] == nodes[j, 'Name']) {
+          links.h[link_counter, 'Source'] <- nodes[[j, 'No']] - 1
+        }
+      }
+      
+      
+      links.h[link_counter, 'Value'] <- aa.e[i, 'co2e_emissions_new_mt_co2e_yr']  
+    }
+    
+    # 5. Calculate and add aggregated links from Energy category to energy sources
+    skip_rows <- if (has_savings) {
+      # Count all the baseline/saved links
+      count <- 2  # Total Baseline -> Total Emissions, Total Baseline -> Total Emissions Saved
+      if (!is.null(energy_saved_idx)) count <- count + 1
+      if (!is.null(process_saved_idx)) count <- count + 1
+      if (!is.null(fugitive_saved_idx)) count <- count + 1
+      if (!is.null(electricity_saved_idx)) count <- count + 1
+      if (!is.null(fuel_saved_idx)) count <- count + 1
+      count
+    } else {
+      0
+    }
+    
+    links.hh <- links.h %>%
+      filter(No > skip_rows) %>%
+      group_by(Source) %>%
+      summarise(Value = sum(Value))
+    
+    ele <- nodes %>% filter(Name == 'Electricity')
+    energy_idx <- nodes %>% filter(Name == 'Energy')
+    
+    if (!is_empty(ele$No)) {
+      ele_link_val <- as.numeric(ele$No - 1)
+      ele_link <- links.hh %>% filter(Source == ele_link_val)
+      links.hh <- links.hh %>% filter(Source != ele_link_val)
+      
+      if (nrow(ele_link) > 0) {
+        link_counter <- link_counter + 1
+        links.h[link_counter, ] <- list(link_counter, energy_idx$No - 1, ele_link_val, ele_link$Value)
+      }
+    }
+    
+    # Add fuel links
+    if (!is_empty(fuel_link_val) && nrow(links.hh) > 0) {
+      fuel_total <- sum(links.hh$Value)
+      link_counter <- link_counter + 1
+      links.h[link_counter, ] <- list(link_counter, energy_idx$No - 1, fuel_link_val - 1, fuel_total)
+      
+      for (k in 1:nrow(links.hh)) {
+        link_counter <- link_counter + 1
+        links.h[link_counter, ] <- list(link_counter, fuel_link_val - 1, links.hh$Source[k], links.hh$Value[k])
+      }
+    }
+    
+    # 6. Calculate values for savings links (only if savings exist)
+    if (has_savings) {
+      # Total Emissions Saved value
+      total_savings <- sum(ene_sav$co2e_emissions_savings_mt_co2e_yr, na.rm = TRUE)
+      baseline_to_saved_link <- which(links.h$Source == (total_baseline_idx - 1) & 
+                                        links.h$Target == (total_emissions_saved_idx - 1))
+      if (length(baseline_to_saved_link) > 0) {
+        links.h[baseline_to_saved_link, 'Value'] <- total_savings
+      }
+      
+      # Energy Saved value
+      if (!is.null(energy_saved_idx)) {
+        energy_sav_total <- sum(ene_sav$co2e_emissions_savings_mt_co2e_yr[ene_sav$energy_or_emissions_category == "Energy"], na.rm = TRUE)
+        energy_sav_link <- which(links.h$Source == (total_emissions_saved_idx - 1) & 
+                                   links.h$Target == (energy_saved_idx - 1))
+        if (length(energy_sav_link) > 0) {
+          links.h[energy_sav_link, 'Value'] <- energy_sav_total
+        }
+        
+        # Electricity and Fuel saved values
+        if (!is.null(electricity_saved_idx)) {
+          ele_sav_total <- sum(ene_sav$co2e_emissions_savings_mt_co2e_yr[ene_sav$energy_or_emissions_category == "Energy" & 
+                                                                           ene_sav$energy_source == "Electricity"], na.rm = TRUE)
+          ele_sav_link <- which(links.h$Source == (energy_saved_idx - 1) & 
+                                  links.h$Target == (electricity_saved_idx - 1))
+          if (length(ele_sav_link) > 0) {
+            links.h[ele_sav_link, 'Value'] <- ele_sav_total
+          }
+        }
+        
+        if (!is.null(fuel_saved_idx)) {
+          fuel_sav_total <- sum(ene_sav$co2e_emissions_savings_mt_co2e_yr[ene_sav$energy_or_emissions_category == "Energy" & 
+                                                                            ene_sav$energy_source != "Electricity"], na.rm = TRUE)
+          fuel_sav_link <- which(links.h$Source == (energy_saved_idx - 1) & 
+                                   links.h$Target == (fuel_saved_idx - 1))
+          if (length(fuel_sav_link) > 0) {
+            links.h[fuel_sav_link, 'Value'] <- fuel_sav_total
+          }
+        }
+      }
+      
+      # Process Saved value
+      if (!is.null(process_saved_idx)) {
+        process_sav_total <- sum(ene_sav$co2e_emissions_savings_mt_co2e_yr[ene_sav$energy_or_emissions_category == "Process"], na.rm = TRUE)
+        process_sav_link <- which(links.h$Source == (total_emissions_saved_idx - 1) & 
+                                    links.h$Target == (process_saved_idx - 1))
+        if (length(process_sav_link) > 0) {
+          links.h[process_sav_link, 'Value'] <- process_sav_total
+        }
+      }
+      
+      # Fugitive Saved value
+      if (!is.null(fugitive_saved_idx)) {
+        fugitive_sav_total <- sum(ene_sav$co2e_emissions_savings_mt_co2e_yr[ene_sav$energy_or_emissions_category == "Fugitive"], na.rm = TRUE)
+        fugitive_sav_link <- which(links.h$Source == (total_emissions_saved_idx - 1) & 
+                                     links.h$Target == (fugitive_saved_idx - 1))
+        if (length(fugitive_sav_link) > 0) {
+          links.h[fugitive_sav_link, 'Value'] <- fugitive_sav_total
+        }
+      }
+      
+      # Update Total Baseline -> Total Emissions link (using NEW emissions)
+      total_emissions_consumption <- sum(aa$co2e_emissions_new_mt_co2e_yr, na.rm = TRUE)
+      baseline_to_emissions_link <- which(links.h$Source == (total_baseline_idx - 1) & 
+                                            links.h$Target == (total_emissions_idx - 1))
+      if (length(baseline_to_emissions_link) > 0) {
+        links.h[baseline_to_emissions_link, 'Value'] <- total_emissions_consumption
+      }
+    }
+    
+    # 7. Add non-energy emission flows (Process and Fugitive) - use NEW values
+    ene <- nodes %>% filter(Name == 'Energy')
+    ene_link_val <- as.numeric(ene$No - 1)
+    
+    aa.ne <- aa %>%
+      filter(energy_or_emissions_category != "Energy")
+    
+    if (!is_empty(aa.ne$source)) {
+      o <- 0
+      for (q in (nrow(links.h) + 1):(nrow(links.h) + nrow(aa.ne))) {
+        o <- o + 1
+        links.h[q, 'No'] <- q
+        for (j in 1:nrow(nodes)) {
+          if (aa.ne[o, 'source'] == nodes[j, 'Name']) {
+            links.h[q, 'Target'] <- nodes[[j, 'No']] - 1
+          }
+        }
+        for (j in 1:nrow(nodes)) {
+          if (aa.ne[o, 'energy_or_emissions_category'] == nodes[j, 'Name']) {
+            links.h[q, 'Source'] <- nodes[[j, 'No']] - 1
+          }
+        }
+        links.h[q, 'Value'] <- aa.ne[o, 'co2e_emissions_new_mt_co2e_yr']  # NEW emissions
+      }
+    }
+    
+    # 8. Add links from Total Emissions to emission categories
+    pr_link_val <- numeric(0)
+    fg_link_val <- numeric(0)
+    
+    pr <- nodes %>% filter(Name == 'Process')
+    fg <- nodes %>% filter(Name == 'Fugitive')
+    filter_criteria <- c()
+    
+    if (!is_empty(pr$No)) {
+      pr_link_val <- as.numeric(pr$No - 1)
+      filter_criteria <- c(filter_criteria, pr_link_val)
+    }
+    
+    if (!is_empty(fg$No)) {
+      fg_link_val <- as.numeric(fg$No - 1)
+      filter_criteria <- c(filter_criteria, fg_link_val)
+    }
+    
+    # Always include ene_link_val
+    filter_criteria <- c(filter_criteria, ene_link_val)
+    
+    # Apply the filter and summarise
+    links.t <- links.h %>%
+      filter(Source %in% filter_criteria) %>%
+      group_by(Source) %>%
+      summarise(Value = sum(Value))
+    
+    total_fields <- as.numeric(!is_empty(pr_link_val)) + as.numeric(!is_empty(ene_link_val)) +
+      as.numeric(!is_empty(fg_link_val))
+    
+    v <- 0
+    for (m in (nrow(links.h) + 1):(nrow(links.h) + total_fields)) {
+      v <- v + 1
+      links.h[m, 'No'] <- m
+      links.h[m, 'Target'] <- links.t[v, 'Source']
+      links.h[m, 'Source'] <- total_emissions_idx - 1
+      links.h[m, 'Value'] <- links.t[v, 'Value']
+    }
+    
+    
+    if (input$perc == "Percentage") {
+      total_baseline_df <- links.h %>% 
+        filter(Source == 0) %>% 
+        group_by(Source) %>% 
+        summarise(total = sum(Value))
+      total_baseline <- total_baseline_df$total
+      
+      links.h$Value <-  links.h$Value * 100 / total_baseline
+    }
+    links <- links.h
+    links <- links %>%
+      filter(No > 0, !is.na(Value), Value > 0) %>%
+      mutate(
+        Value = round(Value * units_conversion(), input$precision),
+        label = paste0(Source, " → ", Target, ": ", Value)
+      ) %>%
+      arrange(Source)
+    
+    
+    
+    return(links)
+    
+    sankeyNetwork(Links = links, Nodes = nodes, Source = "Source",
+                  Target = "Target", Value = "Value", NodeID = "Name",
+                  fontSize = 12, nodeWidth = 30)
+  })
+  
+  
+  s1 <- reactive({
+    nodes <- nodes_data()
+    links <- links_data()
+    names(nodes) <- c('SN', "Name")
+    names(links) <- c('SN', "Source", "Target", "Value", "label")
+    
+    
+    sankey_reactive <- reactive({
+      sankeyNetwork(
+        Links = links,
+        Nodes = nodes,
+        Source = "Source",
+        Target = "Target",
+        Value = "Value",
+        NodeID = "Name",
+        LinkGroup = "label",
+        sinksRight = F,
+        fontSize = 14,
+        nodeWidth = 30,
+        iterations = 10,
+        colourScale = JS("d3.scaleSequential(d3.interpolatePlasma);")
+      )
+    })
+    
+    sankey <- sankey_reactive()
+    
+    javascript_string <-
+      'function(el, x) {
+  d3.select(el).selectAll(".node text")
+    .text(function(d) {
+      var value_str = d.value.toLocaleString();
+      if (d.dx < 20) {
+        return d.name;
+      } else {
+        return d.name + " (" + value_str + ")";
+      }
+    });
+
+  // Clear the viewBox attribute of the first SVG element
+  document.getElementsByTagName("svg")[0].setAttribute("viewBox", "");
+}'
+    
+    htmlwidgets::onRender(x = sankey, jsCode = javascript_string)
+  })
+  
+  s1_new <- reactive({
+    nodes <- nodes_data_new()
+    links <- links_data_new()
+    names(nodes) <- c('SN', "Name")
+    names(links) <- c('SN', "Source", "Target", "Value", "label")
+    
+    
+    sankey_reactive <- reactive({
+      sankeyNetwork(
+        Links = links,
+        Nodes = nodes,
+        Source = "Source",
+        Target = "Target",
+        Value = "Value",
+        NodeID = "Name",
+        LinkGroup = "label",
+        sinksRight = F,
+        fontSize = 14,
+        nodeWidth = 30,
+        iterations = 10,
+        colourScale = JS("d3.scaleSequential(d3.interpolatePlasma);")
+      )
+    })
+    
+    sankey <- sankey_reactive()
+    
+    javascript_string <-
+      'function(el, x) {
+  d3.select(el).selectAll(".node text")
+    .text(function(d) {
+      var value_str = d.value.toLocaleString();
+      if (d.dx < 20) {
+        return d.name;
+      } else {
+        return d.name + " (" + value_str + ")";
+      }
+    });
+
+  // Clear the viewBox attribute of the first SVG element
+  document.getElementsByTagName("svg")[0].setAttribute("viewBox", "");
+}'
+    
+    htmlwidgets::onRender(x = sankey, jsCode = javascript_string)
+  })
+  
+  output$sankey <- renderSankeyNetwork(s1())
+  
+  output$diagram <- renderUI({
+    temp <- temp ()
+    nr <- nrow(temp) * input$vsc
+    ht <- paste0(nr, "px")
+    sankeyNetworkOutput("sankey", height = ht)
+  })
+  
+  output$sankey_new <- renderSankeyNetwork(s1_new())
+  
+  output$diagram_new <- renderUI({
+    temp <- temp ()
+    nr <- nrow(temp) * input$vsc
+    ht <- paste0(nr, "px")
+    sankeyNetworkOutput("sankey_new", height = ht)
+  })
+  
+  # Energy Tab ----
+  
+  # Reactive for nodes data - Baseline tab (no savings nodes)
+  nodes_data_energy <- reactive({
+    req(input$file)
+    get_nodes_data(input$file$datapath, 'Total Energy', FALSE, show_savings = FALSE)
+  })
+  
+  # Reactive for nodes data - New tab (with savings nodes)
+  nodes_data_energy_new <- reactive({
+    req(input$file)
+    get_nodes_data(input$file$datapath, 'Total Energy', FALSE, show_savings = TRUE)
+  })
+  
+  # Links reactive for Baseline tab
+  links_data_energy <- reactive({
+    req(input$file)
+    show_savings <- FALSE  # For Baseline tab
+    
+    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:aa189")
+    
+    aa <- clean_names(aa)
+    aa <- aa %>%
+      filter(!is.na(energy_source))
+    
+    end.use <- tibble('Name' = aa$`source`)
+    ene.src <- tibble('Name' = unique(aa$`energy_source`))
+    ene.src <- na.omit(ene.src)
+    n_src <- nrow(ene.src)
+    
+    # Get energy savings data
+    ene_sav <- aa %>% 
+      filter(!is.na(energy_savings) & energy_savings != 0)
+    
+    # Check if there are savings and if we should show them
+    has_savings <- nrow(ene_sav) > 0 && show_savings
+    
+    # Create nodes structure
+    nodes.hh <- tibble("Name" = "")
+    
+    # Track node indices
+    total_baseline_idx <- NULL
+    total_energy_idx <- NULL
+    total_energy_saved_idx <- NULL
+    electricity_saved_idx <- NULL
+    fuel_saved_idx <- NULL
+    
+    if (has_savings) {
+      nodes.hh[1, 'Name'] <- 'Total Baseline'
+      nodes.hh[2, 'Name'] <- 'Total Energy'
+      total_baseline_idx <- 1
+      total_energy_idx <- 2
+      
+      nodes.hh[3, 'Name'] <- 'Total Energy Saved'
+      total_energy_saved_idx <- 3
+      
+      ele_savings <- ene_sav %>% filter(energy_source == "Electricity")
+      if (nrow(ele_savings) > 0) {
+        nodes.hh[4, 'Name'] <- 'Electricity Saved'
+        electricity_saved_idx <- 4
+      }
+      
+      fuel_savings <- ene_sav %>% filter(energy_source != "Electricity")
+      if (nrow(fuel_savings) > 0) {
+        nodes.hh[nrow(nodes.hh) + 1, 'Name'] <- 'Fuel Saved'
+        fuel_saved_idx <- nrow(nodes.hh)
+      }
+    } else {
+      # No savings: start with Total Energy only
+      nodes.hh[1, 'Name'] <- 'Total Energy'
+      total_energy_idx <- 1
+    }
+    
+    non_ele <- ene.src %>%
+      filter(Name != 'Electricity')
+    
+    fuel_link_val <- numeric(0)
+    if (!is_empty(non_ele$Name)) {
+      nodes.hh[nrow(nodes.hh) + 1, 'Name'] <- 'Fuel'
+      fuel_link_val = nrow(nodes.hh)
+    }
+    
+    
+    nodes.h <- rbind(nodes.hh, ene.src, end.use)
+    
+    nodes <- nodes.h %>%
+      filter(!is.na(Name)) %>%
+      mutate('No' = row_number()) %>%
+      select(No, Name)
+    
+    links.h <- tibble(
+      'No' = 0,
+      'Source' = 0,
+      'Target' = 0,
+      'Value' = 0
+    )
+    
+    link_counter <- 0
+    
+    # 1. Add links from Total Baseline (only if savings exist)
+    if (has_savings) {
+      # Total Baseline -> Total Energy
+      link_counter <- link_counter + 1
+      links.h[link_counter, ] <- list(link_counter, total_baseline_idx - 1, total_energy_idx - 1, 0)
+      
+      # Total Baseline -> Total Energy Saved
+      link_counter <- link_counter + 1
+      links.h[link_counter, ] <- list(link_counter, total_baseline_idx - 1, total_energy_saved_idx - 1, 0)
+    }
+    
+    # 2. Add links from Total Energy Saved to Electricity Saved and Fuel Saved
+    if (has_savings) {
+      if (!is.null(electricity_saved_idx)) {
+        link_counter <- link_counter + 1
+        links.h[link_counter, ] <- list(link_counter, total_energy_saved_idx - 1, electricity_saved_idx - 1, 0)
+      }
+      
+      if (!is.null(fuel_saved_idx)) {
+        link_counter <- link_counter + 1
+        links.h[link_counter, ] <- list(link_counter, total_energy_saved_idx - 1, fuel_saved_idx - 1, 0)
+      }
+    }
+    
+    # 3. Add existing energy flow links (from energy sources to end uses)
+    aa.e <- aa %>%
+      filter(energy_or_emissions_category == "Energy")
+    
+    for (i in 1:nrow(aa.e)) {
+      link_counter <- link_counter + 1
+      links.h[link_counter, 'No'] <- link_counter
+      
+      for (j in 1:nrow(nodes)) {
+        if (aa.e[i, 'source'] == nodes[j, 'Name']) {
+          links.h[link_counter, 'Target'] <- nodes[[j, 'No']] - 1
+        }
+      }
+      for (j in 1:nrow(nodes)) {
+        if (aa.e[i, 'energy_source'] == nodes[j, 'Name']) {
+          links.h[link_counter, 'Source'] <- nodes[[j, 'No']] - 1
+        }
+      }
+      
+      if (input$perc_e == "Percentage") {
+        links.h[link_counter, 'Value'] <- aa.e[i, 'percentage_of_total_energy_baseline'] * 100
+      } else {
+        links.h[link_counter, 'Value'] <- aa.e[i, 'total_energy_baseline_mm_btu_yr']
+      }
+    }
+    
+    # 4. Calculate and add aggregated links from Total Energy to energy sources
+    skip_rows <- if (has_savings) 4 else 0
+    links.hh <- links.h %>%
+      filter(No > skip_rows) %>%
+      group_by(Source) %>%
+      summarise(Value = sum(Value))
+    
+    ele <- nodes %>% filter(Name == 'Electricity')
+    
+    if (!is_empty(ele$No)) {
+      ele_link_val <- as.numeric(ele$No - 1)
+      ele_link <- links.hh %>% filter(Source == ele_link_val)
+      links.hh <- links.hh %>% filter(Source != ele_link_val)
+      
+      if (nrow(ele_link) > 0) {
+        link_counter <- link_counter + 1
+        links.h[link_counter, ] <- list(link_counter, total_energy_idx - 1, ele_link_val, ele_link$Value)
+      }
+    }
+    
+    # Add fuel links
+    if (!is_empty(fuel_link_val) && nrow(links.hh) > 0) {
+      fuel_total <- sum(links.hh$Value)
+      link_counter <- link_counter + 1
+      links.h[link_counter, ] <- list(link_counter, total_energy_idx - 1, fuel_link_val - 1, fuel_total)
+      
+      for (k in 1:nrow(links.hh)) {
+        link_counter <- link_counter + 1
+        links.h[link_counter, ] <- list(link_counter, fuel_link_val - 1, links.hh$Source[k], links.hh$Value[k])
+      }
+    }
+    
+    # 5. Calculate values for savings links (only if savings exist)
+    if (has_savings) {
+      total_savings <- sum(ene_sav$energy_savings, na.rm = TRUE)
+      
+      # Update Total Baseline -> Total Energy Saved link
+      baseline_to_saved_link <- which(links.h$Source == (total_baseline_idx - 1) & 
+                                        links.h$Target == (total_energy_saved_idx - 1))
+      if (length(baseline_to_saved_link) > 0) {
+        links.h[baseline_to_saved_link, 'Value'] <- total_savings
+      }
+      
+      # Calculate electricity and fuel savings
+      if (!is.null(electricity_saved_idx)) {
+        ele_sav_total <- sum(ene_sav$energy_savings[ene_sav$energy_source == "Electricity"], na.rm = TRUE)
+        ele_sav_link <- which(links.h$Source == (total_energy_saved_idx - 1) & 
+                                links.h$Target == (electricity_saved_idx - 1))
+        if (length(ele_sav_link) > 0) {
+          links.h[ele_sav_link, 'Value'] <- ele_sav_total
+        }
+      }
+      
+      if (!is.null(fuel_saved_idx)) {
+        fuel_sav_total <- sum(ene_sav$energy_savings[ene_sav$energy_source != "Electricity"], na.rm = TRUE)
+        fuel_sav_link <- which(links.h$Source == (total_energy_saved_idx - 1) & 
+                                 links.h$Target == (fuel_saved_idx - 1))
+        if (length(fuel_sav_link) > 0) {
+          links.h[fuel_sav_link, 'Value'] <- fuel_sav_total
+        }
+      }
+      
+      # Update Total Baseline -> Total Energy link
+      total_energy_consumption <- sum(aa.e$total_energy_baseline_mm_btu_yr, na.rm = TRUE)
+      baseline_to_energy_link <- which(links.h$Source == (total_baseline_idx - 1) & 
+                                         links.h$Target == (total_energy_idx - 1))
+      if (length(baseline_to_energy_link) > 0) {
+        links.h[baseline_to_energy_link, 'Value'] <- total_energy_consumption
+      }
+    }
+    
+    # Clean up and finalize links
+    links <- links.h %>%
+      filter(No > 0, !is.na(Value), Value > 0) %>%
+      mutate(
+        Value = round(Value * units_conversion_e(), input$precision_e),
+        label = paste0(Source, " → ", Target, ": ", Value)
+      ) %>%
+      arrange(Source)
+    
+    return(links)
+  })
+  
+  # Links reactive for New tab
+  links_data_energy_new <- reactive({
+    req(input$file)
+    show_savings <- TRUE  # For New tab
+    
+    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:aa189")
+    
+    aa <- clean_names(aa)
+    aa <- aa %>%
+      filter(!is.na(energy_source))
+    
+    end.use <- tibble('Name' = aa$`source`)
+    ene.src <- tibble('Name' = unique(aa$`energy_source`))
+    ene.src <- na.omit(ene.src)
+    n_src <- nrow(ene.src)
+    
+    # Get energy savings data
+    ene_sav <- aa %>% 
+      filter(!is.na(energy_savings) & energy_savings != 0)
+    
+    # Check if there are savings and if we should show them
+    has_savings <- nrow(ene_sav) > 0 && show_savings
+    
+    # Create nodes structure
+    nodes.hh <- tibble("Name" = "")
+    
+    # Track node indices
+    total_baseline_idx <- NULL
+    total_energy_idx <- NULL
+    total_energy_saved_idx <- NULL
+    electricity_saved_idx <- NULL
+    fuel_saved_idx <- NULL
+    
+    if (has_savings) {
+      nodes.hh[1, 'Name'] <- 'Total Baseline'
+      nodes.hh[2, 'Name'] <- 'Total Energy'
+      total_baseline_idx <- 1
+      total_energy_idx <- 2
+      
+      nodes.hh[3, 'Name'] <- 'Total Energy Saved'
+      total_energy_saved_idx <- 3
+      
+      ele_savings <- ene_sav %>% filter(energy_source == "Electricity")
+      if (nrow(ele_savings) > 0) {
+        nodes.hh[4, 'Name'] <- 'Electricity Saved'
+        electricity_saved_idx <- 4
+      }
+      
+      fuel_savings <- ene_sav %>% filter(energy_source != "Electricity")
+      if (nrow(fuel_savings) > 0) {
+        nodes.hh[nrow(nodes.hh) + 1, 'Name'] <- 'Fuel Saved'
+        fuel_saved_idx <- nrow(nodes.hh)
+      }
+    } else {
+      # No savings: start with Total Energy only
+      nodes.hh[1, 'Name'] <- 'Total Energy'
+      total_energy_idx <- 1
+    }
+    
+    non_ele <- ene.src %>%
+      filter(Name != 'Electricity')
+    
+    fuel_link_val <- numeric(0)
+    if (!is_empty(non_ele$Name)) {
+      nodes.hh[nrow(nodes.hh) + 1, 'Name'] <- 'Fuel'
+      fuel_link_val = nrow(nodes.hh)
+    }
+    
+    
+    nodes.h <- rbind(nodes.hh, ene.src, end.use)
+    
+    nodes <- nodes.h %>%
+      filter(!is.na(Name)) %>%
+      mutate('No' = row_number()) %>%
+      select(No, Name)
+    
+    links.h <- tibble(
+      'No' = 0,
+      'Source' = 0,
+      'Target' = 0,
+      'Value' = 0
+    )
+    
+    link_counter <- 0
+    
+    # 1. Add links from Total Baseline (only if savings exist)
+    if (has_savings) {
+      # Total Baseline -> Total Energy
+      link_counter <- link_counter + 1
+      links.h[link_counter, ] <- list(link_counter, total_baseline_idx - 1, total_energy_idx - 1, 0)
+      
+      # Total Baseline -> Total Energy Saved
+      link_counter <- link_counter + 1
+      links.h[link_counter, ] <- list(link_counter, total_baseline_idx - 1, total_energy_saved_idx - 1, 0)
+    }
+    
+    # 2. Add links from Total Energy Saved to Electricity Saved and Fuel Saved
+    if (has_savings) {
+      if (!is.null(electricity_saved_idx)) {
+        link_counter <- link_counter + 1
+        links.h[link_counter, ] <- list(link_counter, total_energy_saved_idx - 1, electricity_saved_idx - 1, 0)
+      }
+      
+      if (!is.null(fuel_saved_idx)) {
+        link_counter <- link_counter + 1
+        links.h[link_counter, ] <- list(link_counter, total_energy_saved_idx - 1, fuel_saved_idx - 1, 0)
+      }
+    }
+    
+    # 3. Add existing energy flow links (from energy sources to end uses)
+    aa.e <- aa %>%
+      filter(energy_or_emissions_category == "Energy")
+    
+    for (i in 1:nrow(aa.e)) {
+      link_counter <- link_counter + 1
+      links.h[link_counter, 'No'] <- link_counter
+      
+      for (j in 1:nrow(nodes)) {
+        if (aa.e[i, 'source'] == nodes[j, 'Name']) {
+          links.h[link_counter, 'Target'] <- nodes[[j, 'No']] - 1
+        }
+      }
+      for (j in 1:nrow(nodes)) {
+        if (aa.e[i, 'energy_source'] == nodes[j, 'Name']) {
+          links.h[link_counter, 'Source'] <- nodes[[j, 'No']] - 1
+        }
+      }
+      
+      
+      links.h[link_counter, 'Value'] <- aa.e[i, 'total_energy_new_mm_btu_yr']
+    }
+    
+    # 4. Calculate and add aggregated links from Total Energy to energy sources
+    
+    links.hh <- links.h %>%
+      group_by(Source) %>%
+      summarise(Value = sum(Value))
+    
+    ele <- nodes %>% filter(Name == 'Electricity')
+    
+    if (!is_empty(ele$No)) {
+      ele_link_val <- as.numeric(ele$No - 1)
+      ele_link <- links.hh %>% filter(Source == ele_link_val)
+      links.hh <- links.hh %>% filter(Source != ele_link_val)
+      
+      if (nrow(ele_link) > 0) {
+        link_counter <- link_counter + 1
+        links.h[link_counter, ] <- list(link_counter, total_energy_idx - 1, ele_link_val, ele_link$Value)
+      }
+    }
+    
+    # Add fuel links
+    if (!is_empty(fuel_link_val) && nrow(links.hh) > 0) {
+      fuel_total <- sum(links.hh$Value)
+      link_counter <- link_counter + 1
+      links.h[link_counter, ] <- list(link_counter, total_energy_idx - 1, fuel_link_val - 1, fuel_total)
+      
+      for (k in 1:nrow(links.hh)) {
+        link_counter <- link_counter + 1
+        links.h[link_counter, ] <- list(link_counter, fuel_link_val - 1, links.hh$Source[k], links.hh$Value[k])
+      }
+    }
+    
+    # 5. Calculate values for savings links (only if savings exist)
+    if (has_savings) {
+      total_savings <- sum(ene_sav$energy_savings, na.rm = TRUE)
+      
+      # Update Total Baseline -> Total Energy Saved link
+      baseline_to_saved_link <- which(links.h$Source == (total_baseline_idx - 1) & 
+                                        links.h$Target == (total_energy_saved_idx - 1))
+      if (length(baseline_to_saved_link) > 0) {
+        links.h[baseline_to_saved_link, 'Value'] <- total_savings
+      }
+      
+      # Calculate electricity and fuel savings
+      if (!is.null(electricity_saved_idx)) {
+        ele_sav_total <- sum(ene_sav$energy_savings[ene_sav$energy_source == "Electricity"], na.rm = TRUE)
+        ele_sav_link <- which(links.h$Source == (total_energy_saved_idx - 1) & 
+                                links.h$Target == (electricity_saved_idx - 1))
+        if (length(ele_sav_link) > 0) {
+          links.h[ele_sav_link, 'Value'] <- ele_sav_total
+        }
+      }
+      
+      if (!is.null(fuel_saved_idx)) {
+        fuel_sav_total <- sum(ene_sav$energy_savings[ene_sav$energy_source != "Electricity"], na.rm = TRUE)
+        fuel_sav_link <- which(links.h$Source == (total_energy_saved_idx - 1) & 
+                                 links.h$Target == (fuel_saved_idx - 1))
+        if (length(fuel_sav_link) > 0) {
+          links.h[fuel_sav_link, 'Value'] <- fuel_sav_total
+        }
+      }
+      
+      # Update Total Baseline -> Total Energy link
+      total_energy_consumption <- sum(aa.e$total_energy_new_mm_btu_yr, na.rm = TRUE)
+      baseline_to_energy_link <- which(links.h$Source == (total_baseline_idx - 1) & 
+                                         links.h$Target == (total_energy_idx - 1))
+      if (length(baseline_to_energy_link) > 0) {
+        links.h[baseline_to_energy_link, 'Value'] <- total_energy_consumption
+      }
+    }
+    
+    if (input$perc_e == "Percentage") {
+      total_baseline_df <- links.h %>% 
+        filter(Source == 0) %>% 
+        group_by(Source) %>% 
+        summarise(total = sum(Value))
+      total_baseline <- total_baseline_df$total
+      
+      links.h$Value <-  links.h$Value * 100 / total_baseline
+    }
+    
+    # Clean up and finalize links
+    links <- links.h %>%
+      filter(No > 0, !is.na(Value), Value > 0) %>%
+      mutate(
+        Value = round(Value * units_conversion_e(), input$precision_e),
+        label = paste0(Source, " → ", Target, ": ", Value)
+      ) %>%
+      arrange(Source)
+    
+    return(links)
+  })
+  
+  s1_energy <- reactive({
+    nodes <- nodes_data_energy()
+    links <- links_data_energy()
+    names(nodes) <- c('SN', "Name")
+    names(links) <- c('SN', "Source", "Target", "Value", "label")
+    
+    sankey_reactive <- reactive({
+      sankeyNetwork(
+        Links = links,
+        Nodes = nodes,
+        Source = "Source",
+        Target = "Target",
+        Value = "Value",
+        NodeID = "Name",
+        LinkGroup = "label",
+        sinksRight = F,
+        fontSize = 14,
+        nodeWidth = 30,
+        iterations = 10,
+        colourScale = JS("d3.scaleSequential(d3.interpolatePlasma);")
+      )
+    })
+    
+    sankey <- sankey_reactive()
+    
+    javascript_string <-
+      'function(el, x) {
+  d3.select(el).selectAll(".node text")
+    .text(function(d) {
+      var value_str = d.value.toLocaleString();
+      if (d.dx < 20) {
+        return d.name;
+      } else {
+        return d.name + " (" + value_str + ")";
+      }
+    });
+
+  // Clear the viewBox attribute of the first SVG element
+  document.getElementsByTagName("svg")[0].setAttribute("viewBox", "");
+}'
+    
+    htmlwidgets::onRender(x = sankey, jsCode = javascript_string)
+  })
+  
+  s1_energy_new <- reactive({
+    nodes <- nodes_data_energy_new()
+    links <- links_data_energy_new()
+    names(nodes) <- c('SN', "Name")
+    names(links) <- c('SN', "Source", "Target", "Value", "label")
+    
+    sankey_reactive <- reactive({
+      sankeyNetwork(
+        Links = links,
+        Nodes = nodes,
+        Source = "Source",
+        Target = "Target",
+        Value = "Value",
+        NodeID = "Name",
+        LinkGroup = "label",
+        sinksRight = F,
+        fontSize = 14,
+        nodeWidth = 30,
+        iterations = 10,
+        colourScale = JS("d3.scaleSequential(d3.interpolatePlasma);")
+      )
+    })
+    
+    sankey <- sankey_reactive()
+    
+    javascript_string <-
+      'function(el, x) {
+  d3.select(el).selectAll(".node text")
+    .text(function(d) {
+      var value_str = d.value.toLocaleString();
+      if (d.dx < 20) {
+        return d.name;
+      } else {
+        return d.name + " (" + value_str + ")";
+      }
+    });
+
+  // Clear the viewBox attribute of the first SVG element
+  document.getElementsByTagName("svg")[0].setAttribute("viewBox", "");
+}'
+    
+    htmlwidgets::onRender(x = sankey, jsCode = javascript_string)
+  })
+  
+  # Render outputs for Baseline tab
+  output$sankey_energy <- renderSankeyNetwork({
+    s1_energy()
+    # Your sankey network code using links_data_energy()
+    # This will NOT show savings nodes
+  })
+  
+  output$sankey_energy_new <- renderSankeyNetwork({
+    s1_energy_new()
+    # Your sankey network code using links_data_energy()
+    # This will NOT show savings nodes
+  })
+  
+  output$diagram_energy <- renderUI({
+    temp <- temp()
+    nr <- nrow(temp) * input$vsc_e
+    ht <- paste0(nr, "px")
+    sankeyNetworkOutput("sankey_energy", height = ht)
+  })
+  
+  # Render outputs for New tab
+  output$diagram_energy_new <- renderUI({
+    temp <- temp()
+    nr <- nrow(temp) * input$vsc_e
+    ht <- paste0(nr, "px")
+    sankeyNetworkOutput("sankey_energy_new", height = ht)
+  })
+  
+  # Cost Tab ----
   
   
   nodes_data_energy_costs <- reactive({
     req(input$file)
-    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:o189")
-    
-    aa <- clean_names(aa)
-    aa <- aa %>%
-      filter(!is.na(energy_source))
-    
-    end.use <- tibble('Name' = aa$`source`)
-    ene.src <- tibble('Name' = unique(aa$`energy_source`))
-    ene.src <- na.omit(ene.src)
-    n_src <- nrow(ene.src)
-    nodes.hh <- tibble("Name" = "")
-    nodes.hh[1, 'Name'] <- 'Total Energy Costs'
-    non_ele <- ene.src %>%
-      filter(Name != 'Electricity')
-    
-    if (!is_empty(non_ele$Name)) {
-      nodes.hh[2, 'Name'] <- 'Fuel'
-    }
-    
-    nodes.h <- rbind(nodes.hh, ene.src, end.use)
-    
-    nodes <- nodes.h %>%
-      filter(!is.na(Name)) %>%
-      mutate('No' = row_number()) %>%
-      select(No, Name)
-    nodes
+    get_nodes_data(input$file$datapath, 'Total Energy Costs', FALSE, show_savings = FALSE)
   })
   
-  nodes_data_energy <- reactive({
+  nodes_data_energy_costs_new <- reactive({
     req(input$file)
-    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:o189")
+    get_nodes_data(input$file$datapath, 'Total Energy Costs', FALSE, show_savings = TRUE)
+  })
+  
+  links_data_energy_costs <- reactive({
+    req(input$file)
+    show_savings <- FALSE  # For Baseline tab
+    
+    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:aa189")
     
     aa <- clean_names(aa)
     aa <- aa %>%
       filter(!is.na(energy_source))
+    
     end.use <- tibble('Name' = aa$`source`)
     ene.src <- tibble('Name' = unique(aa$`energy_source`))
     ene.src <- na.omit(ene.src)
     n_src <- nrow(ene.src)
+    
+    # Get energy savings data
+    ene_sav <- aa %>% 
+      filter(!is.na(energy_savings) & energy_savings != 0)
+    
+    # Check if there are savings and if we should show them
+    has_savings <- nrow(ene_sav) > 0 && show_savings
+    
+    # Create nodes structure
     nodes.hh <- tibble("Name" = "")
-    nodes.hh[1, 'Name'] <- 'Total Energy'
+    
+    # Track node indices
+    total_baseline_idx <- NULL
+    total_energy_idx <- NULL
+    total_energy_saved_idx <- NULL
+    electricity_saved_idx <- NULL
+    fuel_saved_idx <- NULL
+    total_name <- 'Total Energy Costs'
+    if (has_savings) {
+      nodes.hh[1, 'Name'] <- 'Baseline Energy Costs'
+      nodes.hh[2, 'Name'] <- total_name
+      total_baseline_idx <- 1
+      total_energy_idx <- 2
+      
+      nodes.hh[3, 'Name'] <- paste0(total_name,' Saved')
+      total_energy_saved_idx <- 3
+      
+      ele_savings <- ene_sav %>% filter(energy_source == "Electricity")
+      if (nrow(ele_savings) > 0) {
+        nodes.hh[4, 'Name'] <- 'Electricity Cost Saved'
+        electricity_saved_idx <- 4
+      }
+      
+      fuel_savings <- ene_sav %>% filter(energy_source != "Electricity")
+      if (nrow(fuel_savings) > 0) {
+        nodes.hh[nrow(nodes.hh) + 1, 'Name'] <- 'Fuel Cost Saved'
+        fuel_saved_idx <- nrow(nodes.hh)
+      }
+    } else {
+      # No savings: start with Total Energy only
+      nodes.hh[1, 'Name'] <- total_name
+      total_energy_idx <- 1
+    }
+    
     non_ele <- ene.src %>%
       filter(Name != 'Electricity')
     
+    fuel_link_val <- numeric(0)
     if (!is_empty(non_ele$Name)) {
-      nodes.hh[2, 'Name'] <- 'Fuel'
+      nodes.hh[nrow(nodes.hh) + 1, 'Name'] <- 'Fuel'
+      fuel_link_val = nrow(nodes.hh)
     }
     
-    aa.ne <- aa %>%
-      filter(energy_or_emissions_category == "Conserved Energy")
     
-    ce_link_val <- numeric(0)
-    if (!is_empty(aa.ne$no)) {
-      nodes.hh[3, 'Name'] <- 'Conserved Energy'
-    }
     nodes.h <- rbind(nodes.hh, ene.src, end.use)
     
     nodes <- nodes.h %>%
       filter(!is.na(Name)) %>%
       mutate('No' = row_number()) %>%
       select(No, Name)
-    nodes
+    
+    links.h <- tibble(
+      'No' = 0,
+      'Source' = 0,
+      'Target' = 0,
+      'Value' = 0
+    )
+    
+    link_counter <- 0
+    
+    # 1. Add links from Total Baseline (only if savings exist)
+    if (has_savings) {
+      # Total Baseline -> Total Energy
+      link_counter <- link_counter + 1
+      links.h[link_counter, ] <- list(link_counter, total_baseline_idx - 1, total_energy_idx - 1, 0)
+      
+      # Total Baseline -> Total Energy Saved
+      link_counter <- link_counter + 1
+      links.h[link_counter, ] <- list(link_counter, total_baseline_idx - 1, total_energy_saved_idx - 1, 0)
+    }
+    
+    # 2. Add links from Total Energy Saved to Electricity Saved and Fuel Saved
+    if (has_savings) {
+      if (!is.null(electricity_saved_idx)) {
+        link_counter <- link_counter + 1
+        links.h[link_counter, ] <- list(link_counter, total_energy_saved_idx - 1, electricity_saved_idx - 1, 0)
+      }
+      
+      if (!is.null(fuel_saved_idx)) {
+        link_counter <- link_counter + 1
+        links.h[link_counter, ] <- list(link_counter, total_energy_saved_idx - 1, fuel_saved_idx - 1, 0)
+      }
+    }
+    
+    # 3. Add existing energy flow links (from energy sources to end uses)
+    aa.e <- aa %>%
+      filter(energy_or_emissions_category == "Energy")
+    
+    for (i in 1:nrow(aa.e)) {
+      link_counter <- link_counter + 1
+      links.h[link_counter, 'No'] <- link_counter
+      
+      for (j in 1:nrow(nodes)) {
+        if (aa.e[i, 'source'] == nodes[j, 'Name']) {
+          links.h[link_counter, 'Target'] <- nodes[[j, 'No']] - 1
+        }
+      }
+      for (j in 1:nrow(nodes)) {
+        if (aa.e[i, 'energy_source'] == nodes[j, 'Name']) {
+          links.h[link_counter, 'Source'] <- nodes[[j, 'No']] - 1
+        }
+      }
+      
+      if (input$perc_ec == "Percentage") {
+        links.h[link_counter, 'Value'] <- aa.e[i, 'percentage_of_total_energy_costs_baseline'] * 100
+      } else {
+        links.h[link_counter, 'Value'] <- aa.e[i, 'total_energy_costs_baseline_yr']
+      }
+    }
+    
+    # 4. Calculate and add aggregated links from Total Energy to energy sources
+    skip_rows <- if (has_savings) 4 else 0
+    links.hh <- links.h %>%
+      filter(No > skip_rows) %>%
+      group_by(Source) %>%
+      summarise(Value = sum(Value))
+    
+    ele <- nodes %>% filter(Name == 'Electricity')
+    
+    if (!is_empty(ele$No)) {
+      ele_link_val <- as.numeric(ele$No - 1)
+      ele_link <- links.hh %>% filter(Source == ele_link_val)
+      links.hh <- links.hh %>% filter(Source != ele_link_val)
+      
+      if (nrow(ele_link) > 0) {
+        link_counter <- link_counter + 1
+        links.h[link_counter, ] <- list(link_counter, total_energy_idx - 1, ele_link_val, ele_link$Value)
+      }
+    }
+    
+    # Add fuel links
+    if (!is_empty(fuel_link_val) && nrow(links.hh) > 0) {
+      fuel_total <- sum(links.hh$Value)
+      link_counter <- link_counter + 1
+      links.h[link_counter, ] <- list(link_counter, total_energy_idx - 1, fuel_link_val - 1, fuel_total)
+      
+      for (k in 1:nrow(links.hh)) {
+        link_counter <- link_counter + 1
+        links.h[link_counter, ] <- list(link_counter, fuel_link_val - 1, links.hh$Source[k], links.hh$Value[k])
+      }
+    }
+    
+    # 5. Calculate values for savings links (only if savings exist)
+    if (has_savings) {
+      total_savings <- sum(ene_sav$energy_savings, na.rm = TRUE)
+      
+      # Update Total Baseline -> Total Energy Saved link
+      baseline_to_saved_link <- which(links.h$Source == (total_baseline_idx - 1) & 
+                                        links.h$Target == (total_energy_saved_idx - 1))
+      if (length(baseline_to_saved_link) > 0) {
+        links.h[baseline_to_saved_link, 'Value'] <- total_savings
+      }
+      
+      # Calculate electricity and fuel savings
+      if (!is.null(electricity_saved_idx)) {
+        ele_sav_total <- sum(ene_sav$energy_savings[ene_sav$energy_source == "Electricity"], na.rm = TRUE)
+        ele_sav_link <- which(links.h$Source == (total_energy_saved_idx - 1) & 
+                                links.h$Target == (electricity_saved_idx - 1))
+        if (length(ele_sav_link) > 0) {
+          links.h[ele_sav_link, 'Value'] <- ele_sav_total
+        }
+      }
+      
+      if (!is.null(fuel_saved_idx)) {
+        fuel_sav_total <- sum(ene_sav$energy_savings[ene_sav$energy_source != "Electricity"], na.rm = TRUE)
+        fuel_sav_link <- which(links.h$Source == (total_energy_saved_idx - 1) & 
+                                 links.h$Target == (fuel_saved_idx - 1))
+        if (length(fuel_sav_link) > 0) {
+          links.h[fuel_sav_link, 'Value'] <- fuel_sav_total
+        }
+      }
+      
+      # Update Total Baseline -> Total Energy link
+      total_energy_consumption <- sum(aa.e$total_energy_baseline_mm_btu_yr, na.rm = TRUE)
+      baseline_to_energy_link <- which(links.h$Source == (total_baseline_idx - 1) & 
+                                         links.h$Target == (total_energy_idx - 1))
+      if (length(baseline_to_energy_link) > 0) {
+        links.h[baseline_to_energy_link, 'Value'] <- total_energy_consumption
+      }
+    }
+    
+    # Clean up and finalize links
+    links <- links.h %>%
+      filter(No > 0, !is.na(Value), Value > 0) %>%
+      mutate(
+        Value = round(Value * units_conversion_e(), input$precision_e),
+        label = paste0(Source, " → ", Target, ": ", Value)
+      ) %>%
+      arrange(Source)
+    
+    return(links)
   })
+  
+  links_data_energy_costs_new <- reactive({
+    req(input$file)
+    show_savings <- TRUE  # For Baseline tab
+    
+    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:aa189")
+    
+    aa <- clean_names(aa)
+    aa <- aa %>%
+      filter(!is.na(energy_source))
+    
+    end.use <- tibble('Name' = aa$`source`)
+    ene.src <- tibble('Name' = unique(aa$`energy_source`))
+    ene.src <- na.omit(ene.src)
+    n_src <- nrow(ene.src)
+    
+    # Get energy savings data
+    ene_sav <- aa %>% 
+      filter(!is.na(energy_savings) & energy_savings != 0) %>% 
+      mutate(ene_cost_sav = total_energy_costs_baseline_yr - total_energy_costs_new_yr)
+    
+    # Check if there are savings and if we should show them
+    has_savings <- nrow(ene_sav) > 0 && show_savings
+    
+    # Create nodes structure
+    nodes.hh <- tibble("Name" = "")
+    
+    # Track node indices
+    total_baseline_idx <- NULL
+    total_energy_idx <- NULL
+    total_energy_saved_idx <- NULL
+    electricity_saved_idx <- NULL
+    fuel_saved_idx <- NULL
+    total_name <- 'Total Energy Costs'
+    if (has_savings) {
+      nodes.hh[1, 'Name'] <- 'Baseline Energy Costs'
+      nodes.hh[2, 'Name'] <- total_name
+      total_baseline_idx <- 1
+      total_energy_idx <- 2
+      
+      nodes.hh[3, 'Name'] <- paste0(total_name,' Saved')
+      total_energy_saved_idx <- 3
+      
+      ele_savings <- ene_sav %>% filter(energy_source == "Electricity")
+      if (nrow(ele_savings) > 0) {
+        nodes.hh[4, 'Name'] <- 'Electricity Cost Saved'
+        electricity_saved_idx <- 4
+      }
+      
+      fuel_savings <- ene_sav %>% filter(energy_source != "Electricity")
+      if (nrow(fuel_savings) > 0) {
+        nodes.hh[nrow(nodes.hh) + 1, 'Name'] <- 'Fuel Cost Saved'
+        fuel_saved_idx <- nrow(nodes.hh)
+      }
+    } else {
+      # No savings: start with Total Energy only
+      nodes.hh[1, 'Name'] <- total_name
+      total_energy_idx <- 1
+    }
+    
+    non_ele <- ene.src %>%
+      filter(Name != 'Electricity')
+    
+    fuel_link_val <- numeric(0)
+    if (!is_empty(non_ele$Name)) {
+      nodes.hh[nrow(nodes.hh) + 1, 'Name'] <- 'Fuel'
+      fuel_link_val = nrow(nodes.hh)
+    }
+    
+    
+    nodes.h <- rbind(nodes.hh, ene.src, end.use)
+    
+    nodes <- nodes.h %>%
+      filter(!is.na(Name)) %>%
+      mutate('No' = row_number()) %>%
+      select(No, Name)
+    
+    links.h <- tibble(
+      'No' = 0,
+      'Source' = 0,
+      'Target' = 0,
+      'Value' = 0
+    )
+    
+    link_counter <- 0
+    
+    # 1. Add links from Total Baseline (only if savings exist)
+    if (has_savings) {
+      # Total Baseline -> Total Energy
+      link_counter <- link_counter + 1
+      links.h[link_counter, ] <- list(link_counter, total_baseline_idx - 1, total_energy_idx - 1, 0)
+      
+      # Total Baseline -> Total Energy Saved
+      link_counter <- link_counter + 1
+      links.h[link_counter, ] <- list(link_counter, total_baseline_idx - 1, total_energy_saved_idx - 1, 0)
+    }
+    
+    # 2. Add links from Total Energy Saved to Electricity Saved and Fuel Saved
+    if (has_savings) {
+      if (!is.null(electricity_saved_idx)) {
+        link_counter <- link_counter + 1
+        links.h[link_counter, ] <- list(link_counter, total_energy_saved_idx - 1, electricity_saved_idx - 1, 0)
+      }
+      
+      if (!is.null(fuel_saved_idx)) {
+        link_counter <- link_counter + 1
+        links.h[link_counter, ] <- list(link_counter, total_energy_saved_idx - 1, fuel_saved_idx - 1, 0)
+      }
+    }
+    
+    # 3. Add existing energy flow links (from energy sources to end uses)
+    aa.e <- aa %>%
+      filter(energy_or_emissions_category == "Energy")
+    
+    for (i in 1:nrow(aa.e)) {
+      link_counter <- link_counter + 1
+      links.h[link_counter, 'No'] <- link_counter
+      
+      for (j in 1:nrow(nodes)) {
+        if (aa.e[i, 'source'] == nodes[j, 'Name']) {
+          links.h[link_counter, 'Target'] <- nodes[[j, 'No']] - 1
+        }
+      }
+      for (j in 1:nrow(nodes)) {
+        if (aa.e[i, 'energy_source'] == nodes[j, 'Name']) {
+          links.h[link_counter, 'Source'] <- nodes[[j, 'No']] - 1
+        }
+      }
+      
+      links.h[link_counter, 'Value'] <- aa.e[i, 'total_energy_costs_new_yr']
+    }
+    
+    # 4. Calculate and add aggregated links from Total Energy to energy sources
+    links.hh <- links.h %>%
+      group_by(Source) %>%
+      summarise(Value = sum(Value))
+    
+    ele <- nodes %>% filter(Name == 'Electricity')
+    
+    if (!is_empty(ele$No)) {
+      ele_link_val <- as.numeric(ele$No - 1)
+      ele_link <- links.hh %>% filter(Source == ele_link_val)
+      links.hh <- links.hh %>% filter(Source != ele_link_val)
+      
+      if (nrow(ele_link) > 0) {
+        link_counter <- link_counter + 1
+        links.h[link_counter, ] <- list(link_counter, total_energy_idx - 1, ele_link_val, ele_link$Value)
+      }
+    }
+    
+    # Add fuel links
+    if (!is_empty(fuel_link_val) && nrow(links.hh) > 0) {
+      fuel_total <- sum(links.hh$Value)
+      link_counter <- link_counter + 1
+      links.h[link_counter, ] <- list(link_counter, total_energy_idx - 1, fuel_link_val - 1, fuel_total)
+      
+      for (k in 1:nrow(links.hh)) {
+        link_counter <- link_counter + 1
+        links.h[link_counter, ] <- list(link_counter, fuel_link_val - 1, links.hh$Source[k], links.hh$Value[k])
+      }
+    }
+    
+    # 5. Calculate values for savings links (only if savings exist)
+    if (has_savings) {
+      total_savings <- sum(ene_sav$ene_cost_sav, na.rm = TRUE)
+      
+      # Update Total Baseline -> Total Energy Saved link
+      baseline_to_saved_link <- which(links.h$Source == (total_baseline_idx - 1) & 
+                                        links.h$Target == (total_energy_saved_idx - 1))
+      if (length(baseline_to_saved_link) > 0) {
+        links.h[baseline_to_saved_link, 'Value'] <- total_savings
+      }
+      
+      # Calculate electricity and fuel savings
+      if (!is.null(electricity_saved_idx)) {
+        ele_sav_total <- sum(ene_sav$ene_cost_sav[ene_sav$energy_source == "Electricity"], na.rm = TRUE)
+        ele_sav_link <- which(links.h$Source == (total_energy_saved_idx - 1) & 
+                                links.h$Target == (electricity_saved_idx - 1))
+        if (length(ele_sav_link) > 0) {
+          links.h[ele_sav_link, 'Value'] <- ele_sav_total
+        }
+      }
+      
+      if (!is.null(fuel_saved_idx)) {
+        fuel_sav_total <- sum(ene_sav$ene_cost_sav[ene_sav$energy_source != "Electricity"], na.rm = TRUE)
+        fuel_sav_link <- which(links.h$Source == (total_energy_saved_idx - 1) & 
+                                 links.h$Target == (fuel_saved_idx - 1))
+        if (length(fuel_sav_link) > 0) {
+          links.h[fuel_sav_link, 'Value'] <- fuel_sav_total
+        }
+      }
+      
+      # Update Total Baseline -> Total Energy link
+      total_energy_consumption <- sum(aa.e$total_energy_costs_new_yr, na.rm = TRUE)
+      baseline_to_energy_link <- which(links.h$Source == (total_baseline_idx - 1) & 
+                                         links.h$Target == (total_energy_idx - 1))
+      if (length(baseline_to_energy_link) > 0) {
+        links.h[baseline_to_energy_link, 'Value'] <- total_energy_consumption
+      }
+    }
+    
+    if (input$perc_ec == "Percentage") {
+      total_baseline_df <- links.h %>% 
+        filter(Source == 0) %>% 
+        group_by(Source) %>% 
+        summarise(total = sum(Value))
+      total_baseline <- total_baseline_df$total
+      
+      links.h$Value <-  links.h$Value * 100 / total_baseline
+    }
+    
+    # Clean up and finalize links
+    links <- links.h %>%
+      filter(No > 0, !is.na(Value), Value > 0) %>%
+      mutate(
+        Value = round(Value * units_conversion_e(), input$precision_e),
+        label = paste0(Source, " → ", Target, ": ", Value)
+      ) %>%
+      arrange(Source)
+    
+    return(links)
+  })
+  
+  
+  output$move <- renderText("Note: click and drag each node to
+                            customize the chart \n")
+  
+  # Create the Sankey diagram
+  
+  
+  s1_energy_costs <- reactive({
+    nodes <- nodes_data_energy_costs()
+    links <- links_data_energy_costs()
+    names(nodes) <- c('SN', "Name")
+    names(links) <- c('SN', "Source", "Target", "Value", "label")
+    
+    sankey_reactive <- reactive({
+      sankeyNetwork(
+        Links = links,
+        Nodes = nodes,
+        Source = "Source",
+        Target = "Target",
+        Value = "Value",
+        NodeID = "Name",
+        LinkGroup = "label",
+        sinksRight = F,
+        fontSize = 14,
+        nodeWidth = 30,
+        iterations = 10,
+        colourScale = JS("d3.scaleSequential(d3.interpolatePlasma);")
+      )
+    })
+    
+    sankey <- sankey_reactive()
+    
+    javascript_string <-
+      'function(el, x) {
+  d3.select(el).selectAll(".node text")
+    .text(function(d) {
+      var value_str = d.value.toLocaleString();
+      if (d.dx < 20) {
+        return d.name;
+      } else {
+        return d.name + " (" + value_str + ")";
+      }
+    });
+
+  // Clear the viewBox attribute of the first SVG element
+  document.getElementsByTagName("svg")[0].setAttribute("viewBox", "");
+}'
+    
+    htmlwidgets::onRender(x = sankey, jsCode = javascript_string)
+  })
+  
+  s1_energy_costs_new <- reactive({
+    nodes <- nodes_data_energy_costs_new()
+    links <- links_data_energy_costs_new()
+    names(nodes) <- c('SN', "Name")
+    names(links) <- c('SN', "Source", "Target", "Value", "label")
+    
+    sankey_reactive <- reactive({
+      sankeyNetwork(
+        Links = links,
+        Nodes = nodes,
+        Source = "Source",
+        Target = "Target",
+        Value = "Value",
+        NodeID = "Name",
+        LinkGroup = "label",
+        sinksRight = F,
+        fontSize = 14,
+        nodeWidth = 30,
+        iterations = 10,
+        colourScale = JS("d3.scaleSequential(d3.interpolatePlasma);")
+      )
+    })
+    
+    sankey <- sankey_reactive()
+    
+    javascript_string <-
+      'function(el, x) {
+  d3.select(el).selectAll(".node text")
+    .text(function(d) {
+      var value_str = d.value.toLocaleString();
+      if (d.dx < 20) {
+        return d.name;
+      } else {
+        return d.name + " (" + value_str + ")";
+      }
+    });
+
+  // Clear the viewBox attribute of the first SVG element
+  document.getElementsByTagName("svg")[0].setAttribute("viewBox", "");
+}'
+    
+    htmlwidgets::onRender(x = sankey, jsCode = javascript_string)
+  })
+  
+  output$sankey_energy_costs <- renderSankeyNetwork(s1_energy_costs())
+  output$sankey_energy_costs_new <- renderSankeyNetwork(s1_energy_costs_new())
+  
+  
+  output$diagram_energy_costs <- renderUI({
+    temp <- temp ()
+    nr <- nrow(temp) * input$vsc_ec
+    ht <- paste0(nr, "px")
+    sankeyNetworkOutput("sankey_energy_costs", height = ht)
+  })
+  
+  output$diagram_energy_costs_new <- renderUI({
+    temp <- temp ()
+    nr <- nrow(temp) * input$vsc_ec
+    ht <- paste0(nr, "px")
+    sankeyNetworkOutput("sankey_energy_costs_new", height = ht)
+  })
+  
+  
+  output$output_text <- renderUI({
+    req(input$file)
+    if (nchar(input$cname) > 0 & input$perc != "Percentage") {
+      paste0("CO₂e Flow for ", input$cname, " (" , input$units, ")")
+    } else if (nchar(input$cname) > 0 &
+               input$perc == "Percentage") {
+      paste0("CO₂e Flow for ", input$cname, " (%)")
+    } else if (input$perc == "Percentage") {
+      paste0("CO₂e Flow ", "(%)")
+    } else {
+      paste0("CO₂e Flow ", "(" , input$units, ")")
+    }
+    
+  })
+  output$output_text_new <- renderUI({
+    req(input$file)
+    if (nchar(input$cname) > 0 & input$perc != "Percentage") {
+      paste0("CO₂e Flow for ", input$cname, " (" , input$units, ")")
+    } else if (nchar(input$cname) > 0 &
+               input$perc == "Percentage") {
+      paste0("CO₂e Flow for ", input$cname, " (%)")
+    } else if (input$perc == "Percentage") {
+      paste0("CO₂e Flow ", "(%)")
+    } else {
+      paste0("CO₂e Flow ", "(" , input$units, ")")
+    }
+    
+  })
+  
+  output$output_text_e <- renderUI({
+    req(input$file)
+    if (nchar(input$cname) > 0 & input$perc_e != "Percentage") {
+      paste0("Energy Flow for ", input$cname, " (" , input$units_e, ")")
+    } else if (nchar(input$cname) > 0 &
+               input$perc_e == "Percentage") {
+      paste0("Energy Flow for ", input$cname, " (%)")
+    } else if (input$perc_e == "Percentage") {
+      paste0("Energy Flow ", "(%)")
+    } else {
+      paste0("Energy Flow ", "(" , input$units_e, ")")
+    }
+  })
+  output$output_text_e_new <- renderUI({
+    req(input$file)
+    if (nchar(input$cname) > 0 & input$perc_e != "Percentage") {
+      paste0("Energy Flow for ", input$cname, " (" , input$units_e, ")")
+    } else if (nchar(input$cname) > 0 &
+               input$perc_e == "Percentage") {
+      paste0("Energy Flow for ", input$cname, " (%)")
+    } else if (input$perc_e == "Percentage") {
+      paste0("Energy Flow ", "(%)")
+    } else {
+      paste0("Energy Flow ", "(" , input$units_e, ")")
+    }
+  })
+  
+  output$output_text_ec <- renderUI({
+    req(input$file)
+    if (nchar(input$cname) > 0 & input$perc_ec != "Percentage") {
+      paste0("Energy Costs Flow for ", input$cname, " ($)")
+    } else if (nchar(input$cname) > 0 &
+               input$perc_ec == "Percentage") {
+      paste0("Energy Costs Flow for ", input$cname, " (%)")
+    } else if (input$perc_ec == "Percentage") {
+      paste0("Energy Costs Flow (%)")
+    } else {
+      paste0("Energy Costs Flow ($)")
+    }
+  })
+  output$output_text_ec_new <- renderUI({
+    req(input$file)
+    if (nchar(input$cname) > 0 & input$perc_ec != "Percentage") {
+      paste0("Energy Costs Flow for ", input$cname, " ($)")
+    } else if (nchar(input$cname) > 0 &
+               input$perc_ec == "Percentage") {
+      paste0("Energy Costs Flow for ", input$cname, " (%)")
+    } else if (input$perc_ec == "Percentage") {
+      paste0("Energy Costs Flow (%)")
+    } else {
+      paste0("Energy Costs Flow ($)")
+    }
+  })
+  
+  output$downloadPNG <- downloadHandler(
+    filename = function() {
+      paste0("CO2_Flow_", Sys.Date(), ".png")
+    },
+    content = function(file) {
+      # Step 1: Save the widget (the reactive object) to a temporary HTML file
+      temp_html <- tempfile(fileext = ".html")
+      
+      # Save the widget, ensuring it's self-contained
+      # This saved file will respect the final dimensions of the widget when it rendered.
+      htmlwidgets::saveWidget(
+        widget = if (input$tab == "Baseline") {s1()} else {s1_new()}, 
+        file = temp_html, 
+        selfcontained = TRUE
+      )
+      
+      # Step 2: Use webshot2 to screenshot the temporary HTML file
+      webshot2::webshot(
+        url = temp_html, 
+        file = file, 
+        zoom = 5,
+        vwidth = input$width,
+        vheight = input$height,
+        delay = 1 
+      )
+    }
+  )
+  
+  
+  output$downloadPNG_e <- downloadHandler(
+    filename = function() {
+      paste0("Energy_Flow_", Sys.Date(), ".png")
+    },
+    content = function(file) {
+      # Step 1: Save the widget (the reactive object) to a temporary HTML file
+      temp_html <- tempfile(fileext = ".html")
+      
+      # Save the widget, ensuring it's self-contained
+      # This saved file will respect the final dimensions of the widget when it rendered.
+      htmlwidgets::saveWidget(
+        widget = if (input$tab_e == "Baseline") {s1_energy()} else {s1_energy_new()}, 
+        file = temp_html, 
+        selfcontained = TRUE
+      )
+      
+      # Step 2: Use webshot2 to screenshot the temporary HTML file
+      webshot2::webshot(
+        url = temp_html, 
+        file = file, 
+        zoom = 5,
+        vwidth = input$width,
+        vheight = input$height,
+        delay = 1 # Give the widget time to fully load and size itself
+      )
+    }
+  )
+  
+  
+  output$downloadPNG_ec <- downloadHandler(
+    filename = function() {
+      paste0("Energy_Cost_Flow_", Sys.Date(), ".png")
+    },
+    content = function(file) {
+      # Step 1: Save the widget (the reactive object) to a temporary HTML file
+      temp_html <- tempfile(fileext = ".html")
+      
+      # Save the widget, ensuring it's self-contained
+      # This saved file will respect the final dimensions of the widget when it rendered.
+      htmlwidgets::saveWidget(
+        widget = if (input$tab_ec == "Baseline") {s1_energy_costs()} else {s1_energy_costs_new()}, 
+        file = temp_html, 
+        selfcontained = TRUE
+      )
+      
+      # Step 2: Use webshot2 to screenshot the temporary HTML file
+      webshot2::webshot(
+        url = temp_html, 
+        file = file, 
+        zoom = 5,
+        vwidth = input$width,
+        vheight = input$height,
+        delay = 1 # Give the widget time to fully load and size itself
+      )
+    }
+  )
   
   output$dynamic_revenue <- renderUI({
     if (input$selected_method == "Revenue-based") {
@@ -1412,1165 +3719,9 @@ server <- function(input, output, session) {
     }
   })
   
-  units_conversion <- reactive({
-    if (input$units == "lbs. of CO₂e/yr" &
-        input$perc != "Percentage") {
-      2204.6226218 # Conversion factor
-      
-    } else {
-      1
-    }
-  })
-  
-  units_conversion_e <- reactive({
-    if (input$units_e == "MWh/yr" & input$perc_e != "Percentage") {
-      0.293071 # Conversion factor
-    } else {
-      1
-    }
-  })
-  
-  # Read the uploaded links Excel file
-  ef <- reactive({
-    req(input$file)
-    
-    
-    bb <- read_excel(input$file$datapath, sheet = 'Emission Inputs (Optional)', range = "k10:q27")
-    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:o189")
-    
-    
-    aa <- clean_names(aa)
-    aa <- aa %>%
-      filter(!is.na(source))
-    ene.src <- tibble('Name' = unique(aa$`energy_source`))
-    bb1 <- bb %>%
-      filter(!is.na(Title))
-    fortable <- aa %>%
-      mutate(efta = paste0(energy_source, units)) %>%
-      select(efta) %>%
-      filter(!is.na(efta))
-    
-    result <- merge(bb1,
-                    ene.src,
-                    by.x = "Title",
-                    by.y = "Name",
-                    all = FALSE)
-    
-    long_data <- melt(
-      result,
-      id.vars = c("Title", "Source"),
-      variable.name = "Units",
-      value.name = "Factors"
-    )
-    
-    display_data <- merge(bb1,
-                          ene.src,
-                          by.x = "Title",
-                          by.y = "Name",
-                          all = FALSE)
-    
-    dd1 <- long_data %>%
-      mutate(efta = paste0(Title, Units))
-    
-    dd2 <- tibble('efta' = unique(fortable$`efta`))
-    
-    result2 <- merge(dd1, dd2, by = "efta", all = FALSE)
-    result2 <- result2 %>%
-      select(-efta) %>%
-      select(Title, Factors, Units, Source) %>%
-      mutate(Units = paste0("MTCO₂e/", Units))
-    result2$Factors <- signif(result2$Factors, 3)
-    result2$Factors <- format(result2$Factors, scientific = T)
-    
-    result2
-  })
-  
-  
-  tef <- reactive({
-    ef <- ef()
-    if (is_empty(ef$Factors)) {
-      ""
-    } else{
-      "Emission Factors Used"
-    }
-  })
-  
-  output$titleef <- renderText({
-    text <- tef()
-  })
-  
-  output$table1 <- renderTable({
-    # Set to 0 to always display in scientific notation
-    ef()
-  })
-  
-  temp <- reactive({
-    req(input$file)
-    
-    
-    temp <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:o189")
-    temp <- clean_names(temp)
-    temp <- temp %>%
-      filter(!is.na(source))
-    temp
-  })
-  
-  temp_e <- reactive({
-    req(input$file)
-    temp_e <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:o189")
-    temp_e <- clean_names(temp_e)
-    temp_e <- temp_e %>%
-      filter(!is.na(energy_source))
-    temp_e
-  })
-  
-  temp_ec <- reactive({
-    req(input$file)
-    temp_ec <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:o189")
-    temp_ec <- clean_names(temp_ec)
-    temp_ec <- temp_ec %>%
-      filter(!is.na(energy_source))
-  })
   
   
   
-  links_data <- reactive({
-    req(input$file)
-    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:o189")
-    
-    
-    aa <- clean_names(aa)
-    aa <- aa %>%
-      filter(!is.na(source))
-    aa <- aa %>%
-      mutate(
-        energy_or_emissions_category = if_else(
-          energy_or_emissions_category == "Conserved Energy",
-          "Avoided Emissions",
-          energy_or_emissions_category
-        )
-      )
-    
-    end.use <- tibble('Name' = aa$`source`)
-    ene.src <- tibble('Name' = unique(aa$`energy_source`))
-    em.src <- tibble('Name' = unique(aa$`energy_or_emissions_category`))
-    ene.src <- na.omit(ene.src)
-    n_src <- nrow(ene.src)
-    nodes.hh <- tibble("Name" = "")
-    nodes.hh[1, 'Name'] <- 'Total'
-    non_ele <- ene.src %>%
-      filter(Name != 'Electricity')
-    
-    if (!is_empty(non_ele$Name)) {
-      nodes.hh[2, 'Name'] <- 'Fuel'
-    }
-    
-    nodes.h <- rbind(nodes.hh, ene.src, end.use, em.src)
-    
-    
-    nodes <- nodes.h %>%
-      filter(!is.na(Name)) %>%
-      mutate('No' = row_number()) %>%
-      select(No, Name)
-    
-    links.h <- tibble(
-      'No' = 0,
-      'Source' = 0,
-      'Target' = 0,
-      'Value' = 0
-    )
-    
-    aa.e <- aa %>%
-      filter(energy_or_emissions_category == "Energy")
-    
-    for (i in 1:nrow(aa.e)) {
-      links.h[i, 'No'] <- i
-      for (j in 1:nrow(nodes)) {
-        if (aa.e[i, 'source'] == nodes[j, 'Name']) {
-          links.h[i, 'Target'] <- nodes[[j, 'No']] - 1
-        }
-      }
-      for (j in 1:nrow(nodes)) {
-        if (aa.e[i, 'energy_source'] == nodes[j, 'Name']) {
-          links.h[i, 'Source'] <- nodes[[j, 'No']] - 1
-        }
-      }
-      
-      if (input$perc == "Percentage") {
-        links.h[i, 'Value'] <- aa.e[i, 'percentage_of_total_emissions'] * 100
-      } else {
-        links.h[i, 'Value'] <- aa.e[i, 'co2e_emissions_mt_co2e_yr']
-      }
-      
-    }
-    
-    links.hh <- links.h %>%
-      group_by(Source) %>%
-      summarise(Value = sum(Value))
-    ctr <- 0
-    
-    links.hh2 <- tibble(Source = c(), Value = c())
-    ele_link <- tibble(Source = c(), Value = c())
-    ele <- nodes %>%
-      filter(Name == 'Electricity')
-    
-    if (!is_empty(ele$No)) {
-      ele_link_val <- as.numeric(ele$No - 1)
-      ele_link <- links.hh %>%
-        filter(Source == ele_link_val)
-      
-      links.hh <- links.hh %>%
-        filter(Source != ele_link_val)
-      ctr <- ctr + 1
-    }
-    
-    
-    if (!is_empty(links.hh$Source)) {
-      if (!is_empty(ele$Name)) {
-        ctr2 <- n_src - 1
-      } else {
-        ctr2 <- n_src
-      }
-      l <- 0
-      for (k in (nrow(links.h) + 1):(nrow(links.h) + ctr2)) {
-        l <- l + 1
-        links.h[k, 'No'] <- k
-        links.h[k, 'Target'] <- links.hh[l, 'Source']
-        links.h[k, 'Source'] <- 1
-        links.h[k, 'Value'] <- links.hh[l, 'Value']
-      }
-      
-      links.hh2 <- links.h %>%
-        group_by(Source) %>%
-        summarise(Value = sum(Value)) %>%
-        filter(Source == 1)
-      ctr <- ctr + 1
-    }
-    
-    links.fe <- rbind(links.hh2, ele_link)
-    
-    ene <- nodes %>%
-      filter(Name == 'Energy')
-    
-    ene_link_val <- as.numeric(ene$No - 1)
-    
-    p <- 0
-    
-    
-    for (m in (nrow(links.h) + 1):(nrow(links.h) + ctr)) {
-      p <- p + 1
-      links.h[m, 'No'] <- m
-      links.h[m, 'Target'] <- links.fe[p, 'Source']
-      links.h[m, 'Source'] <- ene_link_val
-      links.h[m, 'Value'] <- links.fe[p, 'Value']
-    }
-    
-    aa.ne <- aa %>%
-      filter(energy_or_emissions_category != "Energy")
-    
-    
-    if (!is_empty(aa.ne$source)) {
-      o <- 0
-      for (q in (nrow(links.h) + 1):(nrow(links.h) + nrow(aa.ne))) {
-        o <- o + 1
-        links.h[q, 'No'] <- q
-        for (j in 1:nrow(nodes)) {
-          if (aa.ne[o, 'source'] == nodes[j, 'Name']) {
-            links.h[q, 'Target'] <- nodes[[j, 'No']] - 1
-          }
-        }
-        for (j in 1:nrow(nodes)) {
-          if (aa.ne[o, 'energy_or_emissions_category'] == nodes[j, 'Name']) {
-            links.h[q, 'Source'] <- nodes[[j, 'No']] - 1
-          }
-        }
-        if (input$perc == "Percentage") {
-          links.h[q, 'Value'] <- aa.ne[o, 'percentage_of_total_emissions'] * 100
-        } else {
-          links.h[q, 'Value'] <- aa.ne[o, 'co2e_emissions_mt_co2e_yr']
-        }
-      }
-    }
-    
-    
-    pr_link_val <- numeric(0)
-    fg_link_val <- numeric(0)
-    ac_link_val <- numeric(0)
-    
-    pr <- nodes %>%
-      filter(Name == 'Process')
-    fg <- nodes %>%
-      filter(Name == 'Fugitive')
-    ac <- nodes %>%
-      filter(Name == 'Avoided Emissions')
-    filter_criteria <- c()
-    
-    if (!is_empty(pr$No)) {
-      pr_link_val <- as.numeric(pr$No - 1)
-      filter_criteria <- c(filter_criteria, pr_link_val)
-    }
-    
-    if (!is_empty(fg$No)) {
-      fg_link_val <- as.numeric(fg$No - 1)
-      filter_criteria <- c(filter_criteria, fg_link_val)
-    }
-    
-    if (!is_empty(ac$No)) {
-      ac_link_val <- as.numeric(ac$No - 1)
-      filter_criteria <- c(filter_criteria, ac_link_val)
-    }
-    
-    # Always include ene_link_val
-    filter_criteria <- c(filter_criteria, ene_link_val)
-    
-    # Apply the filter and summarise
-    links.t <- links.h %>%
-      filter(Source %in% filter_criteria) %>%
-      group_by(Source) %>%
-      summarise(Value = sum(Value))
-    
-    total_fields <- as.numeric(!is_empty(pr_link_val)) + as.numeric(!is_empty(ene_link_val)) +
-      as.numeric(!is_empty(fg_link_val)) + as.numeric(!is_empty(ac_link_val))
-    
-    
-    
-    
-    v <- 0
-    for (m in (nrow(links.h) + 1):(nrow(links.h) + total_fields)) {
-      v <- v + 1
-      links.h[m, 'No'] <- m
-      links.h[m, 'Target'] <- links.t[v, 'Source']
-      links.h[m, 'Source'] <- 0
-      links.h[m, 'Value'] <- links.t[v, 'Value']
-    }
-    
-    
-    links <- links.h
-    links <- links %>%
-      mutate(
-        Value = round(Value * units_conversion(), input$precision),
-        label = paste0(Source, " → ", Target, ": ", Value)
-      ) %>%
-      arrange(Source)
-    links
-    
-  })
-  
-  links_data_energy_costs <- reactive({
-    req(input$file)
-    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:o189")
-    
-    aa <- clean_names(aa)
-    aa <- aa %>%
-      filter(!is.na(energy_source))
-    
-    aa$percentage_of_total_energy_costs = aa$total_energy_costs_yr / sum(aa$total_energy_costs_yr)
-    
-    end.use <- tibble('Name' = aa$`source`)
-    ene.src <- tibble('Name' = unique(aa$`energy_source`))
-    ene.src <- na.omit(ene.src)
-    n_src <- nrow(ene.src)
-    nodes.hh <- tibble("Name" = "")
-    nodes.hh[1, 'Name'] <- 'Total Energy Costs'
-    non_ele <- ene.src %>%
-      filter(Name != 'Electricity')
-    
-    fuel_costs_link_val <- numeric(0)
-    if (!is_empty(non_ele$Name)) {
-      nodes.hh[2, 'Name'] <- 'Fuel Costs'
-      fuel_costs_link_val = 1
-    }
-    
-    nodes.h <- rbind(nodes.hh, ene.src, end.use)
-    
-    nodes <- nodes.h %>%
-      filter(!is.na(Name)) %>%
-      mutate('No' = row_number()) %>%
-      select(No, Name)
-    
-    links.h <- tibble(
-      'No' = 0,
-      'Source' = 0,
-      'Target' = 0,
-      'Value' = 0
-    )
-    
-    aa.e <- aa
-    
-    for (i in 1:nrow(aa.e)) {
-      links.h[i, 'No'] <- i
-      for (j in 1:nrow(nodes)) {
-        if (aa.e[i, 'source'] == nodes[j, 'Name']) {
-          links.h[i, 'Target'] <- nodes[[j, 'No']] - 1
-        }
-      }
-      for (j in 1:nrow(nodes)) {
-        if (aa.e[i, 'energy_source'] == nodes[j, 'Name']) {
-          links.h[i, 'Source'] <- nodes[[j, 'No']] - 1
-        }
-      }
-      
-      if (input$perc_ec == "Percentage") {
-        links.h[i, 'Value'] <- aa.e[i, 'percentage_of_total_energy_costs'] * 100
-      } else {
-        links.h[i, 'Value'] <- aa.e[i, 'total_energy_costs_yr']
-      }
-      
-    }
-    
-    links.hh <- links.h %>%
-      group_by(Source) %>%
-      summarise(Value = sum(Value))
-    ctr <- 0
-    
-    links.hh2 <- tibble(Source = c(), Value = c())
-    ele_link <- tibble(Source = c(), Value = c())
-    ele <- nodes %>%
-      filter(Name == 'Electricity')
-    
-    if (!is_empty(ele$No)) {
-      ele_link_val <- as.numeric(ele$No - 1)
-      ele_link <- links.hh %>%
-        filter(Source == ele_link_val)
-      
-      links.hh <- links.hh %>%
-        filter(Source != ele_link_val)
-      ctr <- ctr + 1
-    }
-    
-    
-    if (!is_empty(links.hh$Source)) {
-      if (!is_empty(ele$Name)) {
-        ctr2 <- n_src - 1
-      } else {
-        ctr2 <- n_src
-      }
-      l <- 0
-      for (k in (nrow(links.h) + 1):(nrow(links.h) + ctr2)) {
-        l <- l + 1
-        links.h[k, 'No'] <- k
-        links.h[k, 'Target'] <- links.hh[l, 'Source']
-        links.h[k, 'Source'] <- 1
-        links.h[k, 'Value'] <- links.hh[l, 'Value']
-      }
-      
-      links.hh2 <- links.h %>%
-        group_by(Source) %>%
-        summarise(Value = sum(Value)) %>%
-        filter(Source == 1)
-      ctr <- ctr + 1
-    }
-    
-    links.fe <- rbind(links.hh2, ele_link)
-    
-    aa.ne <- aa %>%
-      filter(energy_or_emissions_category != "Energy")
-    
-    
-    if (!is_empty(aa.ne$source)) {
-      o <- 0
-      for (q in (nrow(links.h) + 1):(nrow(links.h) + nrow(aa.ne))) {
-        o <- o + 1
-        links.h[q, 'No'] <- q
-        for (j in 1:nrow(nodes)) {
-          if (aa.ne[o, 'source'] == nodes[j, 'Name']) {
-            links.h[q, 'Target'] <- nodes[[j, 'No']] - 1
-          }
-        }
-        for (j in 1:nrow(nodes)) {
-          if (aa.ne[o, 'energy_or_emissions_category'] == nodes[j, 'Name']) {
-            links.h[q, 'Source'] <- nodes[[j, 'No']] - 1
-          }
-        }
-        if (input$perc_ec == "Percentage") {
-          links.h[q, 'Value'] <- aa.ne[o, 'percentage_of_total_energy_costs'] * 100
-        } else {
-          links.h[q, 'Value'] <- aa.ne[o, 'total_energy_costs_yr']
-        }
-      }
-    }
-    
-    # Create a vector of filtering criteria based on conditions
-    filter_criteria <- c()
-    
-    if (!is_empty(ele_link_val)) {
-      filter_criteria <- c(filter_criteria, ele_link_val)
-    }
-    
-    if (!is_empty(fuel_costs_link_val)) {
-      filter_criteria <- c(filter_criteria, fuel_costs_link_val)
-    }
-    
-    
-    # Apply the filter and summarise
-    links.t <- links.h %>%
-      filter(Source %in% filter_criteria) %>%
-      group_by(Source) %>%
-      summarise(Value = sum(Value))
-    
-    
-    total_fields <- as.numeric(!is_empty(fuel_costs_link_val)) + as.numeric(!is_empty(ele_link_val))
-    
-    v <- 0
-    for (m in (nrow(links.h) + 1):(nrow(links.h) + total_fields)) {
-      v <- v + 1
-      links.h[m, 'No'] <- m
-      links.h[m, 'Target'] <- links.t[v, 'Source']
-      links.h[m, 'Source'] <- 0
-      links.h[m, 'Value'] <- links.t[v, 'Value']
-    }
-    
-    
-    links <- links.h
-    links <- links %>%
-      mutate(
-        Value = round(Value , input$precision_ec),
-        label = paste0(Source, " → ", Target, ": ", Value)
-      ) %>%
-      arrange(Source)
-    links
-    
-  })
-  
-  
-  
-  
-  links_data_energy <- reactive({
-    req(input$file)
-    aa <- read_excel(input$file$datapath, sheet = 'Results', range = "a6:o189")
-    
-    aa <- clean_names(aa)
-    aa <- aa %>%
-      filter(!is.na(energy_source))
-    aa$percentage_of_total_energy = aa$total_energy_mm_btu_yr / sum(aa$total_energy_mm_btu_yr)
-    
-    end.use <- tibble('Name' = aa$`source`)
-    ene.src <- tibble('Name' = unique(aa$`energy_source`))
-    ene.src <- na.omit(ene.src)
-    n_src <- nrow(ene.src)
-    nodes.hh <- tibble("Name" = "")
-    nodes.hh[1, 'Name'] <- 'Total Energy'
-    non_ele <- ene.src %>%
-      filter(Name != 'Electricity')
-    
-    fuel_link_val <- numeric(0)
-    if (!is_empty(non_ele$Name)) {
-      nodes.hh[2, 'Name'] <- 'Fuel'
-      fuel_link_val = 1
-    }
-    
-    aa.ne <- aa %>%
-      filter(energy_or_emissions_category == "Conserved Energy")
-    
-    ce_link_val <- numeric(0)
-    if (!is_empty(aa.ne$no)) {
-      nodes.hh[3, 'Name'] <- 'Conserved Energy'
-      ce_link_val = 2
-    }
-    
-    nodes.h <- rbind(nodes.hh, ene.src, end.use)
-    
-    nodes <- nodes.h %>%
-      filter(!is.na(Name)) %>%
-      mutate('No' = row_number()) %>%
-      select(No, Name)
-    
-    links.h <- tibble(
-      'No' = 0,
-      'Source' = 0,
-      'Target' = 0,
-      'Value' = 0
-    )
-    
-    aa.e <- aa %>%
-      filter(energy_or_emissions_category == "Energy")
-    
-    for (i in 1:nrow(aa.e)) {
-      links.h[i, 'No'] <- i
-      for (j in 1:nrow(nodes)) {
-        if (aa.e[i, 'source'] == nodes[j, 'Name']) {
-          links.h[i, 'Target'] <- nodes[[j, 'No']] - 1
-        }
-      }
-      for (j in 1:nrow(nodes)) {
-        if (aa.e[i, 'energy_source'] == nodes[j, 'Name']) {
-          links.h[i, 'Source'] <- nodes[[j, 'No']] - 1
-        }
-      }
-      
-      if (input$perc_e == "Percentage") {
-        links.h[i, 'Value'] <- aa.e[i, 'percentage_of_total_energy'] * 100
-      } else {
-        links.h[i, 'Value'] <- aa.e[i, 'total_energy_mm_btu_yr']
-      }
-      
-    }
-    
-    links.hh <- links.h %>%
-      group_by(Source) %>%
-      summarise(Value = sum(Value))
-    ctr <- 0
-    
-    links.hh2 <- tibble(Source = c(), Value = c())
-    ele_link <- tibble(Source = c(), Value = c())
-    ele <- nodes %>%
-      filter(Name == 'Electricity')
-    
-    if (!is_empty(ele$No)) {
-      ele_link_val <- as.numeric(ele$No - 1)
-      ele_link <- links.hh %>%
-        filter(Source == ele_link_val)
-      
-      links.hh <- links.hh %>%
-        filter(Source != ele_link_val)
-      ctr <- ctr + 1
-    }
-    
-    
-    if (!is_empty(links.hh$Source)) {
-      if (!is_empty(ele$Name)) {
-        ctr2 <- n_src - 1
-      } else {
-        ctr2 <- n_src
-      }
-      l <- 0
-      for (k in (nrow(links.h) + 1):(nrow(links.h) + ctr2)) {
-        l <- l + 1
-        links.h[k, 'No'] <- k
-        links.h[k, 'Target'] <- links.hh[l, 'Source']
-        links.h[k, 'Source'] <- 1
-        links.h[k, 'Value'] <- links.hh[l, 'Value']
-      }
-      
-      links.hh2 <- links.h %>%
-        group_by(Source) %>%
-        summarise(Value = sum(Value)) %>%
-        filter(Source == 1)
-      ctr <- ctr + 1
-    }
-    
-    links.fe <- rbind(links.hh2, ele_link)
-    
-    
-    if (!is_empty(aa.ne$source)) {
-      o <- 0
-      for (q in (nrow(links.h) + 1):(nrow(links.h) + nrow(aa.ne))) {
-        o <- o + 1
-        links.h[q, 'No'] <- q
-        for (j in 1:nrow(nodes)) {
-          if (aa.ne[o, 'source'] == nodes[j, 'Name']) {
-            links.h[q, 'Target'] <- nodes[[j, 'No']] - 1
-          }
-        }
-        for (j in 1:nrow(nodes)) {
-          if (aa.ne[o, 'energy_or_emissions_category'] == nodes[j, 'Name']) {
-            links.h[q, 'Source'] <- nodes[[j, 'No']] - 1
-          }
-        }
-        if (input$perc_e == "Percentage") {
-          links.h[q, 'Value'] <- aa.ne[o, 'percentage_of_total_energy'] * 100
-        } else {
-          links.h[q, 'Value'] <- aa.ne[o, 'total_energy_mm_btu_yr']
-        }
-      }
-    }
-    
-    
-    # Create a vector of filtering criteria based on conditions
-    filter_criteria <- c()
-    
-    if (!is_empty(ele_link_val)) {
-      filter_criteria <- c(filter_criteria, ele_link_val)
-    }
-    
-    if (!is_empty(fuel_link_val)) {
-      filter_criteria <- c(filter_criteria, fuel_link_val)
-    }
-    
-    if (!is_empty(aa.ne$no)) {
-      filter_criteria <- c(filter_criteria, ce_link_val)
-    }
-    
-    # Apply the filter and summarise
-    links.t <- links.h %>%
-      filter(Source %in% filter_criteria) %>%
-      group_by(Source) %>%
-      summarise(Value = sum(Value))
-    
-    
-    total_fields <- as.numeric(!is_empty(fuel_link_val)) + as.numeric(!is_empty(ele_link_val)) + as.numeric(!is_empty(ce_link_val))
-    
-    v <- 0
-    for (m in (nrow(links.h) + 1):(nrow(links.h) + total_fields)) {
-      v <- v + 1
-      links.h[m, 'No'] <- m
-      links.h[m, 'Target'] <- links.t[v, 'Source']
-      links.h[m, 'Source'] <- 0
-      links.h[m, 'Value'] <- links.t[v, 'Value']
-    }
-    
-    
-    links <- links.h
-    links <- links %>%
-      mutate(
-        Value = round(Value * units_conversion_e(), input$precision_e),
-        label = paste0(Source, " → ", Target, ": ", Value)
-      ) %>%
-      arrange(Source)
-    links
-    
-  })
-  
-  
-  output$move <- renderText("Note: click and drag each node to
-                            customize the chart \n")
-  
-  # Create the Sankey diagram
-  s1 <- reactive({
-    nodes <- nodes_data()
-    links <- links_data()
-    names(nodes) <- c('SN', "Name")
-    names(links) <- c('SN', "Source", "Target", "Value", "label")
-    
-    
-    sankey_reactive <- reactive({
-      sankeyNetwork(
-        Links = links,
-        Nodes = nodes,
-        Source = "Source",
-        Target = "Target",
-        Value = "Value",
-        NodeID = "Name",
-        LinkGroup = "label",
-        sinksRight = F,
-        fontSize = 14,
-        nodeWidth = 30,
-        iterations = 10,
-        colourScale = JS("d3.scaleSequential(d3.interpolatePlasma);")
-      )
-    })
-    
-    sankey <- sankey_reactive()
-    
-    javascript_string <-
-      'function(el, x) {
-  d3.select(el).selectAll(".node text")
-    .text(function(d) {
-      var value_str = d.value.toLocaleString();
-      if (d.dx < 20) {
-        return d.name;
-      } else {
-        return d.name + " (" + value_str + ")";
-      }
-    });
-
-  // Clear the viewBox attribute of the first SVG element
-  document.getElementsByTagName("svg")[0].setAttribute("viewBox", "");
-}'
-    
-    htmlwidgets::onRender(x = sankey, jsCode = javascript_string)
-  })
-  
-  
-  s1_energy <- reactive({
-    nodes <- nodes_data_energy()
-    links <- links_data_energy()
-    names(nodes) <- c('SN', "Name")
-    names(links) <- c('SN', "Source", "Target", "Value", "label")
-    
-    sankey_reactive <- reactive({
-      sankeyNetwork(
-        Links = links,
-        Nodes = nodes,
-        Source = "Source",
-        Target = "Target",
-        Value = "Value",
-        NodeID = "Name",
-        LinkGroup = "label",
-        sinksRight = F,
-        fontSize = 14,
-        nodeWidth = 30,
-        iterations = 10,
-        colourScale = JS("d3.scaleSequential(d3.interpolatePlasma);")
-      )
-    })
-    
-    sankey <- sankey_reactive()
-    
-    javascript_string <-
-      'function(el, x) {
-  d3.select(el).selectAll(".node text")
-    .text(function(d) {
-      var value_str = d.value.toLocaleString();
-      if (d.dx < 20) {
-        return d.name;
-      } else {
-        return d.name + " (" + value_str + ")";
-      }
-    });
-
-  // Clear the viewBox attribute of the first SVG element
-  document.getElementsByTagName("svg")[0].setAttribute("viewBox", "");
-}'
-    
-    htmlwidgets::onRender(x = sankey, jsCode = javascript_string)
-  })
-  
-  s1_energy_costs <- reactive({
-    nodes <- nodes_data_energy_costs()
-    links <- links_data_energy_costs()
-    names(nodes) <- c('SN', "Name")
-    names(links) <- c('SN', "Source", "Target", "Value", "label")
-    
-    sankey_reactive <- reactive({
-      sankeyNetwork(
-        Links = links,
-        Nodes = nodes,
-        Source = "Source",
-        Target = "Target",
-        Value = "Value",
-        NodeID = "Name",
-        LinkGroup = "label",
-        sinksRight = F,
-        fontSize = 14,
-        nodeWidth = 30,
-        iterations = 10,
-        colourScale = JS("d3.scaleSequential(d3.interpolatePlasma);")
-      )
-    })
-    
-    sankey <- sankey_reactive()
-    
-    javascript_string <-
-      'function(el, x) {
-  d3.select(el).selectAll(".node text")
-    .text(function(d) {
-      var value_str = d.value.toLocaleString();
-      if (d.dx < 20) {
-        return d.name;
-      } else {
-        return d.name + " (" + value_str + ")";
-      }
-    });
-
-  // Clear the viewBox attribute of the first SVG element
-  document.getElementsByTagName("svg")[0].setAttribute("viewBox", "");
-}'
-    
-    htmlwidgets::onRender(x = sankey, jsCode = javascript_string)
-  })
-  
-  
-  
-  output$sankey <- renderSankeyNetwork(s1())
-  
-  output$diagram <- renderUI({
-    temp <- temp ()
-    nr <- nrow(temp) * input$vsc
-    ht <- paste0(nr, "px")
-    sankeyNetworkOutput("sankey", height = ht)
-  })
-  
-  output$sankey_energy <- renderSankeyNetwork(s1_energy())
-  
-  output$diagram_energy <- renderUI({
-    temp_e <- temp_e ()
-    nr <- nrow(temp_e) * input$vsc_e
-    ht <- paste0(nr, "px")
-    sankeyNetworkOutput("sankey_energy", height = ht)
-  })
-  
-  output$sankey_energy_costs <- renderSankeyNetwork(s1_energy_costs())
-  
-  output$diagram_energy_costs <- renderUI({
-    temp_ec <- temp_ec ()
-    nr <- nrow(temp_ec) * input$vsc_ec
-    ht <- paste0(nr, "px")
-    sankeyNetworkOutput("sankey_energy_costs", height = ht)
-  })
-  
-  output$output_text <- renderUI({
-    req(input$file)
-    if (nchar(input$cname) > 0 & input$perc != "Percentage") {
-      paste0("CO₂e Flow for ", input$cname, " (" , input$units, ")")
-    } else if (nchar(input$cname) > 0 &
-               input$perc == "Percentage") {
-      paste0("CO₂e Flow for ", input$cname, " (%)")
-    } else if (input$perc == "Percentage") {
-      paste0("CO₂e Flow ", "(%)")
-    } else {
-      paste0("CO₂e Flow ", "(" , input$units, ")")
-    }
-    
-  })
-  
-  
-  output$output_text_e <- renderUI({
-    req(input$file)
-    if (nchar(input$cname) > 0 & input$perc_e != "Percentage") {
-      paste0("Energy Flow for ", input$cname, " (" , input$units_e, ")")
-    } else if (nchar(input$cname) > 0 &
-               input$perc_e == "Percentage") {
-      paste0("Energy Flow for ", input$cname, " (%)")
-    } else if (input$perc_e == "Percentage") {
-      paste0("Energy Flow ", "(%)")
-    } else {
-      paste0("Energy Flow ", "(" , input$units_e, ")")
-    }
-  })
-  
-  output$output_text_ec <- renderUI({
-    req(input$file)
-    if (nchar(input$cname) > 0 & input$perc_e != "Percentage") {
-      paste0("Energy Costs Flow for ", input$cname, " ($)")
-    } else if (nchar(input$cname) > 0 &
-               input$perc_e == "Percentage") {
-      paste0("Energy Costs Flow for ", input$cname, " (%)")
-    } else if (input$perc_e == "Percentage") {
-      paste0("Energy Costs Flow (%)")
-    } else {
-      paste0("Energy Costs Flow ($)")
-    }
-  })
-  
-  output$downloadPNG <- downloadHandler(
-    filename = "CO2e Flow.png",
-    content = function(file) {
-      # Create a temporary HTML file to save the widget in
-      tmp_file <- tempfile(fileext = ".html")
-      nodes <- nodes_data()
-      links <- links_data()
-      names(nodes) <- c("SN", "Name")
-      names(links) <- c("SN", "Source", "Target", "Value", "label")
-      sankey <- sankeyNetwork(
-        Links = links,
-        Nodes = nodes,
-        Source = "Source",
-        Target = "Target",
-        Value = "Value",
-        NodeID = "Name",
-        LinkGroup = "label",
-        sinksRight = F,
-        fontSize = 14,
-        nodeWidth = 30,
-        colourScale = JS("d3.scaleSequential(d3.interpolatePlasma);")
-      )
-      
-      
-      javascript_string <-
-        'function(el, x) {
-  d3.select(el).selectAll(".node text")
-    .text(function(d) {
-      var value_str = d.value.toLocaleString();
-      if (d.dx < 20) {
-        return d.name;
-      } else {
-        return d.name + " (" + value_str + ")";
-      }
-    });
-
-  // Clear the viewBox attribute of the first SVG element
-  document.getElementsByTagName("svg")[0].setAttribute("viewBox", "");
-}'
-      sankey <- htmlwidgets::onRender(x = sankey, jsCode = javascript_string)
-      # Save the widget to the temporary HTML file
-      saveWidget(sankey, tmp_file)
-      
-      # Take a screenshot of the HTML file and save it to the output file
-      x <- tempfile(fileext = ".png")
-      webshot(
-        tmp_file,
-        x,
-        zoom = 5,
-        vwidth = input$width,
-        vheight = input$height,
-        delay = 0.2
-      )
-      # 1read the image file into R
-      img1 <- image_read(x)
-      # add the user's caption as a text label
-      if (input$units == "MT CO₂e/yr") {
-        un <- "MT CO2e/yr" # Conversion factor
-      } else {
-        un <- "lbs. of CO2e/yr"
-      }
-      
-      if (nchar(input$cname) > 0) {
-        caption <- paste0("CO2e Flow for ", input$cname, "(" , un, ")")
-      } else {
-        caption <- paste0("CO2e Flow ", "(" , un, ")")
-      }
-      img <- image_annotate(
-        img1,
-        caption,
-        size = 100,
-        color = "black",
-        gravity = "North",
-        location = "+0+10%"
-      )
-      # write the annotated image to file
-      image_write(img, path = file)
-      # Delete the temporary file
-      unlink(tmp_file)
-      unlink(x)
-    }
-  )
-  
-  output$downloadPNG_e <- downloadHandler(
-    filename = "Energy Flow.png",
-    content = function(file) {
-      # Create a temporary HTML file to save the widget in
-      tmp_file <- tempfile(fileext = ".html")
-      nodes <- nodes_data_energy()
-      links <- links_data_energy()
-      names(nodes) <- c("SN", "Name")
-      names(links) <- c("SN", "Source", "Target", "Value", "label")
-      sankey <- sankeyNetwork(
-        Links = links,
-        Nodes = nodes,
-        Source = "Source",
-        Target = "Target",
-        Value = "Value",
-        NodeID = "Name",
-        LinkGroup = "label",
-        sinksRight = F,
-        fontSize = 14,
-        nodeWidth = 30,
-        colourScale = JS("d3.scaleSequential(d3.interpolatePlasma);")
-      )
-      
-      
-      javascript_string <-
-        'function(el, x) {
-  d3.select(el).selectAll(".node text")
-    .text(function(d) {
-      var value_str = d.value.toLocaleString();
-      if (d.dx < 20) {
-        return d.name;
-      } else {
-        return d.name + " (" + value_str + ")";
-      }
-    });
-
-  // Clear the viewBox attribute of the first SVG element
-  document.getElementsByTagName("svg")[0].setAttribute("viewBox", "");
-}'
-      sankey <- htmlwidgets::onRender(x = sankey, jsCode = javascript_string)
-      # Save the widget to the temporary HTML file
-      saveWidget(sankey, tmp_file)
-      
-      # Take a screenshot of the HTML file and save it to the output file
-      x <- tempfile(fileext = ".png")
-      webshot(
-        tmp_file,
-        x,
-        zoom = 5,
-        vwidth = input$width,
-        vheight = input$height,
-        delay = 0.2
-      )
-      # 1read the image file into R
-      img1 <- image_read(x)
-      # add the user's caption as a text label
-      
-      if (nchar(input$cname) > 0) {
-        caption <- paste0("Energy Flow for ", input$cname, "(" , input$units_e, ")")
-      } else {
-        caption <- paste0("Energy Flow ", "(" , input$units_e, ")")
-      }
-      img <- image_annotate(
-        img1,
-        caption,
-        size = 100,
-        color = "black",
-        gravity = "North",
-        location = "+0+10%"
-      )
-      # write the annotated image to file
-      image_write(img, path = file)
-      # Delete the temporary file
-      unlink(tmp_file)
-      unlink(x)
-    }
-  )
-  
-  output$downloadPNG_ec <- downloadHandler(
-    filename = "Energy Costs Flow.png",
-    content = function(file) {
-      # Create a temporary HTML file to save the widget in
-      tmp_file <- tempfile(fileext = ".html")
-      nodes <- nodes_data_energy_costs()
-      links <- links_data_energy_costs()
-      names(nodes) <- c("SN", "Name")
-      names(links) <- c("SN", "Source", "Target", "Value", "label")
-      sankey <- sankeyNetwork(
-        Links = links,
-        Nodes = nodes,
-        Source = "Source",
-        Target = "Target",
-        Value = "Value",
-        NodeID = "Name",
-        LinkGroup = "label",
-        sinksRight = F,
-        fontSize = 14,
-        nodeWidth = 30,
-        colourScale = JS("d3.scaleSequential(d3.interpolatePlasma);")
-      )
-      
-      
-      javascript_string <-
-        'function(el, x) {
-  d3.select(el).selectAll(".node text")
-    .text(function(d) {
-      var value_str = d.value.toLocaleString();
-      if (d.dx < 20) {
-        return d.name;
-      } else {
-        return d.name + " (" + value_str + ")";
-      }
-    });
-
-  // Clear the viewBox attribute of the first SVG element
-  document.getElementsByTagName("svg")[0].setAttribute("viewBox", "");
-}'
-      sankey <- htmlwidgets::onRender(x = sankey, jsCode = javascript_string)
-      # Save the widget to the temporary HTML file
-      saveWidget(sankey, tmp_file)
-      
-      # Take a screenshot of the HTML file and save it to the output file
-      x <- tempfile(fileext = ".png")
-      webshot(
-        tmp_file,
-        x,
-        zoom = 5,
-        vwidth = input$width,
-        vheight = input$height,
-        delay = 0.2
-      )
-      # 1read the image file into R
-      img1 <- image_read(x)
-      # add the user's caption as a text label
-      
-      if (nchar(input$cname) > 0) {
-        caption <- paste0("Energy Costs Flow for ", input$cname, "($)")
-      } else {
-        caption <- paste0("Energy Costs Flow ($)")
-      }
-      img <- image_annotate(
-        img1,
-        caption,
-        size = 100,
-        color = "black",
-        gravity = "North",
-        location = "+0+10%"
-      )
-      # write the annotated image to file
-      image_write(img, path = file)
-      # Delete the temporary file
-      unlink(tmp_file)
-      unlink(x)
-    }
-  )
   
   
   observeEvent(input$calc_int, {
