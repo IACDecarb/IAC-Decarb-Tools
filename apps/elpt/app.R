@@ -1,3 +1,28 @@
+# List of CRAN packages
+cran_packages <- c(
+  "ggplot2", "openxlsx", "imputeTS", "stringi", "utils", "tools", "writexl",
+  "shinyalert", "bslib", "plot.matrix", "readxl", "tidyverse", "colorspace", 
+  "viridisLite", "units", "lubridate", "shinyWidgets", "shinyjs", "shinyTime",
+  "shinythemes", "reactlog", "dplyr", "janitor", "data.table", "shinyBS",
+  "pals", "hrbrthemes", "ggthemes", "kableExtra", "shinydashboard", "plotly", 
+  "scales", "ggtext", "openair", "htmltools", "htmlwidgets", "mmr", "devtools", 
+  "roxygen2", "testthat", "openxlsx", "xml2", "XML", "xmlconvert", "splitstackshape", 
+  "extrafont", "prompter", "shiny", "conflicted","openxlsx"
+)
+
+# Install any missing CRAN packages
+installed <- rownames(installed.packages())
+for (pkg in cran_packages) {
+  if (!(pkg %in% installed)) {
+    install.packages(pkg)
+  }
+}
+
+if (!("ggmacc" %in% installed)) {
+  devtools::install_github("aj-sykes92/ggmacc")
+}
+
+
 library(ggplot2)
 library(openxlsx)
 library(imputeTS)
@@ -45,6 +70,9 @@ library(xmlconvert)
 library(splitstackshape)
 library(extrafont)
 library(prompter)
+library(shiny)
+library(thematic)
+library(shinycssloaders)
 
 library(conflicted)
 
@@ -123,10 +151,6 @@ ggmacc <- function(data, mac, abatement, fill = NULL, cost_threshold = NULL,
     cost_hline
 }
 
-### Tweaking ggmacc end
-
-
-### Adding radio buttons with tool tips ###
 
 radioTooltip <- function(id, choice, title, placement = "bottom", trigger = "hover", options = NULL){
   
@@ -171,7 +195,10 @@ dateRangeTooltip <- function(id, title, tooltip_title, placement = "right", trig
   bsTag <- shiny::tags$script(shiny::HTML(paste0("
     $(document).ready(function() {
       setTimeout(function() {
-        var inputLabel = $('label[for=\"", id, "\"]');
+        
+        // This new selector is more robust and reliably finds the label for all input types.
+        var inputLabel = $('#", id, "').closest('.form-group').find('label');
+
         var infoIcon = $('<span class=\"info-icon\">?</span>');
         infoIcon.tooltip($.extend(", options, ", {html: true}));
         inputLabel.append(infoIcon);
@@ -204,12 +231,18 @@ cards <- list(
 )
 
 
-ui <- function(request){
-  page_sidebar(
-    useShinyjs(),
-    use_prompt(),
-    tags$head(
-      tags$script('
+
+
+
+# Main UI
+
+ui <- fluidPage(
+  theme = shinytheme("flatly"),
+  thematic::thematic_shiny(font = "auto"),
+  
+  
+  tags$head(
+    tags$script('
       $(document).on("shiny:connected", function() {
         var userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
         var timeZoneAbbr = new Date().toLocaleTimeString("en-us",{timeZoneName:"short"}).split(" ")[2];
@@ -217,17 +250,17 @@ ui <- function(request){
         Shiny.setInputValue("user_time_zone_abbr", timeZoneAbbr);
       });
     '),
-      tags$script(HTML("
+    tags$script(HTML("
       Shiny.addCustomMessageHandler('updateTooltip', function(message) {
         var tooltip = $('#tou_ed .info-icon');
         tooltip.attr('data-original-title', message);
         tooltip.tooltip('hide').attr('data-original-title', message).tooltip('fixTitle').tooltip('show');
       });
     ")),
-      tags$script(HTML("
+    tags$script(HTML("
       $(window).trigger('resize')
         ")),
-      tags$style(HTML("
+    tags$style(HTML("
         .info-icon {
           display: inline-block;
           width: 18px;
@@ -244,539 +277,362 @@ ui <- function(request){
           font-style: normal;
           font-family: 'Arial', sans-serif;
         }
-        .custom-title {
-        font-size: 24px; /* Change this value to adjust the title size */
-        font-weight: bold;
-      }
       "))
+  ),
+  
+  
+  titlePanel(
+    HTML("Electrical Load Planning Tool"),
+    windowTitle = "ELPT"
+  ),
+  
+  sidebarLayout(
+    sidebarPanel(width = 3,
+                 
+                 tabsetPanel(
+                   id = "tabs",
+                   
+                   # Step 1 
+                   
+                   tabPanel("Load Input",
+                            
+                            
+                            tags$p(tags$strong("1. Select Electrical Load Type")),
+                            radioButtons("green_manual", NULL,
+                                         choices = c(
+                                           "Custom Hourly Load",
+                                           "Green Button: 15-Minute",
+                                           "Green Button: Hourly",
+                                           "12 Months Utility Bills"
+                                         ),
+                                         selected = "Custom Hourly Load"
+                            ),
+                            radioTooltip("green_manual", "12 Months Utility Bills",
+                                         "Download and fill out the custom 12 months utility bill template", placement = "right"
+                            ),
+                            radioTooltip("green_manual", "Green Button: 15-Minute",
+                                         "Upload XML file from your utility", placement = "right"
+                            ),
+                            radioTooltip("green_manual", "Green Button: Hourly",
+                                         "Upload XML file from your utility", placement = "right"
+                            ),
+                            radioTooltip("green_manual", "Custom Hourly Load",
+                                         "Download and fill out the custom hourly template", placement = "right"
+                            ),
+                            
+                            dateRangeInput("date_range", "2. Select Date Range:",
+                                           start     = "2023-01-01",
+                                           end       = "2023-12-31",
+                                           format    = "yyyy-mm-dd",
+                                           separator = " – "
+                            ),
+                            
+                            dateRangeTooltip("date_range", "Select Date Range:", "Choose a date range that matches the dates in your electrical load data. You can also modify this range to filter and analyze just a subset of your data", placement = "right", trigger = "hover"),
+                            uiOutput("message_date_disc"),
+                            
+                            
+                            fluidRow(
+                              column(12,
+                                     uiOutput("BillcustomUI")
+                              )
+                            ), 
+                            
+                            
+                            uiOutput("fileInputUI"),
+                            
+                            
+                            
+                            downloadLink("downloaddocu", "Download Tool Documentation")
+                   ),
+                   
+                   
+                   
+                   
+                   # Step 2 
+                   
+                   tabPanel("Rate Input",
+                            
+                            tags$p(tags$strong("1. Electricity Rate Structure")),
+                            p("Download the Excel template, fill in your rate details, then upload it below."),
+                            downloadLink("download_rate_template", "Download Rate Input Template"),
+                            fileInput("rate_file",
+                                      "2. Upload Completed Rate Input Sheet",
+                                      accept = c(".xlsx")
+                            )
+                   ),
+                   
+                   
+                   
+                   
+                   # Step 3
+                   
+                   tabPanel("Emissions Input",
+                            
+                            selectInput("emissions_type","1. Select Analysis Year:",
+                                        choices = list(
+                                          "NREL Cambium Standard Scenarios 2021:" = as.character(2022:2050),
+                                          "Annual Emissions Factor:"          =
+                                            list("U.S. EPA's 2022 eGRID" = "U.S. EPA's 2022 eGRID")
+                                        ),
+                                        selected = "2023"
+                            ),
+                            
+                            numericInput("perc_clean",
+                                         "2. Facility's Clean Electricity Share (%)", 10,
+                                         min = 0, max = 100
+                            ),
+                            dateRangeTooltip(id = "perc_clean", title = "Facility's Clean Electricity Share (%)", 
+                                             tooltip_title = "This input allows you to account for any renewable energy certificates (RECs) or clean electricity procurement by the facility. Use 0 for no onsite or procured clean energy or RECs"),
+                            
+                            selectInput("state","3. Select State:", c("", state.abb), selected = "AL"),
+                            actionButton("generate_co2_plot", "Generate CO2e Plot", width = "100%", style = "margin-top: 15px;"),
+                            dateRangeTooltip(id = "state", title = "Select State:", 
+                                             tooltip_title = "Select the state where the facility is located to use its respective emissions profile")
+                   ),
+                   
+                   
+                   # Step 4
+                   
+                   tabPanel("Manage Loads",
+                            tags$p(tags$strong("1. Type of load management")),
+                            tags$div(
+                              style = "display:flex; justify-content:flex-end; gap:120px;",
+                              radioButtons("addshed_shift",
+                                           NULL,
+                                           choices = c("Add/Shed Load","Shift Load"),
+                                           selected = "Add/Shed Load",
+                                           inline = FALSE, width = "600px"
+                              ),
+                              radioTooltip("addshed_shift","Add/Shed Load",
+                                           "Enter + to add or – to shed load", placement="right"),
+                              radioTooltip("addshed_shift","Shift Load",
+                                           "Enter amount to shift load", placement="right")
+                            ),
+                            tags$p(tags$strong("2. Add/Shed/Shift load on weekends?")),
+                            tags$div(
+                              style = "display:flex; justify-content:flex-start; gap:20px; margin-top:10px;",
+                              conditionalPanel(
+                                "input.green_manual != '12 Months Utility Bills'",
+                                radioButtons("work_on_weekends",
+                                             NULL,
+                                             choices = c("Yes","No"),
+                                             selected = "No",
+                                             inline = FALSE, width = "100%"
+                                )
+                              ),
+                              radioTooltip("work_on_weekends","Yes","Include weekends", placement="right"),
+                              radioTooltip("work_on_weekends","No","Weekdays only", placement="right")
+                            ),
+                            
+                            
+                            br(),
+                            
+                            conditionalPanel(
+                              condition = "input.addshed_shift == 'Add/Shed Load'",
+                              bsCollapse(
+                                id       = "loadMgmtPanel_Add",
+                                multiple = FALSE,
+                                open     = "add_panel",
+                                bsCollapsePanel(
+                                  title = HTML('<strong>3. Enter Load Addition/Shedding Inputs</strong>
+                                          <span class="toggle-icon glyphicon glyphicon-chevron-down"></span>'),
+                                  value = "add_panel",
+                                  style = "default",
+                                  
+                                  radioButtons("addData", "Select Input Method:",
+                                               choices = c("Manually Enter Added Load(s)",
+                                                           "Upload Existing Spreadsheet")
+                                  ),
+                                  
+                                  conditionalPanel(
+                                    "input.addData == 'Manually Enter Added Load(s)'",
+                                    uiOutput("inputSets_1"),
+                                    
+                                    actionButton("addWindow_load",
+                                                 "Add more Load Input(s)",
+                                                 width = "100%",
+                                                 style = "display:block; padding:8px; margin-bottom:10px;"),
+                                    actionButton("plot_button_2",
+                                                 "Generate Plot",
+                                                 width = "100%",
+                                                 style = "display:block; padding:8px;")
+                                  ),
+                                  
+                                  
+                                  
+                                  fluidRow(
+                                    conditionalPanel(
+                                      "input.addData == 'Upload Existing Spreadsheet'",
+                                      column(4,
+                                             fileInput("file_upload_addinput",
+                                                       "Upload Input Sheet Excel File")
+                                      )
+                                    )
+                                  )
+                                )
+                              )
+                            ),
+                            
+                            
+                            conditionalPanel(
+                              condition = "input.addshed_shift == 'Shift Load'",
+                              bsCollapse(
+                                id       = "loadMgmtPanel_Shift",
+                                multiple = FALSE,
+                                open     = "shift_panel",
+                                bsCollapsePanel(
+                                  title = HTML('<strong>3. Enter Load Shifting Inputs</strong>
+                                          <span class="toggle-icon glyphicon glyphicon-chevron-down"></span>'),
+                                  value = "shift_panel",
+                                  style = "default",
+                                  
+                                  radioButtons("shiftData","Select Input Method:",
+                                               choices = c("Manually Enter Shaped Load(s)",
+                                                           "Upload Existing Spreadsheet")
+                                  ),
+                                  
+                                  conditionalPanel(
+                                    "input.shiftData == 'Manually Enter Shaped Load(s)'",
+                                    uiOutput("inputSets"),
+                                    
+                                    actionButton("addWindow",
+                                                 "Add more Shaped Load(s)",
+                                                 width = "100%",
+                                                 style = "display:block; padding:8px; margin-bottom:10px;"),
+                                    actionButton("plot_button",
+                                                 "Generate Plot",
+                                                 width = "100%",
+                                                 style = "display:block; padding:8px;")
+                                  ),
+                                  
+                                  
+                                  br(),
+                                  
+                                  fluidRow(
+                                    conditionalPanel(
+                                      "input.shiftData == 'Upload Existing Spreadsheet'",
+                                      column(4,
+                                             fileInput("file_upload_shiftinput",
+                                                       "Upload Input Sheet Excel File")
+                                      )
+                                    )
+                                  )
+                                )
+                              )
+                            )
+                            
+                   )
+                 )
     ),
-    title = div(class = "custom-title", "Electrical Load Planning Tool"),
-    theme = bs_theme(bootswatch = "flatly"),
-    sidebar = sidebar(
-      shinyjs::useShinyjs(),
-      id = "side-panel",
-      width = "30%",
-      fluidRow(
-        column(12, h4("Step 1a: Select Electrical Load Type & Date Range:", style = "font-weight: bold; font-size: 17px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;")),
-        wellPanel(
-          style = "border: 2px solid #ccc; padding: 10px; border-radius: 5px;",
-          radioButtons("green_manual","",
-                       choices = c( "Custom Hourly Load", "Green Button: 15-Minute", "Green Button: Hourly","12 Months Utility Bills"),
-                       selected = "Custom Hourly Load"
-          ),
-          radioTooltip(id = "green_manual", choice = "12 Months Utility Bills", title = "Download and fill out the custom 12 months utility bill excel template", placement = "right", trigger = "hover"),
-          radioTooltip(id = "green_manual", choice = "Green Button: 15-Minute", title = "Upload XML file from your utility", placement = "right", trigger = "hover"),
-          radioTooltip(id = "green_manual", choice = "Green Button: Hourly", title = "Upload XML file from your utility", placement = "right", trigger = "hover"),
-          radioTooltip(id = "green_manual", choice = "Custom Hourly Load", title = "Download and fill out the custom hourly excel template", placement = "right", trigger = "hover"),
-          dateRangeInput("date_range", "Select Date Range:",
-                         start = "2023-01-01", end = "2023-12-31",
-                         format = "yyyy-mm-dd",
-                         separator = " - "
-          ),
-          
-          dateRangeTooltip("date_range", "Select Date Range:", "Choose a date range that matches the dates in your electrical load data. You can also modify this range to filter and analyze just a subset of your data", placement = "right", trigger = "hover"),
-          uiOutput("message_date_disc"),
-          fluidRow(uiOutput("BillcustomUI")
-          ) 
-        )
-      ),
-      fluidRow(
-        column(12, h4("Step 1b: Upload Electrical Load Data:", style = "font-weight: bold; font-size: 17px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;")),
-        wellPanel(
-          style = "border: 2px solid #ccc; padding: 10px; border-radius: 5px;",
-          uiOutput("fileInputUI")
-        )
-      ),
-      fluidRow(
-        column(12, h4("Step 2: Choose GHG Emission Parameters", style = "font-weight: bold; font-size: 17px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;")),
-        wellPanel(
-          style = "border: 2px solid #ccc; padding: 10px; border-radius: 5px;",
-          selectInput("emissions_type",
-                      label = tags$span(
-                        "Select Analysis Year:", 
-                        tags$span(
-                          icon(
-                            name = "circle-exclamation",
-                          ) 
-                        ) |>
-                          add_prompt(message = "Odd year emission factors are the same as the preceding even year as NREL Cambium only provides estimates for even years", position = "right", size = "medium")
-                      ), 
-                      choices = list(
-                        "NREL Cambium Standard Scenarios 2021: Average Hourly Emission Forecast:" = list("","2022","2023","2024","2025","2026","2027","2028","2029","2030","2031","2032","2033","2034","2035","2036","2037","2038","2039","2040","2041","2042","2043","2044","2045","2046","2047","2048","2049","2050"),
-                        "Annual Emissions Factor:" = list("U.S. EPA's 2022 eGRID")
-                      ), 
-                      selected = "2023"),
-          tags$div(
-            style = "display: flex; align-items: center;",
-            tags$div(
-              style = "display: flex; flex-direction: column;",
-              tags$label(
-                "Facility's Clean Electricity Share (in %): ", 
-                tags$span(
-                  icon(name = "circle-exclamation")
-                ) |>
-                  add_prompt(
-                    message = "Enter the percentage of clean electricity utilized by your facility. For example, if 20% of total electricity use is renewably sourced, then enter 20", 
-                    position = "right", 
-                    size = "medium"
+    
+    #  Right‐hand column (Results Panels)   
+    mainPanel(width = 9,
+              
+              # 1. Electrical Load Plot Panel
+              # This panel appears after the user uploads the initial load data file.
+              conditionalPanel(
+                condition = "output.fileUploaded",
+                navset_card_underline(
+                  id = "load_panel",
+                  title = HTML("<b>Electrical Load Plot</b>"),
+                  nav_panel(
+                    "Hourly Electrical Load",
+                    shinycssloaders::withSpinner(
+                      plotlyOutput("time_series_plot", height = "450px"),
+                      type = getOption("spinner.type", default = 8)
+                    ),
+                    div(
+                      style = "width: 100%; text-align: right; padding: 10px;",
+                      downloadButton("download_load_data", "Download Plot Data (.XLSX)")
+                    )
                   )
+                )
               ),
-              tags$div(
-                style = "display: flex; width: 70px; align-items: center; margin-top: 5px", # Control only the input box width
-                numericInput(
-                  "perc_clean", 
-                  label = NULL, # Remove default label from numericInput
-                  value = 10, 
-                  min = 0, 
-                  max = 100
+              
+              # 2. Cost Plots Panel
+              # This panel appears after the user uploads both the load data and the rate template.
+              conditionalPanel(
+                condition = "output.fileUploaded && output.rateFileUploaded",
+                navset_card_underline(
+                  id = "cost_panel",
+                  title = HTML("<b>Cost Plots</b>"),
+                  nav_panel(
+                    "Monthly Cost",
+                    shinycssloaders::withSpinner(
+                      plotlyOutput("cost_plot", height = "450px"),
+                      type = getOption("spinner.type", default = 8)
+                    ),
+                    div(
+                      style = "width: 100%; text-align: right; padding: 10px;",
+                      downloadButton("download_costselect_data", "Download Plot Data (.XLSX)")
+                    )
+                  ),
+                  nav_panel(
+                    "Annual Cost",
+                    shinycssloaders::withSpinner(
+                      plotlyOutput("cost_plot_annual", height = "450px"),
+                      type = getOption("spinner.type", default = 8)
+                    )
+                  ),
+                  nav_panel(
+                    "Carbon Abatement Cost",
+                    shinycssloaders::withSpinner(
+                      plotlyOutput("lcac_plot", height = "450px"),
+                      type = getOption("spinner.type", default = 8)
+                    ),
+                    div(
+                      style = "width: 100%; text-align: right; padding: 10px;",
+                      downloadButton("download_lcac_data", "Download Plot Data (.XLSX)")
+                    )
+                  )
+                )
+              ),
+              
+              # 3. CO2e Plots Panel
+              # This panel appears after the user uploads the load data and selects a state.
+              conditionalPanel(
+                condition = "output.showCO2Panel",
+                navset_card_underline(
+                  id = "co2_panel",
+                  title = HTML("<b>CO<sub>2</sub>e Plots</b>"),
+                  nav_panel(
+                    HTML("Hourly CO<sub>2</sub>e Emissions"),
+                    shinycssloaders::withSpinner(
+                      plotlyOutput("co2_emissions_change_plot", height = "450px"),
+                      type = getOption("spinner.type", default = 8)
+                    ),
+                    div(
+                      style = "width: 100%; text-align: right; padding: 10px;",
+                      downloadButton("download_co2em_data", "Download Plot Data (.XLSX)")
+                    )
+                  ),
+                  nav_panel(
+                    HTML("Monthly CO<sub>2</sub>e Emissions"),
+                    shinycssloaders::withSpinner(
+                      plotlyOutput("co2_plot_annual", height = "450px"),
+                      type = getOption("spinner.type", default = 8)
+                    ),
+                    div(
+                      style = "width: 100%; text-align: right; padding: 10px;",
+                      downloadButton("download_co2em_data_monthly", "Download Plot Data (.XLSX)")
+                    )
+                  ),
+                  nav_panel(
+                    HTML("Grid CO<sub>2</sub>e Factor"),
+                    shinycssloaders::withSpinner(
+                      plotlyOutput("grid_co2_plot", height = "450px"),
+                      type = getOption("spinner.type", default = 8)
+                    ),
+                    div(
+                      style = "width: 100%; text-align: right; padding: 10px;",
+                      downloadButton("grid_ef", "Download Plot Data (.XLSX)")
+                    )
+                  )
                 )
               )
-            )
-          ),
-          selectInput("state", "Select State:", choices = c("","AL", "AR", "AZ", "CA", "CO", "CT", "DE", "FL", "GA", "IA", "ID", "IL", "IN", "KS", "KY", "LA", "MA", "MD", "ME", "MI", "MN", "MO", "MS", "MT", "NC", "ND", "NE", "NH", "NJ", "NM", "NV", "NY", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VA", "VT", "WA", "WI", "WV", "WY"))
-        )),
-      fluidRow(
-        column(12, h4("Step 3a: Specify Electric Rate Structure", style = "font-weight: bold; font-size: 17px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;")),
-        wellPanel(
-          style = "border: 2px solid #ccc; padding: 10px; border-radius: 5px;",
-          checkboxGroupInput("tou_ed", "Select all Time-of-Use (TOU) bill components",
-                             choices = c("Usage charge ($/kWh)", "Demand charge ($/kW)"),
-                             selected = c("Usage charge ($/kWh)")
-          ),
-          checkboxTooltip("tou_ed", 
-                          title = "Check all applicable TOU charges. If you have fixed usage and demand charges, uncheck both options."),
-          conditionalPanel(
-            condition = "input.tou_ed.length > 0",
-            radioButtons("tou_periods", "Do you have a TOU period apart from on-peak and off-peak (e.g. part-peak)?",
-                         choices = c("Yes", "No"),
-                         selected = "No"
-            ),
-            radioTooltip(id = "tou_periods", choice = "Yes", title = "Select Yes if your TOU structure has a third TOU period besides on and off peak", placement = "right", trigger = "hover"),
-            radioTooltip(id = "tou_periods", choice = "No", title = "Select No if your TOU structure only has an on-peak and off-peak period", placement = "right", trigger = "hover")
-          ),
-          radioButtons("tou_mm_y_n","Do you have a monthly/season maximum demand charge ($/kW)?",
-                       choices = c("Yes", "No"),
-                       selected = "Yes"
-          ),
-          radioTooltip(id = "tou_mm_y_n", choice = "Yes", title = "Select Yes if you have a fixed charge applying to your highest demand for the month", placement = "right", trigger = "hover"),
-          radioTooltip(id = "tou_mm_y_n", choice = "No", title = "Select No if you don't have a fixed charge applying to your highest demand for the month", placement = "bottom", trigger = "hover")
-        )
-      ),
-      fluidRow(
-        column(12, h4("Step 3b: Enter Electricity Rate Structure Info:", style = "font-weight: bold; font-size: 17px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;")),
-        wellPanel(
-          style = "border: 2px solid #ccc; padding: 10px; border-radius: 5px;",
-          accordion(open = F,
-                    accordion_panel(
-                      "Enter Summer Rate Structure",
-                      fluidRow(
-                        align = "center",
-                        column(
-                          12,
-                          fluidRow(h5("Select summer months")),
-                          fluidRow(
-                            column(6, selectInput("summer_month1", "First Month", choices = month.name, selected = "April")),
-                            column(6, selectInput("summer_month2", "Final Month", choices = month.name, selected = "September"))
-                          ),
-                          conditionalPanel(
-                            condition = "input.tou_ed.indexOf('Usage charge ($/kWh)') != -1 || input.tou_ed.indexOf('Demand charge ($/kW)') != -1",
-                            fluidRow(
-                              h5("Select summer hours"),
-                              conditionalPanel(
-                                condition = "input.tou_periods == 'Yes'",
-                                column(6, selectInput("summer_offpeak_start", "Off-Peak Start Hour", choices = 0:23, selected = 21)),
-                                column(6, selectInput("summer_offpeak_end", "Off-Peak End Hour", choices = 0:23, selected = 16)),
-                                column(6, selectInput("summer_partpeak_start_hour", "Part-Peak Start Hour", choices = 0:23, selected = 14)),
-                                column(6, selectInput("summer_partpeak_end_hour", "Part-Peak End Hour", choices = 0:23, selected = 16))
-                              ),
-                              column(6, selectInput("summer_onpeak_start", "On-Peak Start Hour", choices = 0:23, selected = 16)),
-                              column(6, selectInput("summer_onpeak_end", "On-Peak End Hour", choices = 0:23, selected = 21))
-                            )
-                          ),
-                          fluidRow(h5("Select summer electricity rates")),
-                          conditionalPanel(
-                            condition = "input.tou_ed.indexOf('Usage charge ($/kWh)') == -1 && input.tou_ed.indexOf('Demand charge ($/kW)') == -1",
-                            fluidRow(
-                              column(6, numericInput("summer_fixed_rate", "Summer Fixed Rate($/kWh)", value = 0.3,step=0.02)),
-                              conditionalPanel(
-                                condition = "input.tou_mm_y_n == 'Yes'",
-                                column(6, numericInput("summer_max_demand", "Monthly/Season Max Demand Charge($/kW)", value = 40,step=2))
-                              )
-                            )
-                          ),
-                          conditionalPanel(
-                            condition = "input.tou_ed.indexOf('Usage charge ($/kWh)') != -1 && input.tou_ed.indexOf('Demand charge ($/kW)') == -1",
-                            fluidRow(
-                              column(6, numericInput("summer_offpeak_rate", "Off-Peak Rate($/kWh)", value = 0.25,step=0.02)),
-                              column(6, numericInput("summer_onpeak_rate", "On-Peak Rate($/kWh)", value = 0.35,step=0.02)),
-                              conditionalPanel(
-                                condition = "input.tou_periods == 'Yes'",
-                                column(6, numericInput("summer_partpeak_rate", "Part-Peak Rate($/kWh)", value = 0.35,step=0.02))
-                              ),
-                              conditionalPanel(
-                                condition = "input.tou_mm_y_n == 'Yes'",
-                                column(6, numericInput("summer_max_demand", "Monthly/Season Max Demand Charge($/kW)", value = 40,step=2))
-                              )
-                            )
-                          ),
-                          conditionalPanel(
-                            condition = "input.tou_ed.indexOf('Usage charge ($/kWh)') == -1 && input.tou_ed.indexOf('Demand charge ($/kW)') != -1",
-                            fluidRow(
-                              column(6, numericInput("summer_fixed_rate", "Summer Fixed Rate($/kWh)", value = 0.3,step=0.02)),
-                              column(6, numericInput("summer_onpeak_demand", "On-Peak Demand Charge($/kW)", value = 20,step=2)),
-                              column(6, numericInput("summer_offpeak_demand", "Off-Peak Demand Charge($/kW)", value = 0,step=2)),
-                              conditionalPanel(
-                                condition = "input.tou_periods == 'Yes'",
-                                column(6, numericInput("summer_partpeak_demand", "Part-Peak Demand Charge($/kW)", value = 13,step=2))
-                              ),
-                              conditionalPanel(
-                                condition = "input.tou_mm_y_n == 'Yes'",
-                                column(6, numericInput("summer_max_demand", "Monthly/Season Max Demand Charge($/kW)", value = 40,step=2))
-                              )
-                            )
-                          ),
-                          conditionalPanel(
-                            condition = "input.tou_ed.indexOf('Usage charge ($/kWh)') != -1 && input.tou_ed.indexOf('Demand charge ($/kW)') != -1",
-                            fluidRow(
-                              column(6, numericInput("summer_offpeak_rate", "Off-Peak Rate($/kWh)", value = 0.25,step=0.02)),
-                              column(6, numericInput("summer_onpeak_rate", "On-Peak Rate($/kWh)", value = 0.35,step=0.02)),
-                              column(6, numericInput("summer_onpeak_demand", "On-Peak Demand Charge($/kW)", value = 20,step=2)),
-                              column(6, numericInput("summer_offpeak_demand", "Off-Peak Demand Charge($/kW)", value = 0,step=2)),
-                              conditionalPanel(
-                                condition = "input.tou_periods == 'Yes'",
-                                column(6, numericInput("summer_partpeak_rate", "Part-Peak Rate($/kWh)", value = 0.35,step=0.02)),
-                                column(6, numericInput("summer_partpeak_demand", "Part-Peak Demand Charge($/kW)", value = 13,step=2))
-                              ),
-                              conditionalPanel(
-                                condition = "input.tou_mm_y_n == 'Yes'",
-                                column(6, numericInput("summer_max_demand", "Monthly/Season Max Demand Charge($/kW)", value = 40,step=2))
-                              )
-                            )
-                          )
-                        )
-                      )
-                    ),
-                    accordion_panel(
-                      "Enter Winter Rate Structure",
-                      fluidRow(
-                        align = "center",
-                        column(
-                          12,
-                          fluidRow(h5("Select winter months")),
-                          fluidRow(
-                            column(6, selectInput("winter_month1", "First Month", choices = month.name, selected = "October")),
-                            column(6, selectInput("winter_month2", "Final Month", choices = month.name, selected = "March"))
-                          ),
-                          conditionalPanel(
-                            condition = "input.tou_ed.indexOf('Usage charge ($/kWh)') != -1 || input.tou_ed.indexOf('Demand charge ($/kW)') != -1",
-                            fluidRow(
-                              h5("Select winter hours"),
-                              conditionalPanel(
-                                condition = "input.tou_periods == 'Yes'",
-                                column(6, selectInput("winter_offpeak_start", "Off-Peak Start Hour", choices = 0:23, selected = 21)),
-                                column(6, selectInput("winter_offpeak_end", "Off-Peak End Hour", choices = 0:23, selected = 16)),
-                                column(6, selectInput("winter_partpeak_start_hour", "Part-Peak Start Hour", choices = 0:23, selected = 14)),
-                                column(6, selectInput("winter_partpeak_end_hour", "Part-Peak End Hour", choices = 0:23, selected = 16))
-                              ),
-                              column(6, selectInput("winter_onpeak_start", "On-Peak Start Hour", choices = 0:23, selected = 16)),
-                              column(6, selectInput("winter_onpeak_end", "On-Peak End Hour", choices = 0:23, selected = 21))
-                            )
-                          ),
-                          fluidRow(h5("Select winter electricity rates")),
-                          conditionalPanel(
-                            condition = "input.tou_ed.indexOf('Usage charge ($/kWh)') == -1 && input.tou_ed.indexOf('Demand charge ($/kW)') == -1",
-                            fluidRow(
-                              column(6, numericInput("winter_fixed_rate", "Winter Fixed Rate($/kWh)", value = 0.3,step=0.02)),
-                              conditionalPanel(
-                                condition = "input.tou_mm_y_n == 'Yes'",
-                                column(6, numericInput("winter_max_demand", "Monthly/Season Max Demand Charge($/kW)", value = 40,step=2))
-                              )
-                            )
-                          ),
-                          conditionalPanel(
-                            condition = "input.tou_ed.indexOf('Usage charge ($/kWh)') != -1 && input.tou_ed.indexOf('Demand charge ($/kW)') == -1",
-                            fluidRow(
-                              column(6, numericInput("winter_offpeak_rate", "Off-Peak Rate($/kWh)", value = 0.25,step=0.02)),
-                              column(6, numericInput("winter_onpeak_rate", "On-Peak Rate($/kWh)", value = 0.35,step=0.02)),
-                              conditionalPanel(
-                                condition = "input.tou_periods == 'Yes'",
-                                column(6, numericInput("winter_partpeak_rate", "Part-Peak Rate($/kWh)", value = 0.35,step=0.02))
-                              ),
-                              conditionalPanel(
-                                condition = "input.tou_mm_y_n == 'Yes'",
-                                column(6, numericInput("winter_max_demand", "Monthly/Season Max Demand Charge($/kW)", value = 40,step=2))
-                              )
-                            )
-                          ),
-                          conditionalPanel(
-                            condition = "input.tou_ed.indexOf('Usage charge ($/kWh)') == -1 && input.tou_ed.indexOf('Demand charge ($/kW)') != -1",
-                            fluidRow(
-                              column(6, numericInput("winter_fixed_rate", "Winter Fixed Rate($/kWh)", value = 0.3,step=0.02)),
-                              column(6, numericInput("winter_onpeak_demand", "On-Peak Demand Charge($/kW)", value = 20,step=2)),
-                              column(6, numericInput("winter_offpeak_demand", "Off-Peak Demand Charge($/kW)", value = 0,step=2)),
-                              conditionalPanel(
-                                condition = "input.tou_periods == 'Yes'",
-                                column(6, numericInput("winter_partpeak_demand", "Part-Peak Demand Charge($/kW)", value = 13,step=2))
-                              ),
-                              conditionalPanel(
-                                condition = "input.tou_mm_y_n == 'Yes'",
-                                column(6, numericInput("winter_max_demand", "Monthly/Season Max Demand Charge($/kW)", value = 40,step=2))
-                              )
-                            )
-                          ),
-                          conditionalPanel(
-                            condition = "input.tou_ed.indexOf('Usage charge ($/kWh)') != -1 && input.tou_ed.indexOf('Demand charge ($/kW)') != -1",
-                            fluidRow(
-                              column(6, numericInput("winter_offpeak_rate", "Off-Peak Rate($/kWh)", value = 0.25,step=0.02)),
-                              column(6, numericInput("winter_onpeak_rate", "On-Peak Rate($/kWh)", value = 0.35,step=0.02)),
-                              column(6, numericInput("winter_onpeak_demand", "On-Peak Demand Charge($/kW)", value = 20,step=2)),
-                              column(6, numericInput("winter_offpeak_demand", "Off-Peak Demand Charge($/kW)", value = 0,step=2)),
-                              conditionalPanel(
-                                condition = "input.tou_periods == 'Yes'",
-                                column(6, numericInput("winter_partpeak_rate", "Part-Peak Rate($/kWh)", value = 0.35,step=0.02)),
-                                column(6, numericInput("winter_partpeak_demand", "Part-Peak Demand Charge($/kW)", value = 13,step=2))
-                              ),
-                              conditionalPanel(
-                                condition = "input.tou_mm_y_n == 'Yes'",
-                                column(6, numericInput("winter_max_demand", "Monthly/Season Max Demand Charge($/kW)", value = 40,step=2))
-                              )
-                            )
-                          )
-                        )
-                      )
-                    ),
-                    br(),
-                    bookmarkButton(label = "Bookmark Rate Structure Inputs", title = "Click to bookmark/save your entered electricity rate inputs as a URL.")
-          )
-        )),
-      fluidRow(br()),
-      fluidRow(
-        column(12, h4("Step 4: Analyze Load Management Aprroach:", style = "font-weight: bold; font-size: 17px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;")),
-        wellPanel(
-          style = "border: 2px solid #ccc; padding: 10px; border-radius: 5px;",
-          tags$div(
-            style = "display: flex; justify-content: flex-end; gap: 120px;",
-            radioButtons("addshed_shift", "Type of load management",
-                         choices = c("Add/Shed Load","Shift Load"),
-                         selected = "Add/Shed Load",
-                         inline = F,
-                         width = '600px'
-            ),
-            radioTooltip(id = "addshed_shift", choice = "Add/Shed Load", title = "Enter a positive value to add load or a negative value to shed load", placement = "right", trigger = "hover"),
-            radioTooltip(id = "addshed_shift", choice = "Shift Load", title = "Enter a positive value for the load you want to shift", placement = "right", trigger = "hover"),
-            
-            conditionalPanel(condition = "input.green_manual != '12 Months Utility Bills'",
-                             radioButtons("work_on_weekends", "Manage load over the weekends?",
-                         choices = c("Yes", "No"),
-                         selected = "No",
-                         inline = F,
-                         width = '500px'
-            )),
-            radioTooltip(id = "work_on_weekends", choice = "Yes", title = "Select yes if you would like to manage your load on weekdays and weekends", placement = "right", trigger = "hover"),
-            radioTooltip(id = "work_on_weekends", choice = "No", title = "Select no if you would like to manage your load only on weekdays", placement = "right", trigger = "hover"),
-          ),
-          conditionalPanel(
-            condition = "input.addshed_shift == 'Add/Shed Load'",
-            accordion(open = F,
-                      accordion_panel(
-                        "Enter Load Addition/Shedding Inputs",
-                        radioButtons("addData", "Select Input Method:",
-                                     choices = c("Manually Enter Added Load(s)", "Upload Existing Spreadsheet")
-                        ),
-                        conditionalPanel(
-                          condition = "input.addData == 'Manually Enter Added Load(s)'",
-                          uiOutput("inputSets_1")
-                        ),
-                        fluidRow(align = "center",
-                                 column(4, actionButton("plot_button_2", "Generate Plot", style = "width:120px;padding:8px")),
-                                 column(8, conditionalPanel(
-                                   condition = "input.addData == 'Manually Enter Added Load(s)'",
-                                   actionButton("addWindow_load", "Add more Load Input(s)", style = "width:200px;margin-right: 0px;padding:8px")
-                                 )
-                                 )
-                        ),
-                        fluidRow(
-                          conditionalPanel(
-                            condition = "input.addData == 'Upload Existing Spreadsheet'",
-                            column(4, fileInput("file_upload_addinput", "Upload Input Sheet Excel File"))
-                          )
-                        )
-                      )
-            )
-          ),
-          conditionalPanel(
-            condition = "input.addshed_shift == 'Shift Load'",
-            accordion(open = F,
-                      accordion_panel(
-                        "Enter Load Shifting Inputs",
-                        radioButtons("shiftData", "Select Input Method:",
-                                     choices = c("Manually Enter Shaped Load(s)", "Upload Existing Spreadsheet")
-                        ),
-                        conditionalPanel(
-                          condition = "input.shiftData == 'Manually Enter Shaped Load(s)'",
-                          uiOutput("inputSets")
-                        ),
-                        fluidRow(align = "center",
-                                 column(4, actionButton("plot_button", "Generate Plot", style = "width:120px;padding:8px")),
-                                 column(8, conditionalPanel(
-                                   condition = "input.shiftData == 'Manually Enter Shaped Load(s)'",
-                                   actionButton("addWindow", "Add more Shaped Load(s)", style = "width:220px;margin-right: 0px;padding:8px")
-                                 )) 
-                        ),
-                        br(),
-                        fluidRow(conditionalPanel(
-                          condition = "input.shiftData == 'Upload Existing Spreadsheet'",
-                          column(4, fileInput("file_upload_shiftinput", "Upload Input Sheet Excel File"))
-                        ))
-                      )
-            )
-          )
-        )
-      ),
-      fluidRow(align = "center",
-               column(5, downloadButton("downloadInputData", "Download Input Data",style = "width:180px;padding:8px;font-size:80%")),
-               column(7, downloadButton("downloadMergedData", "Download Modified Load Data",style = "width:240px;padding:8px;font-size:80%"))
-      ),
-      downloadLink("downloaddocu", "Download Tool Documentation")
-    ),
-    fluidRow(
-      align = "right",
-      column(12,
-             actionButton("reset_input", " Reset inputs", icon = icon("power-off"))
-             )
-    ),
-
-    accordion(
-      open = c("Bill Length", "About"),
-      navset_card_underline(
-        title = HTML("<b>Electrical Load Plot</b>"),
-        nav_panel(
-          div("Hourly Electrical Load Plot", style = "padding: 10px; box-shadow: 0 6px 8px rgba(0, 0, 0, 0.1);"),
-          style = "padding: 10px; box-shadow: 0 6px 8px rgba(0, 0, 0, 0.1); width:100%; height:100%; overflow:auto;",
-          conditionalPanel(
-            condition = "output.fileUploaded | input.plot_button >= 1 | input.plot_button_2 >= 1",
-            style = "display: none;",
-            shinycssloaders::withSpinner(
-              plotlyOutput("time_series_plot", width = "100%", height = "100%"),
-              type = getOption("spinner.type", default = 8)
-            )
-          ),
-          div(
-            style = "display: flex; justify-content: flex-end; position: absolute; bottom: 10px; right: 10px;",
-            conditionalPanel(
-              condition = "output.fileUploaded | input.plot_button >= 1 | input.plot_button_2 >= 1",
-              downloadButton("download_load_data", "Download Plot Data (.XLSX)")
-            )
-          )
-        )
-      ),
-      navset_card_underline(
-        title = HTML("<b>CO<sub>2</sub>e Plots</b>"),
-        nav_panel(
-          div(HTML("Hourly CO<sub>2</sub>e Emissions Plot"), style = "padding: 10px; box-shadow: 0 6px 8px rgba(0, 0, 0, 0.1);width:100%; height:100%; overflow:auto;"),
-          conditionalPanel(
-            condition = "output.fileUploaded & input.state != ''  || input.plot_button >= 1 || input.plot_button_2 >= 1",
-            style = "display: none;overflow-x: scroll;overflow-y: scroll;",
-            shinycssloaders::withSpinner(plotlyOutput("co2_emissions_change_plot", width = "100%", height = "100%"),
-                                         type = getOption("spinner.type", default = 8)
-            )
-          ),
-          div(
-            style = "display: flex; justify-content: flex-end; position: absolute; bottom: 10px; right: 10px;",
-            conditionalPanel(
-              condition = "output.fileUploaded & input.state != ''  || input.plot_button >= 1 || input.plot_button_2 >= 1",
-              downloadButton("download_co2em_data", "Download Plot Data (.XLSX)")
-            )
-          )
-        ),
-        nav_panel(
-          div(HTML("Monthly CO<sub>2</sub>e Emissions Plot"), style = "padding: 10px; box-shadow: 0 6px 8px rgba(0, 0, 0, 0.1);width:100%; height:100%; overflow:auto;"),
-          conditionalPanel(
-            condition = "output.fileUploaded & input.state != ''  || input.plot_button >= 1 || input.plot_button_2 >= 1",
-            style = "display: none;overflow-x: scroll;overflow-y: scroll;",
-            shinycssloaders::withSpinner(plotlyOutput("co2_plot_annual", width = "100%", height = "100%"),
-                                         type = getOption("spinner.type", default = 8)
-            )
-          ),
-          div(
-            style = "display: flex; justify-content: flex-end; position: absolute; bottom: 10px; right: 10px;",
-            conditionalPanel(
-              condition = "output.fileUploaded & input.state != ''  || input.plot_button >= 1 || input.plot_button_2 >= 1",
-              downloadButton("download_co2em_data_monthly", "Download Plot Data (.XLSX)")
-            )
-          )
-        ),
-        nav_panel(
-          div(HTML("Electric Grid CO<sub>2</sub>e Emissions Factor Plot"), style = "padding: 10px; box-shadow: 0 6px 8px rgba(0, 0, 0, 0.1);width:100%; height:100%; overflow:auto;"),
-          conditionalPanel(
-            condition = "output.fileUploaded & input.state != '' || input.plot_button >= 1 || input.plot_button_2 >= 1",
-            style = "display: none;overflow-x: scroll;overflow-y: scroll;",
-            shinycssloaders::withSpinner(plotlyOutput("grid_co2_plot", width = "100%", height = "100%"),
-                                         type = getOption("spinner.type", default = 8)
-            )
-          ),
-          div(
-            style = "display: flex; justify-content: flex-end; position: absolute; bottom: 10px; right: 10px;",
-            conditionalPanel(
-              condition = "output.fileUploaded & input.state != '' || input.plot_button >= 1 || input.plot_button_2 >= 1",
-              downloadButton("grid_ef", "Download Plot Data (.XLSX)")
-            )
-          )
-        )
-      ),
-      navset_card_underline(
-        title = HTML("<b>Cost Plots</b>"),
-        nav_panel(
-          div("Monthly Cost Plot", style = "padding: 10px; box-shadow: 0 6px 8px rgba(0, 0, 0, 0.1);width:100%; height:100%; overflow:auto;"),
-          conditionalPanel(
-            condition = "output.fileUploaded || input.plot_button >= 1 || input.plot_button_2 >= 1",
-            style = "display: none;overflow-x: scroll;overflow-y: scroll;",
-            shinycssloaders::withSpinner(plotlyOutput("cost_plot", width = "100%", height = "100%"),
-                                         type = getOption("spinner.type", default = 8)
-            )
-          ),
-          div(
-            style = "display: flex; justify-content: flex-end; position: absolute; bottom: 10px; right: 10px;",
-            conditionalPanel(
-              condition = "output.fileUploaded | input.plot_button >= 1 | input.plot_button_2 >= 1",
-              downloadButton("download_costselect_data", "Download Plot Data (.XLSX)")
-            )
-          )
-        ),
-        nav_panel(
-          div("Annual Cost Plot", style = "padding: 10px; box-shadow: 0 6px 8px rgba(0, 0, 0, 0.1);width:100%; height:100%; overflow:auto;"),
-          conditionalPanel(
-            condition = "output.fileUploaded || input.plot_button >= 1 || input.plot_button_2 >= 1",
-            style = "display: none;overflow-x: scroll;overflow-y: scroll;",
-            shinycssloaders::withSpinner(plotlyOutput("cost_plot_annual", width = "100%", height = "100%"),
-                                         type = getOption("spinner.type", default = 8)
-            )
-          )
-        ),
-        nav_panel(
-          div("Carbon Abatement Cost Plot", style = "padding: 10px; box-shadow: 0 6px 8px rgba(0, 0, 0, 0.1);width:100%; height:100%; overflow:auto;"),
-          conditionalPanel(
-            condition = "input.plot_button >= 1 || input.plot_button_2 >= 1",
-            style = "display: none;overflow-x: scroll;overflow-y: scroll;",
-            shinycssloaders::withSpinner(plotlyOutput("lcac_plot", width = "100%", height = "100%"),
-                                         type = getOption("spinner.type", default = 8)
-            )
-          ), div(
-            style = "display: flex; justify-content: flex-end; position: absolute; bottom: 10px; right: 10px;",
-            conditionalPanel(
-              condition = "input.plot_button >= 1 | input.plot_button_2 >= 1",
-              downloadButton("download_lcac_data", "Download Plot Data (.XLSX)")
-            )
-          )
-        )
-      )
     )
   )
-}
-
-
-
-thematic::thematic_shiny(font = "auto")
+)
 
 
 server <- function(input, output, session) {
@@ -794,17 +650,230 @@ server <- function(input, output, session) {
       file.copy(docFilePath, file)
     }
   )
-
   
-  theme = bs_theme(bootswatch = "flatly")
-
-    observeEvent(input$emissions_type, {
+  trigger_co2_panel <- reactiveVal(FALSE)
+  
+  output$download_rate_template <- downloadHandler(
+    filename = function() "Rate Input Sheet.xlsx",
+    content  = function(dest) {
+      file.copy("AllUploadFiles_ToolTesting/Rate Input Sheet.xlsx", dest)
+    }
+  )
+  
+  
+  
+  
+  rate_vals <- reactiveVal(NULL)
+  
+  observeEvent(input$rate_file, {
+    req(input$rate_file)
     
-      # Extract selected year
-      if (input$emissions_type == "U.S. EPA's 2022 eGRID") {
-        selected_year <- 2022} else {
-    selected_year <- as.integer(input$emissions_type)
-        }
+    rate_vals(NULL)
+    
+    raw_df <- tryCatch({
+      openxlsx::read.xlsx(input$rate_file$datapath, sheet = "Rate Inputs", colNames = FALSE, detectDates = TRUE)
+    }, error = function(e) {
+      shinyalert("File Reading Error", paste("Could not read the 'Rate Inputs' sheet. Error:", e$message), type = "error")
+      return(NULL)
+    })
+    
+    if (is.null(raw_df) || nrow(raw_df) < 5) {
+      shinyalert("File Content Error", "The 'Rate Inputs' sheet appears to be empty or incomplete.", type = "error")
+      return()
+    }
+    
+    get_val <- function(row, col) {
+      if (row > nrow(raw_df) || col > ncol(raw_df)) return(NA_character_)
+      val <- raw_df[row, col]
+      if (is.na(val) || (is.character(val) && nchar(trimws(val)) == 0)) return(NA_character_)
+      return(trimws(as.character(val)))
+    }
+    
+    get_time_hour <- function(val_str) {
+      if (is.na(val_str)) return(NA_real_)
+      val_num <- suppressWarnings(as.numeric(val_str))
+      
+      
+      if (!is.na(val_num) && val_num >= 0 && val_num < 1) {
+        return(as.integer(round(val_num * 24)))
+      }
+      
+      
+      parsed_time <- lubridate::parse_date_time(val_str, orders = c("H:M:S", "H:M", "I:M p", "I p"), quiet = TRUE, tz="UTC")
+      if (!is.na(parsed_time)) {
+        return(as.numeric(format(parsed_time, "%H")))
+      }
+      
+      return(NA_real_) 
+    }
+    default_to_zero <- function(value) { ifelse(is.na(value), 0, as.numeric(value)) }
+    
+    
+    error_messages <- character()
+    comp_raw <- get_val(1, 2)
+    has_partpeak_raw <- get_val(2, 2)
+    has_monthlymax_raw <- get_val(3, 2)
+    
+    if (is.na(comp_raw)) { error_messages <- c(error_messages, "• Cell C3 (Bill Components) is empty.") }
+    if (is.na(has_partpeak_raw)) { error_messages <- c(error_messages, "• Cell C4 (Part-Peak) is empty.") }
+    if (is.na(has_monthlymax_raw)) { error_messages <- c(error_messages, "• Cell C5 (Monthly Max Demand) is empty.") }
+    if (length(error_messages) > 0) {
+      shinyalert("Invalid Key Inputs", paste(error_messages, collapse = "\n"), type = "error")
+      return()
+    }
+    
+    
+    # Logical Flags
+    usage_incl   <- grepl("Usage", comp_raw)
+    demand_incl  <- grepl("Demand", comp_raw)
+    is_fixed_rate_structure <- grepl("Fixed", comp_raw)
+    has_partpeak   <- grepl("Yes", has_partpeak_raw, ignore.case = TRUE)
+    has_monthlymax <- grepl("Yes", has_monthlymax_raw, ignore.case = TRUE)
+    
+    # Summer Values
+    summer_start_m <- match(get_val(7, 2), month.name)
+    summer_end_m   <- match(get_val(7, 3), month.name)
+    tm_off_start_s  <- get_time_hour(get_val(9, 2))
+    tm_off_end_s    <- get_time_hour(get_val(9, 3))
+    tm_part_start_s = get_time_hour(get_val(9, 4))
+    tm_part_end_s   = get_time_hour(get_val(9, 5))
+    tm_on_start_s   = get_time_hour(get_val(9, 6))
+    tm_on_end_s     = get_time_hour(get_val(9, 7))
+    rate_off_s   = default_to_zero(get_val(12, 2))
+    dem_off_s    = default_to_zero(get_val(12, 3))
+    rate_part_s  = default_to_zero(get_val(12, 4))
+    dem_part_s   = default_to_zero(get_val(12, 5))
+    rate_on_s    = default_to_zero(get_val(12, 6))
+    dem_on_s     = default_to_zero(get_val(12, 7))
+    summer_fixed_rate = default_to_zero(get_val(7, 5))
+    max_dem_s = default_to_zero(get_val(14, 1))
+    
+    # Winter Values
+    winter_start_m = match(get_val(17, 2), month.name)
+    winter_end_m   = match(get_val(17, 3), month.name)
+    tm_off_start_w  = get_time_hour(get_val(19, 2))
+    tm_off_end_w    = get_time_hour(get_val(19, 3))
+    tm_part_start_w = get_time_hour(get_val(19, 4))
+    tm_part_end_w   = get_time_hour(get_val(19, 5))
+    tm_on_start_w   = get_time_hour(get_val(19, 6))
+    tm_on_end_w     = get_time_hour(get_val(19, 7))
+    rate_off_w   = default_to_zero(get_val(22, 2))
+    dem_off_w    = default_to_zero(get_val(22, 3))
+    rate_part_w  = default_to_zero(get_val(22, 4))
+    dem_part_w   = default_to_zero(get_val(22, 5))
+    rate_on_w    = default_to_zero(get_val(22, 6))
+    dem_on_w     = default_to_zero(get_val(22, 7))
+    winter_fixed_rate = default_to_zero(get_val(17, 5))
+    max_dem_w = default_to_zero(get_val(24, 1))
+    
+    # Debug to print the read values
+    
+    # cat("\n--- Final Parsed Values ---\n")
+    # cat("Logical Flags:\n")
+    # cat(paste("  - usage_incl:", usage_incl, "\n"))
+    # cat(paste("  - demand_incl:", demand_incl, "\n"))
+    # cat(paste("  - is_fixed_rate_structure:", is_fixed_rate_structure, "\n"))
+    # cat(paste("  - has_partpeak:", has_partpeak, "\n"))
+    # cat(paste("  - has_monthlymax:", has_monthlymax, "\n\n"))
+    # 
+    # cat("Summer Values:\n")
+    # cat(paste("  - Months:", summer_start_m, "to", summer_end_m, "\n"))
+    # cat(paste("  - Hours (Off):", tm_off_start_s, "to", tm_off_end_s, "\n"))
+    # cat(paste("  - Hours (Part):", tm_part_start_s, "to", tm_part_end_s, "\n"))
+    # cat(paste("  - Hours (On):", tm_on_start_s, "to", tm_on_end_s, "\n"))
+    # cat(paste("  - Rates (Off/Part/On):", rate_off_s, "/", rate_part_s, "/", rate_on_s, "\n"))
+    # cat(paste("  - Demands (Off/Part/On):", dem_off_s, "/", dem_part_s, "/", dem_on_s, "\n"))
+    # cat(paste("  - Fixed Rate:", summer_fixed_rate, "\n"))
+    # cat(paste("  - Max Demand Charge:", max_dem_s, "\n\n"))
+    # 
+    # cat("Winter Values:\n")
+    # cat(paste("  - Months:", winter_start_m, "to", winter_end_m, "\n"))
+    # cat(paste("  - Hours (Off):", tm_off_start_w, "to", tm_off_end_w, "\n"))
+    # cat(paste("  - Hours (Part):", tm_part_start_w, "to", tm_part_end_w, "\n"))
+    # cat(paste("  - Hours (On):", tm_on_start_w, "to", tm_on_end_w, "\n"))
+    # cat(paste("  - Rates (Off/Part/On):", rate_off_w, "/", rate_part_w, "/", rate_on_w, "\n"))
+    # cat(paste("  - Demands (Off/Part/On):", dem_off_w, "/", dem_part_w, "/", dem_on_w, "\n"))
+    # cat(paste("  - Fixed Rate:", winter_fixed_rate, "\n"))
+    # cat(paste("  - Max Demand Charge:", max_dem_w, "\n"))
+    # cat("---------------------------\n\n")
+    
+    # Set Reactive Value 
+    rate_vals(list(
+      usage_incl = usage_incl, demand_incl = demand_incl, 
+      fixed_usage = !is.na(comp_raw) && comp_raw %in% c("Only Demand Charge ($/kW)", "Fixed Usage and Demand Charges"),
+      fixed_demand = is_fixed_rate_structure,
+      has_partpeak = has_partpeak, has_monthlymax = has_monthlymax,
+      summer_start_m = summer_start_m, summer_end_m = summer_end_m,
+      tm_off_start_s = tm_off_start_s, tm_off_end_s = tm_off_end_s, 
+      tm_part_start_s = tm_part_start_s, tm_part_end_s = tm_part_end_s, 
+      tm_on_start_s = tm_on_start_s, tm_on_end_s = tm_on_end_s,
+      rate_off_s = rate_off_s, dem_off_s = dem_off_s, 
+      rate_part_s = rate_part_s, dem_part_s = dem_part_s, 
+      rate_on_s = rate_on_s, dem_on_s = dem_on_s,
+      summer_fixed_rate = summer_fixed_rate, max_dem_s = max_dem_s,
+      winter_start_m = winter_start_m, winter_end_m = winter_end_m,
+      tm_off_start_w = tm_off_start_w, tm_off_end_w = tm_off_end_w, 
+      tm_part_start_w = tm_part_start_w, tm_part_end_w = tm_part_end_w, 
+      tm_on_start_w = tm_on_start_w, tm_on_end_w = tm_on_end_w,
+      rate_off_w = rate_off_w, dem_off_w = dem_off_w, 
+      rate_part_w = rate_part_w, dem_part_w = dem_part_w, 
+      rate_on_w = rate_on_w, dem_on_w = dem_on_w,
+      winter_fixed_rate = winter_fixed_rate, max_dem_w = max_dem_w
+    ))
+    
+    showNotification("Rate structure data loaded and validated successfully.", type = "message", duration = 5)
+  })
+  
+  usage_incl                  <- reactive({ req(rate_vals()); rate_vals()$usage_incl })
+  demand_incl                 <- reactive({ req(rate_vals()); rate_vals()$demand_incl })
+  fixed_usage                 <- reactive({ req(rate_vals()); rate_vals()$fixed_usage })
+  fixed_demand                <- reactive({ req(rate_vals()); rate_vals()$fixed_demand })
+  has_partpeak                <- reactive({ req(rate_vals()); rate_vals()$has_partpeak })
+  has_monthlymax              <- reactive({ req(rate_vals()); rate_vals()$has_monthlymax })
+  summer_start_month          <- reactive({ req(rate_vals()); rate_vals()$summer_start_m })
+  summer_end_month            <- reactive({ req(rate_vals()); rate_vals()$summer_end_m })
+  summer_offpeak_start_hour   <- reactive({ req(rate_vals()); rate_vals()$tm_off_start_s })
+  summer_offpeak_end_hour     <- reactive({ req(rate_vals()); rate_vals()$tm_off_end_s })
+  summer_partpeak_start_hour  <- reactive({ req(rate_vals()); rate_vals()$tm_part_start_s })
+  summer_partpeak_end_hour    <- reactive({ req(rate_vals()); rate_vals()$tm_part_end_s })
+  summer_onpeak_start_hour    <- reactive({ req(rate_vals()); rate_vals()$tm_on_start_s })
+  summer_onpeak_end_hour      <- reactive({ req(rate_vals()); rate_vals()$tm_on_end_s })
+  summer_offpeak_rate         <- reactive({ req(rate_vals()); rate_vals()$rate_off_s })
+  summer_partpeak_rate        <- reactive({ req(rate_vals()); rate_vals()$rate_part_s })
+  summer_onpeak_rate          <- reactive({ req(rate_vals()); rate_vals()$rate_on_s })
+  summer_fixed_rate           <- reactive({ req(rate_vals()); rate_vals()$summer_fixed_rate })
+  summer_dc_offpeak           <- reactive({ req(rate_vals()); rate_vals()$dem_off_s })
+  summer_partpeak_demand      <- reactive({ req(rate_vals()); rate_vals()$dem_part_s })
+  summer_dc_onpeak            <- reactive({ req(rate_vals()); rate_vals()$dem_on_s })
+  summer_max_demand           <- reactive({ req(rate_vals()); rate_vals()$max_dem_s })
+  winter_start_month          <- reactive({ req(rate_vals()); rate_vals()$winter_start_m })
+  winter_end_month            <- reactive({ req(rate_vals()); rate_vals()$winter_end_m })
+  winter_offpeak_start_hour   <- reactive({ req(rate_vals()); rate_vals()$tm_off_start_w })
+  winter_offpeak_end_hour     <- reactive({ req(rate_vals()); rate_vals()$tm_off_end_w })
+  winter_partpeak_start_hour  <- reactive({ req(rate_vals()); rate_vals()$tm_part_start_w })
+  winter_partpeak_end_hour    <- reactive({ req(rate_vals()); rate_vals()$tm_part_end_w })
+  winter_onpeak_start_hour    <- reactive({ req(rate_vals()); rate_vals()$tm_on_start_w })
+  winter_onpeak_end_hour      <- reactive({ req(rate_vals()); rate_vals()$tm_on_end_w })
+  winter_offpeak_rate         <- reactive({ req(rate_vals()); rate_vals()$rate_off_w })
+  winter_partpeak_rate        <- reactive({ req(rate_vals()); rate_vals()$rate_part_w })
+  winter_onpeak_rate          <- reactive({ req(rate_vals()); rate_vals()$rate_on_w })
+  winter_fixed_rate           <- reactive({ req(rate_vals()); rate_vals()$winter_fixed_rate })
+  winter_dc_offpeak           <- reactive({ req(rate_vals()); rate_vals()$dem_off_w })
+  winter_partpeak_demand      <- reactive({ req(rate_vals()); rate_vals()$dem_part_w })
+  winter_dc_onpeak            <- reactive({ req(rate_vals()); rate_vals()$dem_on_w })
+  winter_max_demand           <- reactive({ req(rate_vals()); rate_vals()$max_dem_w })
+  
+  
+  
+  theme = shinytheme("flatly")
+  
+  observeEvent(input$emissions_type, {
+    
+    # Extract selected year
+    if (input$emissions_type == "U.S. EPA's 2022 eGRID") {
+      selected_year <- 2022} else {
+        selected_year <- as.integer(input$emissions_type)
+      }
     
     # Extract current selected start and end dates
     start_date <- input$date_range[1]
@@ -818,45 +887,52 @@ server <- function(input, output, session) {
   
   
   
-  observeEvent(input$tou_periods, {
-    if (input$tou_periods == "Yes") {
-      updateSelectInput(session, "summer_offpeak_end", selected = 14)
-      updateSelectInput(session, "winter_offpeak_end", selected = 14)
-    } else {
-      updateSelectInput(session, "summer_offpeak_end", selected = 16)
-      updateSelectInput(session, "winter_offpeak_end", selected = 16)
-    }
-  })
   
   
   output$fileInputUI <- renderUI({
-    if (input$green_manual == "Custom Hourly Load") {
-      fileInput("loadpf_file", "Upload Hourly Electrical Load Data (.XLSX):")
-    } else if (input$green_manual == "12 Months Utility Bills") {
-      fileInput("loadpf_file", "Upload 12 Months Utility Bill Data (.XLSX):")
-    } else if (input$green_manual == "Green Button: 15-Minute") {
-      fileInput("loadpf_file", "Upload Green Button Data (.XML):")
-    } else if (input$green_manual == "Green Button: Hourly") {
-      fileInput("loadpf_file", "Upload Green Button Data (.XML):")
-    }
+    
+    is_template_based <- input$green_manual %in% c("Custom Hourly Load", "12 Months Utility Bills")
+    upload_number <- if (is_template_based) "4." else "3."
+    upload_label_text <- switch(input$green_manual,
+                                "Custom Hourly Load"        = "Upload Hourly Electrical Load Data (.XLSX)",
+                                "12 Months Utility Bills"   = "Upload 12 Months Utility Bill Data (.XLSX)",
+                                "Green Button: 15-Minute"   = "Upload Green Button Data (.XML)",
+                                "Green Button: Hourly"      = "Upload Green Button Data (.XML)"
+    )
+    
+    
+    fileInput("loadpf_file", label = paste(upload_number, upload_label_text))
   })
   
   observeEvent(input$green_manual, {
     reset('loadpf_file')
   })
   
-  
-  
   output$BillcustomUI <- renderUI({
+    
     if (input$green_manual == "Custom Hourly Load") {
-      downloadButton("downloadSheet", label = "Download Custom Hourly Template",style = "width:300px;padding:8px;display:inline-block")} else if (input$green_manual == "12 Months Utility Bills") {
-        downloadButton("downloadSheet1", label = "Download 12 Months Bills Template",style = "width:300px;padding:8px;display:inline-block")
-      }
+      div(
+        tags$p(tags$strong("3. Download Custom Hourly Template")),
+        downloadLink("downloadSheet", "Click here to download the template")
+      )
+    } else if (input$green_manual == "12 Months Utility Bills") {
+      div(
+        tags$p(tags$strong("3. Download 12 Months Bills Template")),
+        downloadLink("downloadSheet1", "Click here to download the template")
+      )
+    }
   })
   
   output$fileUploaded <- reactive({
     !is.null(input$loadpf_file)
   })
+  
+  output$rateFileUploaded <- reactive({
+    !is.null(input$rate_file) && !is.null(rate_vals()) 
+  })
+  
+  
+  outputOptions(output, "rateFileUploaded", suspendWhenHidden = FALSE) 
   
   outputOptions(output, "fileUploaded", suspendWhenHidden = FALSE)
   
@@ -901,7 +977,7 @@ server <- function(input, output, session) {
       
       time_range_to_start <- sapply(time_range_to_start, extract_time)
       time_range_to_end <- sapply(time_range_to_end, extract_time)
-
+      
       data <- data.frame("Added/Shedded Load (in kW)" = flexible_load,
                          "Time Range To Start" = time_range_to_start,
                          "Time Range To End" = time_range_to_end,
@@ -920,7 +996,7 @@ server <- function(input, output, session) {
     )
   }
   )
-    
+  
   # Reactive expression to create the input_load_df based on date range
   input_load_df <- reactive({
     req(input$date_range)
@@ -1163,7 +1239,7 @@ server <- function(input, output, session) {
       shinyalert("Warning", "No input electrical load data provided. Please upload an electrical load data file.", type = "warning")
     } else if (!is.null(input$loadpf_file) && input$state == "") {
       shinyalert("Error", "You have not specified an analysis state. Please specify a state in step 2", type = "error",
-                 )
+      )
     }
   })
   
@@ -1179,9 +1255,31 @@ server <- function(input, output, session) {
     }
   })
   
+  observeEvent(input$generate_co2_plot, {
+    if (is.null(input$loadpf_file) || input$state == "") {
+      shinyalert(
+        "Missing Inputs",
+        "Please upload an electrical load file in Step 1 and select a state in Step 3 before generating the plot.",
+        type = "warning"
+      )
+      trigger_co2_panel(FALSE) 
+    } else {
+      trigger_co2_panel(TRUE) 
+    }
+  })
+  
+  
+  output$showCO2Panel <- reactive({
+    trigger_co2_panel()
+  })
+  outputOptions(output, "showCO2Panel", suspendWhenHidden = FALSE)
+  
+  
+  
   df_final_across_events <- reactiveValues(df_loadpf_long_fin = 0)
   
-    observeEvent(input$loadpf_file, {
+  observeEvent(input$loadpf_file, {
+    trigger_co2_panel(FALSE)
     desired_tz <- input$user_time_zone
     loadpf_file <- input$loadpf_file
     start_date <- input$date_range[1]
@@ -1336,7 +1434,7 @@ server <- function(input, output, session) {
               left_join(hours_df_3,by = c("month","hour")) %>% 
               left_join(df_loadpf_4,by = c("month","energy_type")) %>% 
               mutate(Day = day(datetime))
-
+            
             
             df_loadpf_long_fin_0 <- df_loadpf_5
             
@@ -1358,7 +1456,7 @@ server <- function(input, output, session) {
               
               return(weekdays_count$count)
             }
-
+            
             df_loadpf_3 <- df_loadpf_2 %>%
               mutate(
                 no_of_weekdays = mapply(count_weekdays, year, order)
@@ -1393,7 +1491,7 @@ server <- function(input, output, session) {
                                              hour<24 & hour>=end_time | hour>=0 & hour<start_time~"baseline_demand_pd"))
             
             
-           hours_df_2 <- do.call(rbind, replicate(12, hours_df_1, simplify = FALSE))
+            hours_df_2 <- do.call(rbind, replicate(12, hours_df_1, simplify = FALSE))
             
             month_index <- data.frame(month = rep(month.name, each = 24))
             
@@ -1512,7 +1610,7 @@ server <- function(input, output, session) {
         }
       }
     } else if (input$green_manual == "Green Button: 15-Minute") {
-     
+      
       if (is.null(input$loadpf_file$datapath)) {
         showModal(modalDialog(
           title = "Warning",
@@ -1595,7 +1693,7 @@ server <- function(input, output, session) {
       if (!is.null(input$date_range)) {
         if (input$emissions_type == "U.S. EPA's 2022 eGRID") {
           selected_year <- 2022} else {
-           # selected_year <- as.integer(input$emissions_type)
+            # selected_year <- as.integer(input$emissions_type)
             selected_year <-  year(date_range()[1])
           }
         start_date <- input$date_range[1]
@@ -1608,7 +1706,7 @@ server <- function(input, output, session) {
       }
     })
     
-
+    
     filtered_load_data <- filtered_load_data
     
     df_loadpf_long_fin <- df_loadpf_long_fin
@@ -1616,7 +1714,7 @@ server <- function(input, output, session) {
     df_loadpf_long_fin$datetime <- as.POSIXct(df_loadpf_long_fin$datetime, format = "%Y-%m-%d %H:%M")
     
     df_final_across_events$df_loadpf_long_fin <- df_loadpf_long_fin
-
+    
     
     df_loadpf_long_fin <- df_loadpf_long_fin
     
@@ -1624,7 +1722,7 @@ server <- function(input, output, session) {
     end_date_graph <- start_date_graph + 6
     
     
-    plot_data_time_series_plot <- reactive({
+    output$time_series_plot <- renderPlotly({
       date_range <- reactive(input$date_range)
       start_date_graph <- as.Date(date_range()[1])
       end_date_graph <- start_date_graph + 6
@@ -1655,37 +1753,7 @@ server <- function(input, output, session) {
                         t = 40),
           plot_bgcolor = "white",
           paper_bgcolor = "white"
-        ) #%>%
-        # config(displayModeBar = T, modeBarButtonsToRemove = list("zoom2d", 
-        #                                                          "zoomIn2d",
-        #                                                          "zoomOut2d",
-        #                                                          "autoScale2d",
-        #                                                          "resetScale2d",
-        #                                                          "hoverClosestCartesian", 
-        #                                                          "hoverCompareCartesian",
-        #                                                          "lasso2d",
-        #                                                          "select2d",
-        #                                                          "zoom3d",
-        #                                                          "pan3d",
-        #                                                          "orbitRotation",
-        #                                                          "tableRotation",
-        #                                                          "handleDrag3d",
-        #                                                          "resetCameraDefault3d",
-        #                                                          "resetCameraLastSave3d",
-        #                                                          "hoverClosest3d",
-        #                                                          "zoomInGeo", 
-        #                                                          "zoomOutGeo", 
-        #                                                          "resetGeo", 
-        #                                                          "hoverClosestGeo", 
-        #                                                          "hoverClosestGl2d",
-        #                                                          "hoverClosestPie",
-        #                                                          "toggleHover",
-        #                                                          "resetViews",
-        #                                                          "toggleSpikelines"))
-    })
-    
-    output$time_series_plot <- renderPlotly({
-      plot_data_time_series_plot()
+        ) 
     })
     
     df_loadpf_long_fin <- filtered_load_data()
@@ -1700,150 +1768,108 @@ server <- function(input, output, session) {
         write.xlsx(df_loadpf_long_fin_export, file) 
       }
     )
+  })
+  
+  # Cost Calculations Server Code
+  observe({
+    req(input$loadpf_file, rate_vals())
     
-    ##Cost Calculations for Baseline Only
+    # Retrieve the processed load data that was saved in the first observer
+    df_loadpf_long_fin <- df_final_across_events$df_loadpf_long_fin
     
-    summer_start_month <- reactive({
-      match(input$summer_month1, month.name)
-    })
-    summer_end_month <- reactive({
-      match(input$summer_month2, month.name)
-    })
-    winter_start_month <- reactive({
-      match(input$winter_month1, month.name)
-    })
+    req(rate_vals())
     
-    winter_end_month <- reactive({
-      match(input$winter_month2, month.name)
-    })
     
     df_merged <- df_loadpf_long_fin
     df_merged$ogcost <- df_merged$Load
     
-    if (is.null(input$tou_ed) && input$tou_mm_y_n == "Yes") { ##No TOU for either energy or demand. But fixed demand charge present.
+    
+    # Fixed Usage & Demand WITH Monthly Max Demand
+    
+    if (fixed_usage() && fixed_demand() && has_monthlymax()) {
       
-      summer_max_demand <- reactive({
-        input$summer_max_demand
-      })
-      
-      winter_max_demand <- reactive({
-        input$winter_max_demand
-      })
-      
-      winter_fixed_rate <- reactive({
-        input$winter_fixed_rate
-      })
-      
-      summer_fixed_rate <- reactive({
-        input$summer_fixed_rate
-      })
-      
-      
-      # Filter for summer months
-      filtered_df_summeroff <- df_merged %>%
-        filter(month(datetime) >= summer_start_month() & month(datetime) <= summer_end_month())
-      
-      
-      filtered_df_summeroff_demand <- filtered_df_summeroff
-      filtered_df_summeroff_demand$hour <- hour(filtered_df_summeroff_demand$datetime)
-      
-      # Mutate cost with summer fixed rate
-      filtered_df_summeroff <- filtered_df_summeroff %>%
+      # 1) Summer: flat‐rate energy
+      summer_df <- df_merged %>%
+        filter(month(datetime) >= summer_start_month() &
+                 month(datetime) <= summer_end_month()) %>%
         mutate(ogcost = ogcost * summer_fixed_rate())
       
-      df_merged[df_merged$datetime %in% filtered_df_summeroff$datetime, "ogcost"] <- filtered_df_summeroff$ogcost
+      df_merged[df_merged$datetime %in% summer_df$datetime, "ogcost"] <-
+        summer_df$ogcost
       
-      
-      # Adding Maximum Demand billing for summer
-      demand_summer_max <- filtered_df_summeroff %>%
+      # 2) Summer: monthly max demand charge
+      demand_summer_max <- df_merged %>%
+        filter(month(datetime) >= summer_start_month() &
+                 month(datetime) <= summer_end_month()) %>%
         group_by(month) %>%
-        summarise(max_billed_load = max(Load))
+        summarise(max_billed_load = max(Load)) %>%
+        mutate(demand_billed_load = max_billed_load * summer_monthly_max_demand()) %>%
+        mutate(demand_billed_load = ifelse(is.na(demand_billed_load), 0, demand_billed_load))
       
-      demand_summer_max$demand_billed_load <- demand_summer_max$max_billed_load * summer_max_demand()
-      demand_summer_max$demand_billed_load[is.na(demand_summer_max$demand_billed_load)] <- 0
-      
-      filtered_df_winteroff <- df_merged %>%
-        filter(month(datetime) >= winter_start_month() | month(datetime) <= winter_end_month())
-      
-      filtered_df_winteroff_demand <- filtered_df_winteroff
-      filtered_df_winteroff_demand$hour <- hour(filtered_df_winteroff_demand$datetime)
-      
-      filtered_df_winteroff <- filtered_df_winteroff %>%
+      # 3) Winter: flat‐rate energy
+      winter_df <- df_merged %>%
+        filter(month(datetime) >= winter_start_month() |
+                 month(datetime) <= winter_end_month()) %>%
         mutate(ogcost = ogcost * winter_fixed_rate())
       
-      df_merged[df_merged$datetime %in% filtered_df_winteroff$datetime, "ogcost"] <- filtered_df_winteroff$ogcost
+      df_merged[df_merged$datetime %in% winter_df$datetime, "ogcost"] <-
+        winter_df$ogcost
       
-      
-      # Adding Maximum Demand billing for winter
-      demand_winter_max <- filtered_df_winteroff %>%
+      # 4) Winter: monthly max demand charge
+      demand_winter_max <- df_merged %>%
+        filter(month(datetime) >= winter_start_month() |
+                 month(datetime) <= winter_end_month()) %>%
         group_by(month) %>%
-        summarise(max_billed_load = max(Load))
+        summarise(max_billed_load = max(Load)) %>%
+        mutate(demand_billed_load = max_billed_load * winter_monthly_max_demand()) %>%
+        mutate(demand_billed_load = ifelse(is.na(demand_billed_load), 0, demand_billed_load))
       
-      demand_winter_max$demand_billed_load <- demand_winter_max$max_billed_load * winter_max_demand()
-      demand_winter_max$demand_billed_load[is.na(demand_winter_max$demand_billed_load)] <- 0
-      
-      
-      combined_df_max_demand <- rbind(demand_summer_max, demand_winter_max)
-      
-      combined_df_demand <- rbind(combined_df_max_demand)
-      
-      df_final_demand <- combined_df_demand %>%
+      # 5) Combine demand costs
+      df_final_demand <- bind_rows(demand_summer_max, demand_winter_max) %>%
         group_by(month) %>%
         summarise(original_demandcost = sum(demand_billed_load))
       
-      df_final <- df_merged %>%
+      # 6) Combine energy costs
+      df_final_energy <- df_merged %>%
         group_by(month) %>%
         summarise(original_energycost = sum(ogcost))
       
-      merged_df_costfinal <- merge(df_final, df_final_demand, by = "month")
+      merged_df_costfinal <- merge(df_final_energy, df_final_demand, by = "month")
       
+      # 7) Reshape + relabel
       df_final <- merged_df_costfinal %>%
         pivot_longer(
-          cols = !month,
-          names_to = c("original_modified", "energy_demand"),
+          cols      = -month,
+          names_to  = c("original_modified", "energy_demand"),
           names_sep = "_",
           values_to = "cost"
+        ) %>%
+        mutate(
+          original_modified = recode(original_modified, original = "Baseline"),
+          energy_demand     = recode(energy_demand,
+                                     energycost = "Usage Cost",
+                                     demandcost = "Demand Cost"),
+          month             = factor(month, levels = month.name)
         )
+    } else if (fixed_usage() && fixed_demand() && !has_monthlymax()) {
       
-      df_final$original_modified[df_final$original_modified == "original"] <- "Baseline"
-      df_final$energy_demand[df_final$energy_demand == "energycost"] <- "Usage Cost"
-      df_final$energy_demand[df_final$energy_demand == "demandcost"] <- "Demand Cost"
-      
-      df_final$month <- factor(df_final$month, levels = month.name)
-
-    } else if (is.null(input$tou_ed) && input$tou_mm_y_n == "No") {
-      summer_max_demand <- reactive({
-        input$summer_max_demand
-      })
-      
-      winter_max_demand <- reactive({
-        input$winter_max_demand
-      })
-      
-      winter_fixed_rate <- reactive({
-        input$winter_fixed_rate
-      })
-      
-      summer_fixed_rate <- reactive({
-        input$summer_fixed_rate
-      })
-      
-      # Filter for summer months
+      ## 1) Filter for summer months
       filtered_df_summeroff <- df_merged %>%
-        filter(month(datetime) >= summer_start_month() & month(datetime) <= summer_end_month())
+        filter(month(datetime) >= summer_start_month() &
+                 month(datetime) <= summer_end_month())
       
-      
+      ## 2) Prep a demand‐logic copy (hour field)
       filtered_df_summeroff_demand <- filtered_df_summeroff
       filtered_df_summeroff_demand$hour <- hour(filtered_df_summeroff_demand$datetime)
       
-      # Mutate cost with summer fixed rate
+      ## 3) Apply flat summer energy rate
       filtered_df_summeroff <- filtered_df_summeroff %>%
         mutate(ogcost = ogcost * summer_fixed_rate())
       
-      df_merged[df_merged$datetime %in% filtered_df_summeroff$datetime, "ogcost"] <- filtered_df_summeroff$ogcost
+      df_merged[df_merged$datetime %in% filtered_df_summeroff$datetime, "ogcost"] <-
+        filtered_df_summeroff$ogcost
       
-      
-      # Adding Maximum Demand billing for summer
+      ## 4) Summer demand = zero (no monthly-max)
       demand_summer_max <- filtered_df_summeroff %>%
         group_by(month) %>%
         summarise(max_billed_load = max(Load))
@@ -1851,19 +1877,23 @@ server <- function(input, output, session) {
       demand_summer_max$demand_billed_load <- demand_summer_max$max_billed_load * 0
       demand_summer_max$demand_billed_load[is.na(demand_summer_max$demand_billed_load)] <- 0
       
+      ## 5) Filter for winter months
       filtered_df_winteroff <- df_merged %>%
-        filter(month(datetime) >= winter_start_month() | month(datetime) <= winter_end_month())
+        filter(month(datetime) >= winter_start_month() |
+                 month(datetime) <= winter_end_month())
       
+      ## 6) Prep a demand-logic copy for winter
       filtered_df_winteroff_demand <- filtered_df_winteroff
       filtered_df_winteroff_demand$hour <- hour(filtered_df_winteroff_demand$datetime)
       
+      ## 7) Apply flat winter energy rate
       filtered_df_winteroff <- filtered_df_winteroff %>%
         mutate(ogcost = ogcost * winter_fixed_rate())
       
-      df_merged[df_merged$datetime %in% filtered_df_winteroff$datetime, "ogcost"] <- filtered_df_winteroff$ogcost
+      df_merged[df_merged$datetime %in% filtered_df_winteroff$datetime, "ogcost"] <-
+        filtered_df_winteroff$ogcost
       
-      
-      # Adding Maximum Demand billing for winter
+      ## 8) Winter demand = zero
       demand_winter_max <- filtered_df_winteroff %>%
         group_by(month) %>%
         summarise(max_billed_load = max(Load))
@@ -1871,305 +1901,218 @@ server <- function(input, output, session) {
       demand_winter_max$demand_billed_load <- demand_winter_max$max_billed_load * 0
       demand_winter_max$demand_billed_load[is.na(demand_winter_max$demand_billed_load)] <- 0
       
-      
+      ## 9) Combine summer & winter demand
       combined_df_max_demand <- rbind(demand_summer_max, demand_winter_max)
-      
-      combined_df_demand <- rbind(combined_df_max_demand)
+      combined_df_demand     <- rbind(combined_df_max_demand)
       
       df_final_demand <- combined_df_demand %>%
         group_by(month) %>%
         summarise(original_demandcost = sum(demand_billed_load))
       
+      ## 10) Sum up energy cost by month
       df_final <- df_merged %>%
         group_by(month) %>%
         summarise(original_energycost = sum(ogcost))
       
       merged_df_costfinal <- merge(df_final, df_final_demand, by = "month")
       
+      ## 11) Reshape + relabel
       df_final <- merged_df_costfinal %>%
         pivot_longer(
-          cols = !month,
-          names_to = c("original_modified", "energy_demand"),
+          cols      = !month,
+          names_to  = c("original_modified", "energy_demand"),
           names_sep = "_",
           values_to = "cost"
         )
       
       df_final$original_modified[df_final$original_modified == "original"] <- "Baseline"
-      df_final$energy_demand[df_final$energy_demand == "energycost"] <- "Usage Cost"
-      df_final$energy_demand[df_final$energy_demand == "demandcost"] <- "Demand Cost"
+      df_final$energy_demand[df_final$energy_demand     == "energycost"] <- "Usage Cost"
+      df_final$energy_demand[df_final$energy_demand     == "demandcost"] <- "Demand Cost"
       
+      ## 12) Zero‐out & drop Demand Cost
       df_final$cost[df_final$energy_demand == "Demand Cost"] <- 0
-      
       df_final <- df_final[df_final$energy_demand != "Demand Cost", ]
       
       df_final$month <- factor(df_final$month, levels = month.name)
       
-    } else if (identical(input$tou_ed, c("Usage charge ($/kWh)")) && input$tou_mm_y_n == "Yes" && input$tou_periods == "No") {
-      summer_max_demand <- reactive({
-        input$summer_max_demand
-      })
       
-      winter_max_demand <- reactive({
-        input$winter_max_demand
-      })
+    } else if (
+      usage_incl() &&           # Only Usage Charge selected
+      !demand_incl() &&         # No TOU demand
+      has_monthlymax() &&       # Monthly max demand charge
+      !has_partpeak()           # No part-peak period
+    ) {
       
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
       
       all_hours <- data.frame(allhours = 0:23)
-      all_hours_onpeak_summer <- data.frame(allhours = summer_onpeak_start_hour():summer_onpeak_end_hour())
-      all_hours_onpeak_summer <- all_hours_onpeak_summer$allhours
-      all_hours_offpeak_summer <- all_hours %>% 
-        filter(all_hours >= summer_onpeak_start_hour() & all_hours <= summer_onpeak_end_hour())
-      all_hours_offpeak_summer <- all_hours_offpeak_summer$allhours
+      
+      # Summer off-peak = all hours not in on-peak
+      all_hours_onpeak_summer <- data.frame(allhours =
+                                              summer_onpeak_start_hour():summer_onpeak_end_hour()
+      )$allhours
+      all_hours_offpeak_summer <- all_hours %>%
+        filter(!allhours %in% all_hours_onpeak_summer) %>%
+        pull(allhours)
       summer_offpeak_start_hour <- min(all_hours_offpeak_summer)
-      summer_offpeak_end_hour <- max(all_hours_offpeak_summer)
-
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
+      summer_offpeak_end_hour   <- max(all_hours_offpeak_summer)
       
-      all_hours <- data.frame(allhours = 0:23)
-      all_hours_onpeak_winter <- data.frame(allhours = winter_onpeak_start_hour():winter_onpeak_end_hour())
-      all_hours_onpeak_winter <- all_hours_onpeak_winter$allhours
-      all_hours_offpeak_winter <- all_hours %>% 
-        filter(all_hours >= winter_onpeak_start_hour() & all_hours <= winter_onpeak_end_hour())
-      all_hours_offpeak_winter <- all_hours_offpeak_winter$allhours
+      # Winter off-peak = all hours not in on-peak
+      all_hours_onpeak_winter <- data.frame(allhours =
+                                              winter_onpeak_start_hour():winter_onpeak_end_hour()
+      )$allhours
+      all_hours_offpeak_winter <- all_hours %>%
+        filter(!allhours %in% all_hours_onpeak_winter) %>%
+        pull(allhours)
       winter_offpeak_start_hour <- min(all_hours_offpeak_winter)
-      winter_offpeak_end_hour <- max(all_hours_offpeak_winter)
+      winter_offpeak_end_hour   <- max(all_hours_offpeak_winter)
       
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
-      
-      winter_dc_onpeak <- 0
-      summer_dc_onpeak <- 0
+      ## 1) Zero out any TOU demand rates (we’ll only use monthly max)
+      summer_dc_onpeak  <- 0
       summer_dc_offpeak <- 0
+      winter_dc_onpeak  <- 0
       winter_dc_offpeak <- 0
       
+      ## 2) Summer energy: apply TOU usage rates
       filtered_df_summeroff <- df_merged %>%
-        filter(month(datetime) >= summer_start_month() & month(datetime) <= summer_end_month())
+        filter(month(datetime) >= summer_start_month() &
+                 month(datetime) <= summer_end_month()) %>%
+        mutate(
+          hour = hour(datetime),
+          ogcost = if_else(
+            hour >= summer_onpeak_start_hour() & hour < summer_onpeak_end_hour(),
+            ogcost * summer_onpeak_rate(),
+            ogcost * summer_offpeak_rate()
+          )
+        )
+      df_merged[df_merged$datetime %in% filtered_df_summeroff$datetime, "ogcost"] <-
+        filtered_df_summeroff$ogcost
       
+      ## 3) Summer off-peak demand slice (zero)
       filtered_df_summeroff_demand <- filtered_df_summeroff
-      
       filtered_df_summeroff_demand$hour <- hour(filtered_df_summeroff_demand$datetime)
-      
-      
       filtered_df_summeroff_demand <- filtered_df_summeroff_demand %>%
-        filter(hour >= summer_offpeak_start_hour | hour < summer_offpeak_end_hour )
-      
-      filtered_df_summeroff_demand <- filtered_df_summeroff_demand %>%
+        filter(hour < summer_offpeak_start_hour |
+                 hour >= summer_offpeak_end_hour) %>%
         group_by(month) %>%
-        summarise(
-          max_billed_load = max(Load)
-        )
+        summarise(max_billed_load = max(Load)) %>%
+        mutate(demand_billed_load = max_billed_load * summer_dc_offpeak,
+               demand_billed_load = replace(demand_billed_load,
+                                            is.na(demand_billed_load), 0),
+               id = "Summer Off-Peak")
       
-      filtered_df_summeroff_demand$demand_billed_load <- filtered_df_summeroff_demand$max_billed_load * summer_dc_offpeak
-      filtered_df_summeroff_demand$demand_billed_load <- replace(filtered_df_summeroff_demand$demand_billed_load, is.infinite(filtered_df_summeroff_demand$demand_billed_load), 0)
-      filtered_df_summeroff_demand$demand_billed_load[is.na(filtered_df_summeroff_demand$demand_billed_load)] <- 0
-      filtered_df_summeroff_demand$demand_billed_load[is.na(filtered_df_summeroff_demand$demand_billed_load)] <- 0
-      filtered_df_summeroff_demand$id <- "Summer Off-Peak"
-      
-      
-      filtered_df_summeroff <- filtered_df_summeroff %>%
-        mutate(ogcost = if_else(hour(datetime) >= summer_onpeak_start_hour() &
-                                  hour(datetime) < summer_onpeak_end_hour(),
-                                (ogcost * summer_onpeak_rate()),
-                                if_else(!(hour(datetime) >= summer_onpeak_start_hour() &
-                                            hour(datetime) < summer_onpeak_end_hour()),
-                                        (ogcost * summer_offpeak_rate()),
-                                        ogcost
-                                )
-        ))
-      
-      df_merged[df_merged$datetime %in% filtered_df_summeroff$datetime, "ogcost"] <- filtered_df_summeroff$ogcost
-      
-      
+      ## 4) Summer on-peak demand slice (zero)
       filtered_df_summeron <- df_merged %>%
-        filter(month(datetime) >= summer_start_month() & month(datetime) <= summer_end_month())
-      
-      ## Adding Maximum Demand billing
-      
-      demand_summer_max <- filtered_df_summeron
-      
-      demand_summer_max <- demand_summer_max %>%
-        group_by(month) %>%
-        summarise(
-          max_billed_load = max(Load)
-        )
-      
-      demand_summer_max$demand_billed_load <- demand_summer_max$max_billed_load * summer_max_demand()
-      demand_summer_max$demand_billed_load <- replace(demand_summer_max$demand_billed_load, is.infinite(demand_summer_max$demand_billed_load), 0)
-      demand_summer_max$demand_billed_load[is.na(demand_summer_max$demand_billed_load)] <- 0
-      demand_summer_max$demand_billed_load[is.na(demand_summer_max$demand_billed_load)] <- 0
-      demand_summer_max$id <- "Summer Maximum"
-      
-      ###
-      
+        filter(month(datetime) >= summer_start_month() &
+                 month(datetime) <= summer_end_month())
       filtered_df_summeron_demand <- filtered_df_summeron
-      
       filtered_df_summeron_demand$hour <- hour(filtered_df_summeron_demand$datetime)
-      
       filtered_df_summeron_demand <- filtered_df_summeron_demand %>%
-        filter(hour >= summer_onpeak_start_hour() & hour < summer_onpeak_end_hour())
-      
-      
-      filtered_df_summeron_demand <- filtered_df_summeron_demand %>%
+        filter(hour >= summer_onpeak_start_hour &
+                 hour <  summer_onpeak_end_hour) %>%
         group_by(month) %>%
-        summarise(
-          max_billed_load = max(Load)
-        )
+        summarise(max_billed_load = max(Load)) %>%
+        mutate(demand_billed_load = max_billed_load * summer_dc_onpeak,
+               demand_billed_load = replace(demand_billed_load,
+                                            is.na(demand_billed_load), 0),
+               id = "Summer On-Peak")
       
-      filtered_df_summeron_demand$demand_billed_load <- filtered_df_summeron_demand$max_billed_load * summer_dc_onpeak
-      filtered_df_summeron_demand$demand_billed_load <- replace(filtered_df_summeron_demand$demand_billed_load, is.infinite(filtered_df_summeron_demand$demand_billed_load), 0)
-      filtered_df_summeron_demand$demand_billed_load[is.na(filtered_df_summeron_demand$demand_billed_load)] <- 0
-      filtered_df_summeron_demand$demand_billed_load[is.na(filtered_df_summeron_demand$demand_billed_load)] <- 0
-      filtered_df_summeron_demand$id <- "Summer on-Peak"
+      ## 5) Summer monthly max demand charge
+      demand_summer_max <- filtered_df_summeron %>%
+        group_by(month) %>%
+        summarise(max_billed_load = max(Load)) %>%
+        mutate(demand_billed_load = max_billed_load * summer_monthly_max_demand(),
+               demand_billed_load = replace(demand_billed_load,
+                                            is.na(demand_billed_load), 0),
+               id = "Summer Maximum")
       
-      
-      
-      
+      ## 6) Winter energy: apply TOU usage rates
       filtered_df_winteroff <- df_merged %>%
-        filter(month(datetime) >= winter_start_month() | month(datetime) <= winter_end_month())
+        filter(month(datetime) >= winter_start_month() |
+                 month(datetime) <= winter_end_month()) %>%
+        mutate(
+          hour = hour(datetime),
+          ogcost = if_else(
+            hour >= winter_onpeak_start_hour() & hour < winter_onpeak_end_hour(),
+            ogcost * winter_onpeak_rate(),
+            ogcost * winter_offpeak_rate()
+          )
+        )
+      df_merged[df_merged$datetime %in% filtered_df_winteroff$datetime, "ogcost"] <-
+        filtered_df_winteroff$ogcost
       
+      ## 7) Winter off-peak demand slice (zero)
       filtered_df_winteroff_demand <- filtered_df_winteroff
-      
       filtered_df_winteroff_demand$hour <- hour(filtered_df_winteroff_demand$datetime)
-      
-      
       filtered_df_winteroff_demand <- filtered_df_winteroff_demand %>%
-        filter(hour >= winter_offpeak_start_hour & hour < winter_offpeak_end_hour)
-      
-      
-      
-      filtered_df_winteroff_demand <- filtered_df_winteroff_demand %>%
+        filter(hour < winter_offpeak_start_hour |
+                 hour >= winter_offpeak_end_hour) %>%
         group_by(month) %>%
-        summarise(
-          max_billed_load = max(Load)
-        )
+        summarise(max_billed_load = max(Load)) %>%
+        mutate(demand_billed_load = max_billed_load * winter_dc_offpeak,
+               demand_billed_load = replace(demand_billed_load,
+                                            is.na(demand_billed_load), 0),
+               id = "Winter Off-Peak")
       
-      filtered_df_winteroff_demand$demand_billed_load <- filtered_df_winteroff_demand$max_billed_load * winter_dc_offpeak
-      filtered_df_winteroff_demand$demand_billed_load <- replace(filtered_df_winteroff_demand$demand_billed_load, is.infinite(filtered_df_winteroff_demand$demand_billed_load), 0)
-      filtered_df_winteroff_demand$demand_billed_load[is.na(filtered_df_winteroff_demand$demand_billed_load)] <- 0
-      filtered_df_winteroff_demand$demand_billed_load[is.na(filtered_df_winteroff_demand$demand_billed_load)] <- 0
-      filtered_df_winteroff_demand$id <- "Winter Off-Peak"
-      
-      
-      filtered_df_winteroff <- filtered_df_winteroff %>%
-        mutate(ogcost = if_else(hour(datetime) >= winter_onpeak_start_hour() &
-                                  hour(datetime) < winter_onpeak_end_hour(),
-                                (ogcost * winter_onpeak_rate()),
-                                if_else(!(hour(datetime) >= winter_onpeak_start_hour() &
-                                            hour(datetime) < winter_onpeak_end_hour()),
-                                        (ogcost * winter_offpeak_rate()),
-                                        ogcost
-                                )
-        ))
-      
-      
-      df_merged[df_merged$datetime %in% filtered_df_winteroff$datetime, "ogcost"] <- filtered_df_winteroff$ogcost
-      
-      
+      ## 8) Winter on-peak demand slice (zero)
       filtered_df_winteron <- df_merged %>%
-        filter(month(datetime) >= winter_start_month() | month(datetime) <= winter_end_month())
-      
-      demand_winter_max <- filtered_df_winteron
-      
-      demand_winter_max <- demand_winter_max %>%
-        group_by(month) %>%
-        summarise(
-          max_billed_load = max(Load)
-        )
-      
-      demand_winter_max$demand_billed_load <- demand_winter_max$max_billed_load * winter_max_demand()
-      demand_winter_max$demand_billed_load <- replace(demand_winter_max$demand_billed_load, is.infinite(demand_winter_max$demand_billed_load), 0)
-      demand_winter_max$demand_billed_load[is.na(demand_winter_max$demand_billed_load)] <- 0
-      demand_winter_max$demand_billed_load[is.na(demand_winter_max$demand_billed_load)] <- 0
-      demand_winter_max$id <- "winter Maximum"
-      
+        filter(month(datetime) >= winter_start_month() |
+                 month(datetime) <= winter_end_month())
       filtered_df_winteron_demand <- filtered_df_winteron
-      
       filtered_df_winteron_demand$hour <- hour(filtered_df_winteron_demand$datetime)
-      
       filtered_df_winteron_demand <- filtered_df_winteron_demand %>%
-        filter(hour >= winter_onpeak_start_hour() & hour < winter_onpeak_end_hour())
-      
-      
-      
-      filtered_df_winteron_demand <- filtered_df_winteron_demand %>%
+        filter(hour >= winter_onpeak_start_hour &
+                 hour <  winter_onpeak_end_hour) %>%
         group_by(month) %>%
-        summarise(
-          max_billed_load = max(Load)
-        )
+        summarise(max_billed_load = max(Load)) %>%
+        mutate(demand_billed_load = max_billed_load * winter_dc_onpeak,
+               demand_billed_load = replace(demand_billed_load,
+                                            is.na(demand_billed_load), 0),
+               id = "Winter On-Peak")
       
-      filtered_df_winteron_demand$demand_billed_load <- filtered_df_winteron_demand$max_billed_load * winter_dc_onpeak
-      filtered_df_winteron_demand$demand_billed_load <- replace(filtered_df_winteron_demand$demand_billed_load, is.infinite(filtered_df_winteron_demand$demand_billed_load), 0)
-      filtered_df_winteron_demand$demand_billed_load[is.na(filtered_df_winteron_demand$demand_billed_load)] <- 0
-      filtered_df_winteron_demand$demand_billed_load[is.na(filtered_df_winteron_demand$demand_billed_load)] <- 0
-      filtered_df_winteron_demand$id <- "winter on-Peak"
-      
-      combined_df_max_demand <- rbind(demand_summer_max, demand_winter_max)
-      
-      
-      combined_df_demand <- rbind(filtered_df_summeron_demand, filtered_df_summeroff_demand, filtered_df_winteroff_demand, filtered_df_winteron_demand, combined_df_max_demand)
+      ## 9) Combine all demand slices
+      combined_df_max_demand <- rbind(demand_summer_max,
+                                      demand_winter_max)
+      combined_df_demand     <- rbind(
+        filtered_df_summeron_demand,
+        filtered_df_summeroff_demand,
+        filtered_df_winteroff_demand,
+        filtered_df_winteron_demand,
+        combined_df_max_demand
+      )
       
       df_final_demand <- combined_df_demand %>%
         group_by(month) %>%
-        summarise(
-          original_demandcost = sum(demand_billed_load)
-        )
+        summarise(original_demandcost = sum(demand_billed_load))
       
-      
+      ## 10) Aggregate energy cost
       df_final <- df_merged %>%
         group_by(month) %>%
-        summarise(
-          original_energycost = sum(ogcost)
-        )
+        summarise(original_energycost = sum(ogcost))
       
       merged_df_costfinal <- merge(df_final, df_final_demand, by = "month")
       
-      
-      
+      ## 11) Reshape + relabel
       df_final <- merged_df_costfinal %>%
         pivot_longer(
-          cols = !month,
-          names_to = c("original_modified", "energy_demand"),
+          cols      = !month,
+          names_to  = c("original_modified", "energy_demand"),
           names_sep = "_",
           values_to = "cost"
         )
       
       df_final$original_modified[df_final$original_modified == "original"] <- "Baseline"
-      
-      df_final$energy_demand[df_final$energy_demand == "energycost"] <- "Usage Cost"
-      df_final$energy_demand[df_final$energy_demand == "demandcost"] <- "Demand Cost"
-      
-      
+      df_final$energy_demand[df_final$energy_demand == "energycost"]  <- "Usage Cost"
+      df_final$energy_demand[df_final$energy_demand == "demandcost"]  <- "Demand Cost"
       df_final$month <- factor(df_final$month, levels = month.name)
       
-    }else if (identical(input$tou_ed, c("Usage charge ($/kWh)")) && input$tou_mm_y_n == "No" && input$tou_periods == "No") {
-
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
+      
+    }else if (
+      usage_incl() &&        # Only Usage Charge ($/kWh)
+      !demand_incl() &&      # No TOU Demand Charge
+      !has_monthlymax() &&   # No Monthly/Season Max Demand Charge
+      !has_partpeak()        # No Part-Peak period
+    ) {
+      
       
       all_hours <- data.frame(allhours = 0:23)
       all_hours_onpeak_summer <- data.frame(allhours = summer_onpeak_start_hour():summer_onpeak_end_hour())
@@ -2179,13 +2122,7 @@ server <- function(input, output, session) {
       all_hours_offpeak_summer <- all_hours_offpeak_summer$allhours
       summer_offpeak_start_hour <- min(all_hours_offpeak_summer)
       summer_offpeak_end_hour <- max(all_hours_offpeak_summer)
-
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
+      
       
       all_hours <- data.frame(allhours = 0:23)
       all_hours_onpeak_winter <- data.frame(allhours = winter_onpeak_start_hour():winter_onpeak_end_hour())
@@ -2196,18 +2133,7 @@ server <- function(input, output, session) {
       winter_offpeak_start_hour <- min(all_hours_offpeak_winter)
       winter_offpeak_end_hour <- max(all_hours_offpeak_winter)
       
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
+      
       
       winter_dc_onpeak <- 0
       summer_dc_onpeak <- 0
@@ -2413,152 +2339,23 @@ server <- function(input, output, session) {
       df_final <- df_final[df_final$energy_demand != "Demand Cost", ]
       
       df_final$month <- factor(df_final$month, levels = month.name)
-    } else if (all(c("Usage charge ($/kWh)", "Demand charge ($/kW)") %in% input$tou_ed) && input$tou_mm_y_n == "Yes" && input$tou_periods == "Yes") {
       
-      summer_offpeak_start_hour <- reactive({
-        as.numeric(input$summer_offpeak_start)
-      })
       
-      summer_offpeak_end_hour <- reactive({
-        as.numeric(input$summer_offpeak_end)
-      })
       
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
+    } else if (
+      usage_incl() &&      # TOU on usage
+      demand_incl() &&     # TOU on demand
+      has_monthlymax() &&  # monthly/season max demand charge
+      has_partpeak()       # part-peak period exists
+    ) {
       
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
       
-      winter_offpeak_start_hour <- reactive({
-        as.numeric(input$winter_offpeak_start)
-      })
       
-      winter_offpeak_end_hour <- reactive({
-        as.numeric(input$winter_offpeak_end)
-      })
-      
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
-      
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
-      
-      summer_partpeak_start_hour <- reactive({
-        as.numeric(input$summer_partpeak_start_hour)
-      })
-      summer_partpeak_end_hour <- reactive({
-        as.numeric(input$summer_partpeak_end_hour)
-      })
-      
-      winter_partpeak_start_hour <- reactive({
-        as.numeric(input$winter_partpeak_start_hour)
-      })
-      
-      winter_partpeak_end_hour <- reactive({
-        as.numeric(input$winter_partpeak_end_hour)
-      })
-      
-      summer_partpeak_rate <- reactive({
-        input$summer_partpeak_rate
-      })
-      
-      winter_partpeak_rate <- reactive({
-        input$winter_partpeak_rate
-      })
       
       df_merged <- df_loadpf_long_fin
       
       df_merged$ogcost <- df_merged$Load
-      summer_start_month <- reactive({
-        match(input$summer_month1, month.name)
-      })
-      summer_end_month <- reactive({
-        match(input$summer_month2, month.name)
-      })
-      summer_offpeak_start_hour <- reactive({
-        as.numeric(input$summer_offpeak_start)
-      })
-      summer_offpeak_end_hour <- reactive({
-        as.numeric(input$summer_offpeak_end)
-      })
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
-      winter_start_month <- reactive({
-        match(input$winter_month1, month.name)
-      })
-      winter_end_month <- reactive({
-        match(input$winter_month2, month.name)
-      })
-      winter_offpeak_start_hour <- reactive({
-        as.numeric(input$winter_offpeak_start)
-      })
-      winter_offpeak_end_hour <- reactive({
-        as.numeric(input$winter_offpeak_end)
-      })
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
-      summer_dc_onpeak <- reactive({
-        input$summer_onpeak_demand
-      })
-      summer_dc_offpeak <- reactive({
-        input$summer_offpeak_demand
-      })
-      summer_max_demand <- reactive({
-        input$summer_max_demand
-      })
-      winter_dc_onpeak <- reactive({
-        input$winter_onpeak_demand
-      })
-      winter_dc_offpeak <- reactive({
-        input$winter_offpeak_demand
-      })
-      winter_max_demand <- reactive({
-        input$winter_max_demand
-      })
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
       
-      summer_partpeak_demand <- reactive({
-        input$summer_partpeak_demand
-      })
-      
-      winter_partpeak_demand <- reactive({
-        input$winter_partpeak_demand
-      })
       
       filtered_df_summeroff <- df_merged %>%
         filter(month(datetime) >= summer_start_month() & month(datetime) <= summer_end_month())
@@ -2818,145 +2615,19 @@ server <- function(input, output, session) {
       
       df_final$month <- factor(df_final$month, levels = month.name)
       
-    } else if (all(c("Usage charge ($/kWh)", "Demand charge ($/kW)") %in% input$tou_ed) && input$tou_mm_y_n == "No" && input$tou_periods == "Yes") {
-      
-      summer_offpeak_start_hour <- reactive({
-        as.numeric(input$summer_offpeak_start)
-      })
-      
-      summer_offpeak_end_hour <- reactive({
-        as.numeric(input$summer_offpeak_end)
-      })
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
+    } else if (
+      usage_incl() &&        # TOU usage
+      demand_incl() &&       # TOU demand
+      !has_monthlymax() &&   # no monthly/season max demand
+      has_partpeak()         # part-peak period exists
+    ) {
       
       
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
-      
-      
-      winter_offpeak_start_hour <- reactive({
-        as.numeric(input$winter_offpeak_start)
-      })
-      winter_offpeak_end_hour <- reactive({
-        as.numeric(input$winter_offpeak_end)
-      })
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
-      
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
-      
-      summer_partpeak_start_hour <- reactive({
-        as.numeric(input$summer_partpeak_start_hour)
-      })
-      summer_partpeak_end_hour <- reactive({
-        as.numeric(input$summer_partpeak_end_hour)
-      })
-      
-      winter_partpeak_start_hour <- reactive({
-        as.numeric(input$winter_partpeak_start_hour)
-      })
-      
-      winter_partpeak_end_hour <- reactive({
-        as.numeric(input$winter_partpeak_end_hour)
-      })
-      
-      summer_partpeak_rate <- reactive({
-        input$summer_partpeak_rate
-      })
-      
-      winter_partpeak_rate <- reactive({
-        input$winter_partpeak_rate
-      })
       
       df_merged <- df_loadpf_long_fin
       
       df_merged$ogcost <- df_merged$Load
-      summer_start_month <- reactive({
-        match(input$summer_month1, month.name)
-      })
-      summer_end_month <- reactive({
-        match(input$summer_month2, month.name)
-      })
-      summer_offpeak_start_hour <- reactive({
-        as.numeric(input$summer_offpeak_start)
-      })
-      summer_offpeak_end_hour <- reactive({
-        as.numeric(input$summer_offpeak_end)
-      })
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
-      winter_start_month <- reactive({
-        match(input$winter_month1, month.name)
-      })
-      winter_end_month <- reactive({
-        match(input$winter_month2, month.name)
-      })
-      winter_offpeak_start_hour <- reactive({
-        as.numeric(input$winter_offpeak_start)
-      })
-      winter_offpeak_end_hour <- reactive({
-        as.numeric(input$winter_offpeak_end)
-      })
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
-      summer_dc_onpeak <- reactive({
-        input$summer_onpeak_demand
-      })
-      summer_dc_offpeak <- reactive({
-        input$summer_offpeak_demand
-      })
-      winter_dc_onpeak <- reactive({
-        input$winter_onpeak_demand
-      })
-      winter_dc_offpeak <- reactive({
-        input$winter_offpeak_demand
-      })
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
       
-      summer_partpeak_demand <- reactive({
-        input$summer_partpeak_demand
-      })
-      
-      winter_partpeak_demand <- reactive({
-        input$winter_partpeak_demand
-      })
       
       filtered_df_summeroff <- df_merged %>%
         filter(month(datetime) >= summer_start_month() & month(datetime) <= summer_end_month())
@@ -3218,116 +2889,20 @@ server <- function(input, output, session) {
       
       df_final$month <- factor(df_final$month, levels = month.name)
       
-    } else if (identical(input$tou_ed, c("Usage charge ($/kWh)")) && input$tou_mm_y_n == "Yes" && input$tou_periods == "Yes") {
-      summer_max_demand <- reactive({
-        input$summer_max_demand
-      })
       
-      winter_max_demand <- reactive({
-        input$winter_max_demand
-      })
       
-      summer_offpeak_start_hour <- reactive({
-        as.numeric(input$summer_offpeak_start)
-      })
-      summer_offpeak_end_hour <- reactive({
-        as.numeric(input$summer_offpeak_end)
-      })
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
+    } else if (
+      usage_incl() &&        # Only Usage TOU
+      !demand_incl() &&      # No Demand TOU
+      has_monthlymax() &&    # Monthly/Season Max Demand Charge
+      has_partpeak()         # Part-Peak period exists
+    ) {
       
-      winter_offpeak_start_hour <- reactive({
-        as.numeric(input$winter_offpeak_start)
-      })
-      winter_offpeak_end_hour <- reactive({
-        as.numeric(input$winter_offpeak_end)
-      })
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
-      
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
-      
-      summer_partpeak_start_hour <- reactive({
-        as.numeric(input$summer_partpeak_start_hour)
-      })
-      summer_partpeak_end_hour <- reactive({
-        as.numeric(input$summer_partpeak_end_hour)
-      })
-      
-      winter_partpeak_start_hour <- reactive({
-        as.numeric(input$winter_partpeak_start_hour)
-      })
-      
-      winter_partpeak_end_hour <- reactive({
-        as.numeric(input$winter_partpeak_end_hour)
-      })
-      
-      summer_partpeak_rate <- reactive({
-        input$summer_partpeak_rate
-      })
-      
-      winter_partpeak_rate <- reactive({
-        input$winter_partpeak_rate
-      })
       
       df_merged <- df_loadpf_long_fin
       
       df_merged$ogcost <- df_merged$Load
-      summer_start_month <- reactive({
-        match(input$summer_month1, month.name)
-      })
-      summer_end_month <- reactive({
-        match(input$summer_month2, month.name)
-      })
-      summer_offpeak_start_hour <- reactive({
-        as.numeric(input$summer_offpeak_start)
-      })
-      summer_offpeak_end_hour <- reactive({
-        as.numeric(input$summer_offpeak_end)
-      })
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
-      winter_start_month <- reactive({
-        match(input$winter_month1, month.name)
-      })
-      winter_end_month <- reactive({
-        match(input$winter_month2, month.name)
-      })
-      winter_offpeak_start_hour <- reactive({
-        as.numeric(input$winter_offpeak_start)
-      })
-      winter_offpeak_end_hour <- reactive({
-        as.numeric(input$winter_offpeak_end)
-      })
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
+      
       
       summer_dc_onpeak <- 0
       
@@ -3340,19 +2915,7 @@ server <- function(input, output, session) {
       summer_partpeak_demand <- 0
       
       winter_partpeak_demand <- 0
-
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
+      
       
       
       filtered_df_summeroff <- df_merged %>%
@@ -3614,69 +3177,14 @@ server <- function(input, output, session) {
       
       df_final$month <- factor(df_final$month, levels = month.name)
       
-    } else if (identical(input$tou_ed, c("Usage charge ($/kWh)")) && input$tou_mm_y_n == "No" && input$tou_periods == "Yes") {
+    } else if (
+      usage_incl() &&        # Only Usage TOU
+      !demand_incl() &&      # No Demand TOU
+      !has_monthlymax() &&   # No Monthly/Season Max Demand Charge
+      has_partpeak()         # Part-Peak period exists
+    ) {
       
-      summer_offpeak_start_hour <- reactive({
-        as.numeric(input$summer_offpeak_start)
-      })
-      summer_offpeak_end_hour <- reactive({
-        as.numeric(input$summer_offpeak_end)
-      })
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
       
-      winter_offpeak_start_hour <- reactive({
-        as.numeric(input$winter_offpeak_start)
-      })
-      winter_offpeak_end_hour <- reactive({
-        as.numeric(input$winter_offpeak_end)
-      })
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
-      
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
-      
-      summer_partpeak_start_hour <- reactive({
-        as.numeric(input$summer_partpeak_start_hour)
-      })
-      summer_partpeak_end_hour <- reactive({
-        as.numeric(input$summer_partpeak_end_hour)
-      })
-      
-      winter_partpeak_start_hour <- reactive({
-        as.numeric(input$winter_partpeak_start_hour)
-      })
-      
-      winter_partpeak_end_hour <- reactive({
-        as.numeric(input$winter_partpeak_end_hour)
-      })
-      
-      summer_partpeak_rate <- reactive({
-        input$summer_partpeak_rate
-      })
-      
-      winter_partpeak_rate <- reactive({
-        input$winter_partpeak_rate
-      })
       
       df_merged <- df_loadpf_long_fin
       
@@ -3819,7 +3327,7 @@ server <- function(input, output, session) {
       
       filtered_df_winterpart_demand$hour <- hour(filtered_df_winterpart_demand$datetime)
       
-
+      
       
       filtered_df_winterpart_demand <- filtered_df_winterpart_demand %>%
         filter(hour >= winter_partpeak_start_hour() & hour <= winter_partpeak_end_hour())
@@ -3959,31 +3467,14 @@ server <- function(input, output, session) {
       
       df_final$month <- factor(df_final$month, levels = month.name)
       
-    } else if (identical(input$tou_ed, c("Demand charge ($/kW)")) && input$tou_mm_y_n == "Yes" && input$tou_periods == "No") {
+    } else if (
+      !usage_incl() &&      # No TOU Usage Charge
+      demand_incl() &&      # TOU Demand Charge only
+      has_monthlymax() &&   # Monthly/Season Max Demand Charge
+      !has_partpeak()       # No Part-Peak period
+    ) {
       
       
-      summer_max_demand <- reactive({
-        as.numeric(input$summer_max_demand)
-      })
-      
-      winter_max_demand <- reactive({
-        as.numeric(input$winter_max_demand)
-      })
-      
-      summer_fixed_rate <- reactive({
-        as.numeric(input$summer_fixed_rate)
-      })
-      
-      winter_fixed_rate <- reactive({
-        as.numeric(input$winter_fixed_rate)
-      })
-      
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
       
       all_hours <- data.frame(allhours = 0:23)
       all_hours_onpeak_summer <- data.frame(allhours = summer_onpeak_start_hour():summer_onpeak_end_hour())
@@ -3993,13 +3484,7 @@ server <- function(input, output, session) {
       all_hours_offpeak_summer <- all_hours_offpeak_summer$allhours
       summer_offpeak_start_hour <- min(all_hours_offpeak_summer)
       summer_offpeak_end_hour <- max(all_hours_offpeak_summer)
-
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
+      
       
       all_hours <- data.frame(allhours = 0:23)
       all_hours_onpeak_winter <- data.frame(allhours = winter_onpeak_start_hour():winter_onpeak_end_hour())
@@ -4010,54 +3495,12 @@ server <- function(input, output, session) {
       winter_offpeak_start_hour <- min(all_hours_offpeak_winter)
       winter_offpeak_end_hour <- max(all_hours_offpeak_winter)
       
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
       
-      summer_partpeak_start_hour <- reactive({
-        as.numeric(input$summer_partpeak_start_hour)
-      })
-      summer_partpeak_end_hour <- reactive({
-        as.numeric(input$summer_partpeak_end_hour)
-      })
-      
-      winter_partpeak_start_hour <- reactive({
-        as.numeric(input$winter_partpeak_start_hour)
-      })
-      
-      winter_partpeak_end_hour <- reactive({
-        as.numeric(input$winter_partpeak_end_hour)
-      })
       
       
       df_merged <- df_loadpf_long_fin
       
       df_merged$ogcost <- df_merged$Load
-      
-      summer_dc_onpeak <- reactive({
-        as.numeric(input$summer_onpeak_demand)
-      })
-      
-      summer_dc_offpeak <- reactive({
-        as.numeric(input$summer_offpeak_demand)
-      })
-      
-      winter_dc_onpeak <- reactive({
-        as.numeric(input$winter_onpeak_demand)
-      })
-      
-      winter_dc_offpeak <- reactive({
-        as.numeric(input$winter_offpeak_demand)
-      })
       
       
       summer_partpeak_demand <- 0
@@ -4304,27 +3747,19 @@ server <- function(input, output, session) {
       
       df_final$month <- factor(df_final$month, levels = month.name)
       
-    } else if (identical(input$tou_ed, c("Demand charge ($/kW)")) && input$tou_mm_y_n == "No" && input$tou_periods == "No") {
+    } else if (
+      !usage_incl() &&      # No TOU usage
+      demand_incl() &&      # TOU demand only
+      !has_monthlymax() &&  # No monthly/season max demand charge
+      !has_partpeak()       # No part-peak period
+    ) {
+      
       
       
       summer_max_demand <- 0
       
       winter_max_demand <- 0
       
-      summer_fixed_rate <- reactive({
-        as.numeric(input$summer_fixed_rate)
-      })
-      
-      winter_fixed_rate <- reactive({
-        as.numeric(input$winter_fixed_rate)
-      })
-      
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
       
       all_hours <- data.frame(allhours = 0:23)
       all_hours_onpeak_summer <- data.frame(allhours = summer_onpeak_start_hour():summer_onpeak_end_hour())
@@ -4334,13 +3769,7 @@ server <- function(input, output, session) {
       all_hours_offpeak_summer <- all_hours_offpeak_summer$allhours
       summer_offpeak_start_hour <- min(all_hours_offpeak_summer)
       summer_offpeak_end_hour <- max(all_hours_offpeak_summer)
-
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
+      
       
       all_hours <- data.frame(allhours = 0:23)
       all_hours_onpeak_winter <- data.frame(allhours = winter_onpeak_start_hour():winter_onpeak_end_hour())
@@ -4351,54 +3780,12 @@ server <- function(input, output, session) {
       winter_offpeak_start_hour <- min(all_hours_offpeak_winter)
       winter_offpeak_end_hour <- max(all_hours_offpeak_winter)
       
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
-      
-      summer_partpeak_start_hour <- reactive({
-        as.numeric(input$summer_partpeak_start_hour)
-      })
-      summer_partpeak_end_hour <- reactive({
-        as.numeric(input$summer_partpeak_end_hour)
-      })
-      
-      winter_partpeak_start_hour <- reactive({
-        as.numeric(input$winter_partpeak_start_hour)
-      })
-      
-      winter_partpeak_end_hour <- reactive({
-        as.numeric(input$winter_partpeak_end_hour)
-      })
       
       
       df_merged <- df_loadpf_long_fin
       
       df_merged$ogcost <- df_merged$Load
       
-      summer_dc_onpeak <- reactive({
-        as.numeric(input$summer_onpeak_demand)
-      })
-      
-      summer_dc_offpeak <- reactive({
-        as.numeric(input$summer_offpeak_demand)
-      })
-      
-      winter_dc_onpeak <- reactive({
-        as.numeric(input$winter_onpeak_demand)
-      })
-      
-      winter_dc_offpeak <- reactive({
-        as.numeric(input$winter_offpeak_demand)
-      })
       
       
       summer_partpeak_demand <- 0
@@ -4643,108 +4030,23 @@ server <- function(input, output, session) {
       
       df_final$month <- factor(df_final$month, levels = month.name)
       
-    } else if (identical(input$tou_ed, c("Demand charge ($/kW)")) && input$tou_mm_y_n == "Yes" && input$tou_periods == "Yes") {
+    } else if (
+      !usage_incl() &&     # No TOU usage
+      demand_incl() &&     # TOU demand only
+      has_monthlymax() &&  # Monthly/Season Max Demand Charge
+      has_partpeak()       # Part-Peak period exists
+    ) {
       
       
-      summer_max_demand <- reactive({
-        as.numeric(input$summer_max_demand)
-      })
       
-      winter_max_demand <- reactive({
-        as.numeric(input$winter_max_demand)
-      })
       
-      summer_fixed_rate <- reactive({
-        as.numeric(input$summer_fixed_rate)
-      })
-      
-      winter_fixed_rate <- reactive({
-        as.numeric(input$winter_fixed_rate)
-      })
-      
-      summer_offpeak_start_hour <- reactive({
-        as.numeric(input$summer_offpeak_start)
-      })
-      summer_offpeak_end_hour <- reactive({
-        as.numeric(input$summer_offpeak_end)
-      })
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
-      
-      winter_offpeak_start_hour <- reactive({
-        as.numeric(input$winter_offpeak_start)
-      })
-      winter_offpeak_end_hour <- reactive({
-        as.numeric(input$winter_offpeak_end)
-      })
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
-      
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
-      
-      summer_partpeak_start_hour <- reactive({
-        as.numeric(input$summer_partpeak_start_hour)
-      })
-      summer_partpeak_end_hour <- reactive({
-        as.numeric(input$summer_partpeak_end_hour)
-      })
-      
-      winter_partpeak_start_hour <- reactive({
-        as.numeric(input$winter_partpeak_start_hour)
-      })
-      
-      winter_partpeak_end_hour <- reactive({
-        as.numeric(input$winter_partpeak_end_hour)
-      })
       
       
       df_merged <- df_loadpf_long_fin
       
       df_merged$ogcost <- df_merged$Load
       
-      summer_dc_onpeak <- reactive({
-        as.numeric(input$summer_onpeak_demand)
-      })
       
-      summer_dc_offpeak <- reactive({
-        as.numeric(input$summer_offpeak_demand)
-      })
-      
-      winter_dc_onpeak <- reactive({
-        as.numeric(input$winter_onpeak_demand)
-      })
-      
-      winter_dc_offpeak <- reactive({
-        as.numeric(input$winter_offpeak_demand)
-      })
-      
-      summer_partpeak_demand <- reactive({
-        input$summer_partpeak_demand
-      })
-      
-      winter_partpeak_demand <- reactive({
-        input$winter_partpeak_demand
-      })
-
       
       
       filtered_df_summeroff <- df_merged %>%
@@ -4986,103 +4288,25 @@ server <- function(input, output, session) {
       
       df_final$month <- factor(df_final$month, levels = month.name)
       
-    } else if (identical(input$tou_ed, c("Demand charge ($/kW)")) && input$tou_mm_y_n == "No" && input$tou_periods == "Yes") {
+    } else if (
+      !usage_incl() &&      # No TOU usage charge
+      demand_incl() &&      # Only TOU demand charge
+      !has_monthlymax() &&  # No monthly/season max demand charge
+      has_partpeak()        # Part-peak period exists
+    ) {
+      
       
       
       summer_max_demand <- 0
       
       winter_max_demand <- 0
       
-      summer_fixed_rate <- reactive({
-        as.numeric(input$summer_fixed_rate)
-      })
-      
-      winter_fixed_rate <- reactive({
-        as.numeric(input$winter_fixed_rate)
-      })
-      
-      summer_offpeak_start_hour <- reactive({
-        as.numeric(input$summer_offpeak_start)
-      })
-      summer_offpeak_end_hour <- reactive({
-        as.numeric(input$summer_offpeak_end)
-      })
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
-      
-      winter_offpeak_start_hour <- reactive({
-        as.numeric(input$winter_offpeak_start)
-      })
-      winter_offpeak_end_hour <- reactive({
-        as.numeric(input$winter_offpeak_end)
-      })
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
-      
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
-      
-      summer_partpeak_start_hour <- reactive({
-        as.numeric(input$summer_partpeak_start_hour)
-      })
-      summer_partpeak_end_hour <- reactive({
-        as.numeric(input$summer_partpeak_end_hour)
-      })
-      
-      winter_partpeak_start_hour <- reactive({
-        as.numeric(input$winter_partpeak_start_hour)
-      })
-      
-      winter_partpeak_end_hour <- reactive({
-        as.numeric(input$winter_partpeak_end_hour)
-      })
       
       
       df_merged <- df_loadpf_long_fin
       
       df_merged$ogcost <- df_merged$Load
       
-      summer_dc_onpeak <- reactive({
-        as.numeric(input$summer_onpeak_demand)
-      })
-      
-      summer_dc_offpeak <- reactive({
-        as.numeric(input$summer_offpeak_demand)
-      })
-      
-      winter_dc_onpeak <- reactive({
-        as.numeric(input$winter_onpeak_demand)
-      })
-      
-      winter_dc_offpeak <- reactive({
-        as.numeric(input$winter_offpeak_demand)
-      })
-      
-      summer_partpeak_demand <- reactive({
-        input$summer_partpeak_demand
-      })
-      
-      winter_partpeak_demand <- reactive({
-        input$winter_partpeak_demand
-      })
       
       
       
@@ -5325,61 +4549,13 @@ server <- function(input, output, session) {
       
       df_final$month <- factor(df_final$month, levels = month.name)
       
-    } else if (all(c("Usage charge ($/kWh)", "Demand charge ($/kW)") %in% input$tou_ed) && input$tou_mm_y_n == "Yes" && input$tou_periods == "No") {
-      summer_offpeak_start_hour <- reactive({
-        as.numeric(input$summer_offpeak_start)
-      })
-      summer_offpeak_end_hour <- reactive({
-        as.numeric(input$summer_offpeak_end)
-      })
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
-      winter_offpeak_start_hour <- reactive({
-        as.numeric(input$winter_offpeak_start)
-      })
-      winter_offpeak_end_hour <- reactive({
-        as.numeric(input$winter_offpeak_end)
-      })
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
-      summer_dc_onpeak <- reactive({
-        input$summer_onpeak_demand
-      })
-      summer_dc_offpeak <- reactive({
-        input$summer_offpeak_demand
-      })
-      summer_max_demand <- reactive({
-        input$summer_max_demand
-      })
-      winter_dc_onpeak <- reactive({
-        input$winter_onpeak_demand
-      })
-      winter_dc_offpeak <- reactive({
-        input$winter_offpeak_demand
-      })
-      winter_max_demand <- reactive({
-        input$winter_max_demand
-      })
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
+    } else if (
+      usage_incl() &&       # TOU usage
+      demand_incl() &&      # TOU demand
+      has_monthlymax() &&   # Monthly/Season Max Demand Charge
+      !has_partpeak()       # No Part-Peak period
+    ) {
+      
       
       df_merged <- df_loadpf_long_fin
       
@@ -5583,62 +4759,15 @@ server <- function(input, output, session) {
       df_final$energy_demand[df_final$energy_demand == "energycost"] <- "Usage Cost"
       df_final$energy_demand[df_final$energy_demand == "demandcost"] <- "Demand Cost"
       
-     
+      
       df_final$month <- factor(df_final$month, levels = month.name)
       
     } else {
-      summer_offpeak_start_hour <- reactive({
-        as.numeric(input$summer_offpeak_start)
-      })
-      summer_offpeak_end_hour <- reactive({
-        as.numeric(input$summer_offpeak_end)
-      })
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
-      winter_offpeak_start_hour <- reactive({
-        as.numeric(input$winter_offpeak_start)
-      })
-      winter_offpeak_end_hour <- reactive({
-        as.numeric(input$winter_offpeak_end)
-      })
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
-      summer_dc_onpeak <- reactive({
-        input$summer_onpeak_demand
-      })
-      summer_dc_offpeak <- reactive({
-        input$summer_offpeak_demand
-      })
+      
       summer_max_demand <- 0
       
-      winter_dc_onpeak <- reactive({
-        input$winter_onpeak_demand
-      })
-      winter_dc_offpeak <- reactive({
-        input$winter_offpeak_demand
-      })
+      
       winter_max_demand <- 0
-        
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
       
       df_merged <- df_loadpf_long_fin
       
@@ -5845,7 +4974,7 @@ server <- function(input, output, session) {
       
       df_final$month <- factor(df_final$month, levels = month.name)
     }
-
+    
     
     filtered_cost_data <- reactive({
       req(input$date_range, input$loadpf_file)
@@ -5906,7 +5035,7 @@ server <- function(input, output, session) {
         facet_wrap(.~ month, labeller = labeller(month = function(x) substr(x, 1, 3)),
                    nrow = 1
         ) 
-
+      
       
       gg_cost_plot2 <- ggplotly(gg_cost_plot, tooltip = "text")
       
@@ -5929,11 +5058,11 @@ server <- function(input, output, session) {
     
     df_annual_final <- df_final %>%
       group_by(original_modified, energy_demand) %>%
-      summarise(annual_costs = sum(cost))
+      summarise(annual_costs = sum(cost), .groups = 'drop')
     
     annual_cost_for_annual_graph <- df_final %>% 
       group_by(original_modified) %>% 
-      summarise(annual_cost = sum(cost))
+      summarise(annual_cost = sum(cost), .groups = 'drop')
     
     annual_cost_for_annual_graph_y_axis <- max(annual_cost_for_annual_graph$annual_cost)
     
@@ -5941,7 +5070,7 @@ server <- function(input, output, session) {
       df_final <- filtered_cost_data()
       df_annual_final <- df_final %>%
         group_by(original_modified, energy_demand) %>%
-        summarise(annual_costs = sum(cost))
+        summarise(annual_costs = sum(cost), .groups = 'drop')
       p <- ggplot() +
         geom_bar(
           data = df_annual_final,
@@ -5987,10 +5116,10 @@ server <- function(input, output, session) {
       ggplotly(p, tooltip = "text")
     })
     
-
+    
   })
   
-
+  
   observe({
     req(input$loadpf_file)
     
@@ -6242,7 +5371,7 @@ server <- function(input, output, session) {
         df_em_rate <- subset(df_em_rate_0, select = c(timestamp_local, aer_gen_co2e_c))
         
         colnames(df_em_rate) <- c("datetime", "em_rate")
-
+        
         df_em_rate$datetime <- as.POSIXct(df_em_rate$datetime, format = "%Y-%m-%d %H:%M")
         df_em_rate$datetime <- format(df_em_rate$datetime, "%Y-%d-%m %H:%M")
         df_em_rate$datetime <- as.POSIXct(df_em_rate$datetime, format = "%Y-%d-%m %H:%M", tz = "UTC")
@@ -6262,7 +5391,7 @@ server <- function(input, output, session) {
         df_loadpf_long_fin_1 <- updated_df()
         
         df_merged <- merge(df_loadpf_long_fin_1,df_em_rate, by = "datetime", all = TRUE)
-       
+        
         df_merged$co2em_inv <- (df_merged$em_rate * df_merged$Load* (1-input$perc_clean * 0.01)) / 1000
         
         
@@ -6296,153 +5425,155 @@ server <- function(input, output, session) {
       df_merged_export_co2inventory_initial <- df_merged %>%
         rename("Baseline Load(in kW)" = Load, "CO2e Emissions Factor (kg/MWh)" = em_rate,
                "Baseline CO2e Emissions Profile (kg/hr)" = co2em_inv)
-
+      
       co2_impact_value <- round((sum(df_merged$co2em_inv, na.rm = T)) / 1000)
       
     }
     
-      start_date_graph <- as.Date(date_range()[1])
-      end_date_graph <- start_date_graph + 6
-
-       output$co2_emissions_change_plot <- renderPlotly({
-        plot_ly() %>%
-          add_lines(data = df_merged,
-                    x = ~datetime,
-                    y = ~co2em_inv,
-                    name = "Facility Baseline Emissions",
-                    hoverinfo="text",
-                    text = ~paste0(datetime, "\nBaseline Emissions: ", round(co2em_inv)," kgCO<sub>2</sub>e/hr"),
-                    type = "scatter",
-                    mode = "lines",
-                    line = list(color = "red", opacity = 0.62)) %>%
-          layout(
-            title = if_else(input$emissions_type == "<b>U.S. EPA's 2022 eGRID</b>",paste0("<b>2022 </b>","<b>Facility </b>","<b>CO<sub>2</sub>e Emissions</b>"),paste0("<b>",input$emissions_type,"</b>","<b> Facility CO<sub>2</sub>e Emissions</b>")),
-            xaxis = list(title = "<b>Time</b>",
-                         rangeslider = list(type = "date"),
-                         range = c(start_date_graph, end_date_graph)),
-            yaxis = list(title = "<b>CO<sub>2</sub>e Emissions (kg/hr)</b>"),
-            legend = list(title = "Emissions Type"),
-            showlegend = TRUE,
-            font = list(size = 12),
-            margin = list(l = 20,
-                          r = 20,
-                          b = 20,
-                          t = 40),
-            plot_bgcolor = "white",
-            paper_bgcolor = "white",
-            annotations = list(
-              list(
-                text = paste("<b>", "Annual CO<sub>2</sub>e emissions: ", format(round(co2_impact_value), big.mark = ","),"MTCO<sub>2</sub>e/yr"),
-                xref = "paper",
-                yref = "paper",
-                x = 1,
-                y = 0.95,
-                xanchor = "right",
-                yanchor = "bottom",
-                showarrow = FALSE
-              )
+    start_date_graph <- as.Date(date_range()[1])
+    end_date_graph <- start_date_graph + 6
+    
+    output$co2_emissions_change_plot <- renderPlotly({
+      req(trigger_co2_panel())
+      plot_ly() %>%
+        add_lines(data = df_merged,
+                  x = ~datetime,
+                  y = ~co2em_inv,
+                  name = "Facility Baseline Emissions",
+                  hoverinfo="text",
+                  text = ~paste0(datetime, "\nBaseline Emissions: ", round(co2em_inv)," kgCO<sub>2</sub>e/hr"),
+                  type = "scatter",
+                  mode = "lines",
+                  line = list(color = "red", opacity = 0.62)) %>%
+        layout(
+          title = if_else(input$emissions_type == "<b>U.S. EPA's 2022 eGRID</b>",paste0("<b>2022 </b>","<b>Facility </b>","<b>CO<sub>2</sub>e Emissions</b>"),paste0("<b>",input$emissions_type,"</b>","<b> Facility CO<sub>2</sub>e Emissions</b>")),
+          xaxis = list(title = "<b>Time</b>",
+                       rangeslider = list(type = "date"),
+                       range = c(start_date_graph, end_date_graph)),
+          yaxis = list(title = "<b>CO<sub>2</sub>e Emissions (kg/hr)</b>"),
+          legend = list(title = "Emissions Type"),
+          showlegend = TRUE,
+          font = list(size = 12),
+          margin = list(l = 20,
+                        r = 20,
+                        b = 20,
+                        t = 40),
+          plot_bgcolor = "white",
+          paper_bgcolor = "white",
+          annotations = list(
+            list(
+              text = paste("<b>", "Annual CO<sub>2</sub>e emissions: ", format(round(co2_impact_value), big.mark = ","),"MTCO<sub>2</sub>e/yr"),
+              xref = "paper",
+              yref = "paper",
+              x = 1,
+              y = 0.95,
+              xanchor = "right",
+              yanchor = "bottom",
+              showarrow = FALSE
             )
-          )  %>%
-          config(displayModeBar = T, modeBarButtonsToRemove = list("zoom2d",
-                                                                   "zoomIn2d",
-                                                                   "zoomOut2d",
-                                                                   "autoScale2d",
-                                                                   "resetScale2d",
-                                                                   "hoverClosestCartesian",
-                                                                   "hoverCompareCartesian",
-                                                                   "lasso2d",
-                                                                   "select2d",
-                                                                   "zoom3d",
-                                                                   "pan3d",
-                                                                   "orbitRotation",
-                                                                   "tableRotation",
-                                                                   "handleDrag3d",
-                                                                   "resetCameraDefault3d",
-                                                                   "resetCameraLastSave3d",
-                                                                   "hoverClosest3d",
-                                                                   "zoomInGeo",
-                                                                   "zoomOutGeo",
-                                                                   "resetGeo",
-                                                                   "hoverClosestGeo",
-                                                                   "hoverClosestGl2d",
-                                                                   "hoverClosestPie",
-                                                                   "toggleHover",
-                                                                   "resetViews",
-                                                                   "toggleSpikelines"))
-      })
-       
-       
-       output$download_co2em_data  <- downloadHandler(
-         filename = function() {
-           "hourly_co2_data.xlsx"
-         },
-         content = function(file) {
-           write.xlsx(df_merged_export_co2inventory_initial, file) 
-         }
-       )
-       
-
-       output$co2_plot_annual <- renderPlotly({
-         p <-  ggplot() +
-           geom_bar(
-             data = co2_annual_final,
-             aes(
-               x = month,
-               y = og_co2,
-               text = paste0("CO<sub>2</sub>e Emissions",
-                             "\nMonth: ",month,
-                             "\nEmissions: ", scales::comma(og_co2), " kgCO<sub>2</sub>e/month")
-             ),
-             fill = "#00313C",
-             stat = "identity",
-             position = "dodge",
-             alpha = 0.9
-           ) +
-           labs(title = "Facility Baseline Monthly CO<sub>2</sub>e Emissions", x = "Time", y = "Total CO<sub>2</sub>e Emissions (kgCO<sub>2</sub>e/month)") +
-           theme_clean() +
-           theme(
-             text = element_text(family = "Open Sans",size = 14),
-             axis.title = element_text(family = "Open Sans",size = 16, face = "bold"),
-             legend.title = element_text(family = "Open Sans",size = 14, face = "bold"),
-             legend.text = element_text(family = "Open Sans",size = 12),
-             plot.title = element_text(family = "Open Sans",hjust = 0.5, face = "bold"),
-             panel.grid.major = element_line(color = "lightgray"),
-             panel.grid.minor = element_blank(),
-             axis.text.y = element_text(family = "Open Sans",size = 12),
-             axis.text.x = element_text(family = "Open Sans",size = 12)
-           ) +
-           scale_y_continuous(
-             labels = comma,
-             limits = c(min_co2, max_co2),
-             oob = rescale_none
-           ) +
-           scale_x_discrete(labels = substr(month.name, 1, 3))+ 
-           annotate("text",
-                    x=11.5,
-                    y=max(co2_annual_final$og_co2)*1.1,
-                    label = paste("<b>", "Annual CO<sub>2</sub>e emissions: ", format(round(co2_impact_value), big.mark = ","),"MTCO<sub>2</sub>e/yr"))
-         
-         p2 <- ggplotly(p, tooltip = "text")
-         
-         p2 <- p2 %>%
-           config(displayModeBar = T, modeBarButtonsToRemove = list("zoom2d", "zoomIn2d", "zoomOut2d", "autoScale2d", "resetScale2d", "hoverClosestCartesian", "hoverCompareCartesian", "lasso2d", "select2d", "zoom3d", "pan3d", "orbitRotation", "tableRotation", "handleDrag3d", "resetCameraDefault3d", "resetCameraLastSave3d", "hoverClosest3d", "zoomInGeo", "zoomOutGeo", "resetGeo", "hoverClosestGeo", "hoverClosestGl2d", "hoverClosestPie", "toggleHover", "resetViews", "toggleSpikelines"))
-         
-         return(p2)
-       })
-       
-   
-       output$download_co2em_data_monthly  <- downloadHandler(
-         filename = function() {
-           "monthly_co2_data.xlsx"
-         },
-         content = function(file) {
-           write.xlsx(co2_annual_final_export_initial, file) 
-         }
-       )
+          )
+        )  %>%
+        config(displayModeBar = T, modeBarButtonsToRemove = list("zoom2d",
+                                                                 "zoomIn2d",
+                                                                 "zoomOut2d",
+                                                                 "autoScale2d",
+                                                                 "resetScale2d",
+                                                                 "hoverClosestCartesian",
+                                                                 "hoverCompareCartesian",
+                                                                 "lasso2d",
+                                                                 "select2d",
+                                                                 "zoom3d",
+                                                                 "pan3d",
+                                                                 "orbitRotation",
+                                                                 "tableRotation",
+                                                                 "handleDrag3d",
+                                                                 "resetCameraDefault3d",
+                                                                 "resetCameraLastSave3d",
+                                                                 "hoverClosest3d",
+                                                                 "zoomInGeo",
+                                                                 "zoomOutGeo",
+                                                                 "resetGeo",
+                                                                 "hoverClosestGeo",
+                                                                 "hoverClosestGl2d",
+                                                                 "hoverClosestPie",
+                                                                 "toggleHover",
+                                                                 "resetViews",
+                                                                 "toggleSpikelines"))
+    })
+    
+    
+    output$download_co2em_data  <- downloadHandler(
+      filename = function() {
+        "hourly_co2_data.xlsx"
+      },
+      content = function(file) {
+        write.xlsx(df_merged_export_co2inventory_initial, file) 
+      }
+    )
+    
+    
+    output$co2_plot_annual <- renderPlotly({
+      req(trigger_co2_panel())
+      p <-  ggplot() +
+        geom_bar(
+          data = co2_annual_final,
+          aes(
+            x = month,
+            y = og_co2,
+            text = paste0("CO<sub>2</sub>e Emissions",
+                          "\nMonth: ",month,
+                          "\nEmissions: ", scales::comma(og_co2), " kgCO<sub>2</sub>e/month")
+          ),
+          fill = "#00313C",
+          stat = "identity",
+          position = "dodge",
+          alpha = 0.9
+        ) +
+        labs(title = "Facility Baseline Monthly CO<sub>2</sub>e Emissions", x = "Time", y = "Total CO<sub>2</sub>e Emissions (kgCO<sub>2</sub>e/month)") +
+        theme_clean() +
+        theme(
+          text = element_text(family = "Open Sans",size = 14),
+          axis.title = element_text(family = "Open Sans",size = 16, face = "bold"),
+          legend.title = element_text(family = "Open Sans",size = 14, face = "bold"),
+          legend.text = element_text(family = "Open Sans",size = 12),
+          plot.title = element_text(family = "Open Sans",hjust = 0.5, face = "bold"),
+          panel.grid.major = element_line(color = "lightgray"),
+          panel.grid.minor = element_blank(),
+          axis.text.y = element_text(family = "Open Sans",size = 12),
+          axis.text.x = element_text(family = "Open Sans",size = 12)
+        ) +
+        scale_y_continuous(
+          labels = comma,
+          limits = c(min_co2, max_co2),
+          oob = rescale_none
+        ) +
+        scale_x_discrete(labels = substr(month.name, 1, 3))+ 
+        annotate("text",
+                 x=11.5,
+                 y=max(co2_annual_final$og_co2)*1.1,
+                 label = paste("<b>", "Annual CO<sub>2</sub>e emissions: ", format(round(co2_impact_value), big.mark = ","),"MTCO<sub>2</sub>e/yr"))
+      
+      p2 <- ggplotly(p, tooltip = "text")
+      
+      p2 <- p2 %>%
+        config(displayModeBar = T, modeBarButtonsToRemove = list("zoom2d", "zoomIn2d", "zoomOut2d", "autoScale2d", "resetScale2d", "hoverClosestCartesian", "hoverCompareCartesian", "lasso2d", "select2d", "zoom3d", "pan3d", "orbitRotation", "tableRotation", "handleDrag3d", "resetCameraDefault3d", "resetCameraLastSave3d", "hoverClosest3d", "zoomInGeo", "zoomOutGeo", "resetGeo", "hoverClosestGeo", "hoverClosestGl2d", "hoverClosestPie", "toggleHover", "resetViews", "toggleSpikelines"))
+      
+      return(p2)
+    })
+    
+    
+    output$download_co2em_data_monthly  <- downloadHandler(
+      filename = function() {
+        "monthly_co2_data.xlsx"
+      },
+      content = function(file) {
+        write.xlsx(co2_annual_final_export_initial, file) 
+      }
+    )
     
   })
   
-
+  
   observe({
     if(input$emissions_type == "U.S. EPA's 2022 eGRID" && input$state != "") {
       df_em_rate_0 <-  read_excel("AllUploadFiles_ToolTesting/States Emission Factors/eGRID/eGRID 2022.xlsx")
@@ -6572,7 +5703,7 @@ server <- function(input, output, session) {
         
         df_em_rate_export <- df_em_rate %>% 
           rename("CO2e Emissions Factor (kg/MWh)" = em_rate)
-      
+        
       } else {
         
         df_em_rate <- subset(df_em_rate_0, select = c(timestamp_local, aer_gen_co2e_c))
@@ -6594,6 +5725,7 @@ server <- function(input, output, session) {
     end_date_graph <- start_date_graph + 6
     
     output$grid_co2_plot <- renderPlotly({
+      req(trigger_co2_panel())
       plot_ly() %>%
         add_lines(data = df_em_rate,
                   x = ~datetime,
@@ -6667,8 +5799,9 @@ server <- function(input, output, session) {
     )
     
   })
- 
+  
   observeEvent(input$plot_button, {
+    req(rate_vals())
     desired_tz <- input$user_time_zone
     start_date <- input$date_range[1]
     end_date <- input$date_range[2]
@@ -6858,7 +5991,7 @@ server <- function(input, output, session) {
       })
       
       df_loadpf_long_fin <- updated_df()
-  
+      
       df_merged <- merge(df_loadpf_long_fin,df_em_rate , by = "datetime", all = TRUE)
       
       df_merged <- na.omit(df_merged)
@@ -7125,7 +6258,7 @@ server <- function(input, output, session) {
       
       df_loadpf_long_fin <- updated_df()
       
-     df_merged <- merge( df_loadpf_long_fin,df_em_rate, by = "datetime", all = TRUE)
+      df_merged <- merge( df_loadpf_long_fin,df_em_rate, by = "datetime", all = TRUE)
       
       df_merged$co2em_inv <- (df_merged$em_rate * df_merged$Load* (1-input$perc_clean * 0.01)) / 1000
       
@@ -7203,7 +6336,7 @@ server <- function(input, output, session) {
       })
       
       df_loadpf_long_fin <- updated_df()
-     
+      
       df_merged <- merge( df_loadpf_long_fin, df_em_rate_15,by = "datetime", all = TRUE)
       
       
@@ -7211,7 +6344,7 @@ server <- function(input, output, session) {
       
       df_merged$mod_load <- df_merged$Load
       
-    
+      
       df_merged_annual <- df_merged
     } # Make this function that sorts the 1 and 0. Half zeros in either end, and all ones in the middle
     
@@ -7366,107 +6499,107 @@ server <- function(input, output, session) {
         if (!exists("work_on_weekends")) {
           work_on_weekends <- 'Placeholder for non 12-Month Template Data'  
         }
+        
+        if (input$work_on_weekends == "Yes" | work_on_weekends == "Y") {
+          df_merged$day_number <- yday(df_merged$datetime)
           
-          if (input$work_on_weekends == "Yes" | work_on_weekends == "Y") {
-            df_merged$day_number <- yday(df_merged$datetime)
-            
-            is_weekend_test <- function(date) {
-              weekday <- weekdays(date)
-              return(weekday %in% c("Saturday", "Sunday"))
-            }
-            
-            
-            df_merged$is_weekend_test <- sapply(df_merged$datetime, is_weekend_test)
-            
-            df_merged_daysscl <- df_merged %>%
-              group_by(day_number) %>%
-              filter(as.ITime(datetime) >= time_from_min & as.ITime(datetime) <= time_from_max) %>%
-              mutate(temp_id = ifelse(as.ITime(datetime) >= time_from_min & as.ITime(datetime) <= time_from_max, "shiftfromn_hours", NA_character_)) %>%
-              ungroup()
-            
-            
-            df_merged_daysscl$temp_id_2 <- paste(df_merged_daysscl$day_number, df_merged_daysscl$temp_id)
-            
-            df_merged_daysscl <- df_merged_daysscl %>%
-              group_by(temp_id_2) %>%
-              mutate(min_load = min(Load)) %>%
-              filter(min_load >= scl_value) %>%
-              ungroup()
-            
-            if (nrow(df_merged_daysscl) == 0) {
-              days_to_keep <- df_merged$day_number
-              scl_value <- 0
-              shinyalert("Warning", "The flexible load you have specified is greater than the load available over the Time Range From Interval. Please enter a lower value and try again", type = "warning")
-            } else {
-              days_to_keep <- df_merged_daysscl$day_number
-            }
-            
-            df_merged1 <- df_merged %>%
-              group_by(day_number) %>%
-              mutate(time = format(as.POSIXct(datetime, origin = "1970-01-01"), format = "%H:%M"),
-                     mod_load = ifelse(day_number %in% days_to_keep & as.ITime(time) >= time_from_min & as.ITime(time) <= time_from_max, mod_load - scl_value, mod_load)) %>%
-              select(-time) %>% 
-              ungroup()
-            
-            
-            
-            df_merged2 <- df_merged1 %>%
-              group_by(day_number) %>%
-              mutate(time = format(as.POSIXct(datetime, origin = "1970-01-01"), format = "%H:%M"),
-                     mod_load = ifelse(day_number %in% days_to_keep & as.ITime(time) >= time_to_min & as.ITime(time) <= time_to_max , mod_load + scl_value, mod_load)) %>%
-              ungroup() %>%
-              select(-day_number, -is_weekend_test,-time)
-          } else {
-            df_merged$day_number <- yday(df_merged$datetime)
-            
-            is_weekend_test <- function(date) {
-              weekday <- weekdays(date)
-              return(weekday %in% c("Saturday", "Sunday"))
-            }
-            
-            
-            df_merged$is_weekend_test <- sapply(df_merged$datetime, is_weekend_test)
-            
-            df_merged_daysscl <- df_merged %>%
-              group_by(day_number) %>%
-              filter(as.ITime(datetime) >= time_from_min & as.ITime(datetime) <= time_from_max) %>%
-              mutate(temp_id = ifelse(as.ITime(datetime) >= time_from_min & as.ITime(datetime) <= time_from_max, "shiftfromn_hours", NA_character_)) %>%
-              ungroup()
-            
-            
-            df_merged_daysscl$temp_id_2 <- paste(df_merged_daysscl$day_number, df_merged_daysscl$temp_id)
-            
-            df_merged_daysscl <- df_merged_daysscl %>%
-              group_by(temp_id_2) %>%
-              mutate(min_load = min(Load)) %>%
-              filter(min_load >= scl_value) %>%
-              ungroup()
-            
-            df_merged_daysscl <- df_merged_daysscl %>%
-              filter(!is_weekend_test)
-            
-            if (nrow(df_merged_daysscl) == 0) {
-              days_to_keep <- df_merged$day_number
-              scl_value <- 0
-              shinyalert("Warning", "The flexible load you have specified is greater than the load available over the Time Range From Interval. Please enter a lower value and try again", type = "warning")
-            } else {
-              days_to_keep <- df_merged_daysscl$day_number
-            }
-            
-            df_merged1 <- df_merged %>%
-              group_by(day_number) %>%
-              mutate(time = format(as.POSIXct(datetime, origin = "1970-01-01"), format = "%H:%M"),
-                     mod_load = ifelse(day_number %in% days_to_keep & as.ITime(time) >= time_from_min & as.ITime(time) <= time_from_max, mod_load - scl_value, mod_load)) %>%
-              select(-time) %>% 
-              ungroup()
-            
-            df_merged2 <- df_merged1 %>%
-              group_by(day_number) %>%
-              mutate(time = format(as.POSIXct(datetime, origin = "1970-01-01"), format = "%H:%M"),
-                     mod_load = ifelse(day_number %in% days_to_keep & as.ITime(time) >= time_to_min & as.ITime(time) <= time_to_max , mod_load + scl_value, mod_load)) %>%
-              ungroup() %>%
-              select(-day_number, -is_weekend_test,-time)
+          is_weekend_test <- function(date) {
+            weekday <- weekdays(date)
+            return(weekday %in% c("Saturday", "Sunday"))
           }
+          
+          
+          df_merged$is_weekend_test <- sapply(df_merged$datetime, is_weekend_test)
+          
+          df_merged_daysscl <- df_merged %>%
+            group_by(day_number) %>%
+            filter(as.ITime(datetime) >= time_from_min & as.ITime(datetime) <= time_from_max) %>%
+            mutate(temp_id = ifelse(as.ITime(datetime) >= time_from_min & as.ITime(datetime) <= time_from_max, "shiftfromn_hours", NA_character_)) %>%
+            ungroup()
+          
+          
+          df_merged_daysscl$temp_id_2 <- paste(df_merged_daysscl$day_number, df_merged_daysscl$temp_id)
+          
+          df_merged_daysscl <- df_merged_daysscl %>%
+            group_by(temp_id_2) %>%
+            mutate(min_load = min(Load)) %>%
+            filter(min_load >= scl_value) %>%
+            ungroup()
+          
+          if (nrow(df_merged_daysscl) == 0) {
+            days_to_keep <- df_merged$day_number
+            scl_value <- 0
+            shinyalert("Warning", "The flexible load you have specified is greater than the load available over the Time Range From Interval. Please enter a lower value and try again", type = "warning")
+          } else {
+            days_to_keep <- df_merged_daysscl$day_number
+          }
+          
+          df_merged1 <- df_merged %>%
+            group_by(day_number) %>%
+            mutate(time = format(as.POSIXct(datetime, origin = "1970-01-01"), format = "%H:%M"),
+                   mod_load = ifelse(day_number %in% days_to_keep & as.ITime(time) >= time_from_min & as.ITime(time) <= time_from_max, mod_load - scl_value, mod_load)) %>%
+            select(-time) %>% 
+            ungroup()
+          
+          
+          
+          df_merged2 <- df_merged1 %>%
+            group_by(day_number) %>%
+            mutate(time = format(as.POSIXct(datetime, origin = "1970-01-01"), format = "%H:%M"),
+                   mod_load = ifelse(day_number %in% days_to_keep & as.ITime(time) >= time_to_min & as.ITime(time) <= time_to_max , mod_load + scl_value, mod_load)) %>%
+            ungroup() %>%
+            select(-day_number, -is_weekend_test,-time)
+        } else {
+          df_merged$day_number <- yday(df_merged$datetime)
+          
+          is_weekend_test <- function(date) {
+            weekday <- weekdays(date)
+            return(weekday %in% c("Saturday", "Sunday"))
+          }
+          
+          
+          df_merged$is_weekend_test <- sapply(df_merged$datetime, is_weekend_test)
+          
+          df_merged_daysscl <- df_merged %>%
+            group_by(day_number) %>%
+            filter(as.ITime(datetime) >= time_from_min & as.ITime(datetime) <= time_from_max) %>%
+            mutate(temp_id = ifelse(as.ITime(datetime) >= time_from_min & as.ITime(datetime) <= time_from_max, "shiftfromn_hours", NA_character_)) %>%
+            ungroup()
+          
+          
+          df_merged_daysscl$temp_id_2 <- paste(df_merged_daysscl$day_number, df_merged_daysscl$temp_id)
+          
+          df_merged_daysscl <- df_merged_daysscl %>%
+            group_by(temp_id_2) %>%
+            mutate(min_load = min(Load)) %>%
+            filter(min_load >= scl_value) %>%
+            ungroup()
+          
+          df_merged_daysscl <- df_merged_daysscl %>%
+            filter(!is_weekend_test)
+          
+          if (nrow(df_merged_daysscl) == 0) {
+            days_to_keep <- df_merged$day_number
+            scl_value <- 0
+            shinyalert("Warning", "The flexible load you have specified is greater than the load available over the Time Range From Interval. Please enter a lower value and try again", type = "warning")
+          } else {
+            days_to_keep <- df_merged_daysscl$day_number
+          }
+          
+          df_merged1 <- df_merged %>%
+            group_by(day_number) %>%
+            mutate(time = format(as.POSIXct(datetime, origin = "1970-01-01"), format = "%H:%M"),
+                   mod_load = ifelse(day_number %in% days_to_keep & as.ITime(time) >= time_from_min & as.ITime(time) <= time_from_max, mod_load - scl_value, mod_load)) %>%
+            select(-time) %>% 
+            ungroup()
+          
+          df_merged2 <- df_merged1 %>%
+            group_by(day_number) %>%
+            mutate(time = format(as.POSIXct(datetime, origin = "1970-01-01"), format = "%H:%M"),
+                   mod_load = ifelse(day_number %in% days_to_keep & as.ITime(time) >= time_to_min & as.ITime(time) <= time_to_max , mod_load + scl_value, mod_load)) %>%
+            ungroup() %>%
+            select(-day_number, -is_weekend_test,-time)
+        }
         
         df_merged <- df_merged2
       }
@@ -7486,7 +6619,7 @@ server <- function(input, output, session) {
     
     start_date_graph <- as.Date(date_range()[1])
     end_date_graph <- start_date_graph + 6
-
+    
     output$time_series_plot <- renderPlotly({
       plot_ly() %>%
         add_lines(data = df_merged,
@@ -7533,7 +6666,7 @@ server <- function(input, output, session) {
              "Baseline CO2e Emissions Profile (kg/hr)" = co2em_inv,
              "Modified CO2e Emissions Profile (kg/hr)" = co2_em_inv_mod)
     
-        output$download_load_data <- downloadHandler(
+    output$download_load_data <- downloadHandler(
       filename = function() {
         "modified_load_data.xlsx"
       },
@@ -7619,38 +6752,11 @@ server <- function(input, output, session) {
     ## COST CALCULATIONS
     df_merged$ogcost <- df_merged$Load
     df_merged$modcost <- df_merged$mod_load
-
-    summer_start_month <- reactive({
-      match(input$summer_month1, month.name)
-    })
-    summer_end_month <- reactive({
-      match(input$summer_month2, month.name)
-    })
-    winter_start_month <- reactive({
-      match(input$winter_month1, month.name)
-    })
     
-    winter_end_month <- reactive({
-      match(input$winter_month2, month.name)
-    })
     
-    if (is.null(input$tou_ed) && input$tou_mm_y_n == "Yes") { ##No TOU for either energy or demand. But fixed demand charge present.
+    
+    if (fixed_usage() && fixed_demand() && has_monthlymax()) { ##No TOU for either energy or demand. But fixed demand charge present.
       
-      summer_max_demand <- reactive({
-        input$summer_max_demand
-      })
-      
-      winter_max_demand <- reactive({
-        input$winter_max_demand
-      })
-      
-      winter_fixed_rate <- reactive({
-        input$winter_fixed_rate
-      })
-      
-      summer_fixed_rate <- reactive({
-        input$summer_fixed_rate
-      })
       
       
       # Filter for summer months
@@ -7748,7 +6854,7 @@ server <- function(input, output, session) {
       )
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "energycostimpact"] <- "Usage Cost"
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "demandcostimpact"] <- "Demand Cost"
-
+      
       df_final$original_modified[df_final$original_modified == "original"] <- "Baseline"
       df_final$original_modified[df_final$original_modified == "modified"] <- "Modified"
       
@@ -7758,22 +6864,7 @@ server <- function(input, output, session) {
       
       df_final$month <- factor(df_final$month, levels = month.name)
       
-    } else if (is.null(input$tou_ed) && input$tou_mm_y_n == "No") {
-      summer_max_demand <- reactive({
-        input$summer_max_demand
-      })
-      
-      winter_max_demand <- reactive({
-        input$winter_max_demand
-      })
-      
-      winter_fixed_rate <- reactive({
-        input$winter_fixed_rate
-      })
-      
-      summer_fixed_rate <- reactive({
-        input$summer_fixed_rate
-      })
+    } else if (fixed_usage() && fixed_demand() && !has_monthlymax()) {
       
       # Filter for summer months
       filtered_df_summeroff <- df_merged %>%
@@ -7867,7 +6958,7 @@ server <- function(input, output, session) {
       )
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "energycostimpact"] <- "Usage Cost"
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "demandcostimpact"] <- "Demand Cost"
-
+      
       df_final$original_modified[df_final$original_modified == "original"] <- "Baseline"
       df_final$original_modified[df_final$original_modified == "modified"] <- "Modified"
       
@@ -7877,21 +6968,8 @@ server <- function(input, output, session) {
       
       df_final$month <- factor(df_final$month, levels = month.name)
       
-    } else if (identical(input$tou_ed, c("Usage charge ($/kWh)")) && input$tou_mm_y_n == "Yes" && input$tou_periods == "No") {
-      summer_max_demand <- reactive({
-        input$summer_max_demand
-      })
+    } else if (usage_incl() && !demand_incl() && has_monthlymax() && !has_partpeak()) {
       
-      winter_max_demand <- reactive({
-        input$winter_max_demand
-      })
-      
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
       
       all_hours <- data.frame(allhours = 0:23)
       all_hours_onpeak_summer <- data.frame(allhours = summer_onpeak_start_hour():summer_onpeak_end_hour())
@@ -7902,12 +6980,7 @@ server <- function(input, output, session) {
       summer_offpeak_start_hour <- min(all_hours_offpeak_summer)
       summer_offpeak_end_hour <- max(all_hours_offpeak_summer)
       
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
+      
       
       all_hours <- data.frame(allhours = 0:23)
       all_hours_onpeak_winter <- data.frame(allhours = winter_onpeak_start_hour():winter_onpeak_end_hour())
@@ -7918,18 +6991,7 @@ server <- function(input, output, session) {
       winter_offpeak_start_hour <- min(all_hours_offpeak_winter)
       winter_offpeak_end_hour <- max(all_hours_offpeak_winter)
       
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
+      
       
       winter_dc_onpeak <- 0
       summer_dc_onpeak <- 0
@@ -8197,7 +7259,7 @@ server <- function(input, output, session) {
       )
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "energycostimpact"] <- "Usage Cost"
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "demandcostimpact"] <- "Demand Cost"
-
+      
       df_final$original_modified[df_final$original_modified == "original"] <- "Baseline"
       df_final$original_modified[df_final$original_modified == "modified"] <- "Modified"
       
@@ -8207,14 +7269,8 @@ server <- function(input, output, session) {
       
       df_final$month <- factor(df_final$month, levels = month.name)
       
-    }else if (identical(input$tou_ed, c("Usage charge ($/kWh)")) && input$tou_mm_y_n == "No" && input$tou_periods == "No") {
+    }else if (usage_incl() && !demand_incl() && !has_monthlymax() && !has_partpeak()) {
       
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
       
       all_hours <- data.frame(allhours = 0:23)
       all_hours_onpeak_summer <- data.frame(allhours = summer_onpeak_start_hour():summer_onpeak_end_hour())
@@ -8225,12 +7281,7 @@ server <- function(input, output, session) {
       summer_offpeak_start_hour <- min(all_hours_offpeak_summer)
       summer_offpeak_end_hour <- max(all_hours_offpeak_summer)
       
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
+      
       
       all_hours <- data.frame(allhours = 0:23)
       all_hours_onpeak_winter <- data.frame(allhours = winter_onpeak_start_hour():winter_onpeak_end_hour())
@@ -8241,18 +7292,7 @@ server <- function(input, output, session) {
       winter_offpeak_start_hour <- min(all_hours_offpeak_winter)
       winter_offpeak_end_hour <- max(all_hours_offpeak_winter)
       
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
+      
       
       winter_dc_onpeak <- 0
       summer_dc_onpeak <- 0
@@ -8520,7 +7560,7 @@ server <- function(input, output, session) {
       )
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "energycostimpact"] <- "Usage Cost"
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "demandcostimpact"] <- "Demand Cost"
-
+      
       df_final$original_modified[df_final$original_modified == "original"] <- "Baseline"
       df_final$original_modified[df_final$original_modified == "modified"] <- "Modified"
       
@@ -8529,150 +7569,8 @@ server <- function(input, output, session) {
       
       
       df_final$month <- factor(df_final$month, levels = month.name)
-    } else if (all(c("Usage charge ($/kWh)", "Demand charge ($/kW)") %in% input$tou_ed) && input$tou_mm_y_n == "Yes" && input$tou_periods == "Yes") {
+    } else if (usage_incl() && demand_incl() && has_monthlymax() && has_partpeak()) {
       
-      summer_offpeak_start_hour <- reactive({
-        as.numeric(input$summer_offpeak_start)
-      })
-      
-      summer_offpeak_end_hour <- reactive({
-        as.numeric(input$summer_offpeak_end)
-      })
-      
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
-      
-      winter_offpeak_start_hour <- reactive({
-        as.numeric(input$winter_offpeak_start)
-      })
-      
-      winter_offpeak_end_hour <- reactive({
-        as.numeric(input$winter_offpeak_end)
-      })
-      
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
-      
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
-      
-      summer_partpeak_start_hour <- reactive({
-        as.numeric(input$summer_partpeak_start_hour)
-      })
-      summer_partpeak_end_hour <- reactive({
-        as.numeric(input$summer_partpeak_end_hour)
-      })
-      
-      winter_partpeak_start_hour <- reactive({
-        as.numeric(input$winter_partpeak_start_hour)
-      })
-      
-      winter_partpeak_end_hour <- reactive({
-        as.numeric(input$winter_partpeak_end_hour)
-      })
-      
-      summer_partpeak_rate <- reactive({
-        input$summer_partpeak_rate
-      })
-      
-      winter_partpeak_rate <- reactive({
-        input$winter_partpeak_rate
-      })
-      
-      
-      summer_start_month <- reactive({
-        match(input$summer_month1, month.name)
-      })
-      summer_end_month <- reactive({
-        match(input$summer_month2, month.name)
-      })
-      summer_offpeak_start_hour <- reactive({
-        as.numeric(input$summer_offpeak_start)
-      })
-      summer_offpeak_end_hour <- reactive({
-        as.numeric(input$summer_offpeak_end)
-      })
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
-      winter_start_month <- reactive({
-        match(input$winter_month1, month.name)
-      })
-      winter_end_month <- reactive({
-        match(input$winter_month2, month.name)
-      })
-      winter_offpeak_start_hour <- reactive({
-        as.numeric(input$winter_offpeak_start)
-      })
-      winter_offpeak_end_hour <- reactive({
-        as.numeric(input$winter_offpeak_end)
-      })
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
-      summer_dc_onpeak <- reactive({
-        input$summer_onpeak_demand
-      })
-      summer_dc_offpeak <- reactive({
-        input$summer_offpeak_demand
-      })
-      summer_max_demand <- reactive({
-        input$summer_max_demand
-      })
-      winter_dc_onpeak <- reactive({
-        input$winter_onpeak_demand
-      })
-      winter_dc_offpeak <- reactive({
-        input$winter_offpeak_demand
-      })
-      winter_max_demand <- reactive({
-        input$winter_max_demand
-      })
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
-      
-      summer_partpeak_demand <- reactive({
-        input$summer_partpeak_demand
-      })
-      
-      winter_partpeak_demand <- reactive({
-        input$winter_partpeak_demand
-      })
       
       filtered_df_summeroff <- df_merged %>%
         filter(month(datetime) >= summer_start_month() & month(datetime) <= summer_end_month())
@@ -9013,7 +7911,7 @@ server <- function(input, output, session) {
       )
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "energycostimpact"] <- "Usage Cost"
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "demandcostimpact"] <- "Demand Cost"
-
+      
       df_final$original_modified[df_final$original_modified == "original"] <- "Baseline"
       df_final$original_modified[df_final$original_modified == "modified"] <- "Modified"
       
@@ -9023,145 +7921,7 @@ server <- function(input, output, session) {
       
       df_final$month <- factor(df_final$month, levels = month.name)
       
-    } else if (all(c("Usage charge ($/kWh)", "Demand charge ($/kW)") %in% input$tou_ed) && input$tou_mm_y_n == "No" && input$tou_periods == "Yes") {
-      
-      summer_offpeak_start_hour <- reactive({
-        as.numeric(input$summer_offpeak_start)
-      })
-      
-      summer_offpeak_end_hour <- reactive({
-        as.numeric(input$summer_offpeak_end)
-      })
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      
-      
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
-      
-      
-      winter_offpeak_start_hour <- reactive({
-        as.numeric(input$winter_offpeak_start)
-      })
-      winter_offpeak_end_hour <- reactive({
-        as.numeric(input$winter_offpeak_end)
-      })
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
-      
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
-      
-      summer_partpeak_start_hour <- reactive({
-        as.numeric(input$summer_partpeak_start_hour)
-      })
-      summer_partpeak_end_hour <- reactive({
-        as.numeric(input$summer_partpeak_end_hour)
-      })
-      
-      winter_partpeak_start_hour <- reactive({
-        as.numeric(input$winter_partpeak_start_hour)
-      })
-      
-      winter_partpeak_end_hour <- reactive({
-        as.numeric(input$winter_partpeak_end_hour)
-      })
-      
-      summer_partpeak_rate <- reactive({
-        input$summer_partpeak_rate
-      })
-      
-      winter_partpeak_rate <- reactive({
-        input$winter_partpeak_rate
-      })
-      
-      
-      
-      
-      summer_start_month <- reactive({
-        match(input$summer_month1, month.name)
-      })
-      summer_end_month <- reactive({
-        match(input$summer_month2, month.name)
-      })
-      summer_offpeak_start_hour <- reactive({
-        as.numeric(input$summer_offpeak_start)
-      })
-      summer_offpeak_end_hour <- reactive({
-        as.numeric(input$summer_offpeak_end)
-      })
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
-      winter_start_month <- reactive({
-        match(input$winter_month1, month.name)
-      })
-      winter_end_month <- reactive({
-        match(input$winter_month2, month.name)
-      })
-      winter_offpeak_start_hour <- reactive({
-        as.numeric(input$winter_offpeak_start)
-      })
-      winter_offpeak_end_hour <- reactive({
-        as.numeric(input$winter_offpeak_end)
-      })
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
-      summer_dc_onpeak <- reactive({
-        input$summer_onpeak_demand
-      })
-      summer_dc_offpeak <- reactive({
-        input$summer_offpeak_demand
-      })
-      winter_dc_onpeak <- reactive({
-        input$winter_onpeak_demand
-      })
-      winter_dc_offpeak <- reactive({
-        input$winter_offpeak_demand
-      })
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
-      
-      summer_partpeak_demand <- reactive({
-        input$summer_partpeak_demand
-      })
-      
-      winter_partpeak_demand <- reactive({
-        input$winter_partpeak_demand
-      })
+    } else if (usage_incl() && demand_incl() && !has_monthlymax() && has_partpeak()) {
       
       filtered_df_summeroff <- df_merged %>%
         filter(month(datetime) >= summer_start_month() & month(datetime) <= summer_end_month())
@@ -9504,7 +8264,7 @@ server <- function(input, output, session) {
       )
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "energycostimpact"] <- "Usage Cost"
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "demandcostimpact"] <- "Demand Cost"
-
+      
       df_final$original_modified[df_final$original_modified == "original"] <- "Baseline"
       df_final$original_modified[df_final$original_modified == "modified"] <- "Modified"
       
@@ -9514,114 +8274,7 @@ server <- function(input, output, session) {
       
       df_final$month <- factor(df_final$month, levels = month.name)
       
-    } else if (identical(input$tou_ed, c("Usage charge ($/kWh)")) && input$tou_mm_y_n == "Yes" && input$tou_periods == "Yes") {
-      summer_max_demand <- reactive({
-        input$summer_max_demand
-      })
-      
-      winter_max_demand <- reactive({
-        input$winter_max_demand
-      })
-      
-      summer_offpeak_start_hour <- reactive({
-        as.numeric(input$summer_offpeak_start)
-      })
-      summer_offpeak_end_hour <- reactive({
-        as.numeric(input$summer_offpeak_end)
-      })
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
-      
-      winter_offpeak_start_hour <- reactive({
-        as.numeric(input$winter_offpeak_start)
-      })
-      winter_offpeak_end_hour <- reactive({
-        as.numeric(input$winter_offpeak_end)
-      })
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
-      
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
-      
-      summer_partpeak_start_hour <- reactive({
-        as.numeric(input$summer_partpeak_start_hour)
-      })
-      summer_partpeak_end_hour <- reactive({
-        as.numeric(input$summer_partpeak_end_hour)
-      })
-      
-      winter_partpeak_start_hour <- reactive({
-        as.numeric(input$winter_partpeak_start_hour)
-      })
-      
-      winter_partpeak_end_hour <- reactive({
-        as.numeric(input$winter_partpeak_end_hour)
-      })
-      
-      summer_partpeak_rate <- reactive({
-        input$summer_partpeak_rate
-      })
-      
-      winter_partpeak_rate <- reactive({
-        input$winter_partpeak_rate
-      })
-      
-      
-      summer_start_month <- reactive({
-        match(input$summer_month1, month.name)
-      })
-      summer_end_month <- reactive({
-        match(input$summer_month2, month.name)
-      })
-      summer_offpeak_start_hour <- reactive({
-        as.numeric(input$summer_offpeak_start)
-      })
-      summer_offpeak_end_hour <- reactive({
-        as.numeric(input$summer_offpeak_end)
-      })
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
-      winter_start_month <- reactive({
-        match(input$winter_month1, month.name)
-      })
-      winter_end_month <- reactive({
-        match(input$winter_month2, month.name)
-      })
-      winter_offpeak_start_hour <- reactive({
-        as.numeric(input$winter_offpeak_start)
-      })
-      winter_offpeak_end_hour <- reactive({
-        as.numeric(input$winter_offpeak_end)
-      })
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
+    } else if (usage_incl() && !demand_incl() && has_monthlymax() && has_partpeak()) {
       
       summer_dc_onpeak <- 0
       
@@ -9634,19 +8287,6 @@ server <- function(input, output, session) {
       summer_partpeak_demand <- 0
       
       winter_partpeak_demand <- 0
-      
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
       
       
       filtered_df_summeroff <- df_merged %>%
@@ -9989,7 +8629,7 @@ server <- function(input, output, session) {
       )
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "energycostimpact"] <- "Usage Cost"
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "demandcostimpact"] <- "Demand Cost"
-
+      
       df_final$original_modified[df_final$original_modified == "original"] <- "Baseline"
       df_final$original_modified[df_final$original_modified == "modified"] <- "Modified"
       
@@ -9999,72 +8639,7 @@ server <- function(input, output, session) {
       
       df_final$month <- factor(df_final$month, levels = month.name)
       
-    } else if (identical(input$tou_ed, c("Usage charge ($/kWh)")) && input$tou_mm_y_n == "No" && input$tou_periods == "Yes") {
-      
-      summer_offpeak_start_hour <- reactive({
-        as.numeric(input$summer_offpeak_start)
-      })
-      summer_offpeak_end_hour <- reactive({
-        as.numeric(input$summer_offpeak_end)
-      })
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
-      
-      winter_offpeak_start_hour <- reactive({
-        as.numeric(input$winter_offpeak_start)
-      })
-      winter_offpeak_end_hour <- reactive({
-        as.numeric(input$winter_offpeak_end)
-      })
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
-      
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
-      
-      summer_partpeak_start_hour <- reactive({
-        as.numeric(input$summer_partpeak_start_hour)
-      })
-      summer_partpeak_end_hour <- reactive({
-        as.numeric(input$summer_partpeak_end_hour)
-      })
-      
-      winter_partpeak_start_hour <- reactive({
-        as.numeric(input$winter_partpeak_start_hour)
-      })
-      
-      winter_partpeak_end_hour <- reactive({
-        as.numeric(input$winter_partpeak_end_hour)
-      })
-      
-      summer_partpeak_rate <- reactive({
-        input$summer_partpeak_rate
-      })
-      
-      winter_partpeak_rate <- reactive({
-        input$winter_partpeak_rate
-      })
-      
-      
-      
+    } else if (usage_incl() && !demand_incl() && !has_monthlymax() && has_partpeak()) {
       
       
       summer_dc_onpeak <- 0
@@ -10424,7 +8999,7 @@ server <- function(input, output, session) {
       )
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "energycostimpact"] <- "Usage Cost"
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "demandcostimpact"] <- "Demand Cost"
-
+      
       df_final$original_modified[df_final$original_modified == "original"] <- "Baseline"
       df_final$original_modified[df_final$original_modified == "modified"] <- "Modified"
       
@@ -10434,31 +9009,8 @@ server <- function(input, output, session) {
       
       df_final$month <- factor(df_final$month, levels = month.name)
       
-    } else if (identical(input$tou_ed, c("Demand charge ($/kW)")) && input$tou_mm_y_n == "Yes" && input$tou_periods == "No") {
+    } else if (!usage_incl() && demand_incl() && has_monthlymax() && !has_partpeak()) {
       
-      
-      summer_max_demand <- reactive({
-        as.numeric(input$summer_max_demand)
-      })
-      
-      winter_max_demand <- reactive({
-        as.numeric(input$winter_max_demand)
-      })
-      
-      summer_fixed_rate <- reactive({
-        as.numeric(input$summer_fixed_rate)
-      })
-      
-      winter_fixed_rate <- reactive({
-        as.numeric(input$winter_fixed_rate)
-      })
-      
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
       
       all_hours <- data.frame(allhours = 0:23)
       all_hours_onpeak_summer <- data.frame(allhours = summer_onpeak_start_hour():summer_onpeak_end_hour())
@@ -10469,12 +9021,7 @@ server <- function(input, output, session) {
       summer_offpeak_start_hour <- min(all_hours_offpeak_summer)
       summer_offpeak_end_hour <- max(all_hours_offpeak_summer)
       
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
+      
       
       all_hours <- data.frame(allhours = 0:23)
       all_hours_onpeak_winter <- data.frame(allhours = winter_onpeak_start_hour():winter_onpeak_end_hour())
@@ -10485,54 +9032,7 @@ server <- function(input, output, session) {
       winter_offpeak_start_hour <- min(all_hours_offpeak_winter)
       winter_offpeak_end_hour <- max(all_hours_offpeak_winter)
       
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
       
-      summer_partpeak_start_hour <- reactive({
-        as.numeric(input$summer_partpeak_start_hour)
-      })
-      summer_partpeak_end_hour <- reactive({
-        as.numeric(input$summer_partpeak_end_hour)
-      })
-      
-      winter_partpeak_start_hour <- reactive({
-        as.numeric(input$winter_partpeak_start_hour)
-      })
-      
-      winter_partpeak_end_hour <- reactive({
-        as.numeric(input$winter_partpeak_end_hour)
-      })
-      
-      
-      
-      
-      
-      
-      summer_dc_onpeak <- reactive({
-        as.numeric(input$summer_onpeak_demand)
-      })
-      
-      summer_dc_offpeak <- reactive({
-        as.numeric(input$summer_offpeak_demand)
-      })
-      
-      winter_dc_onpeak <- reactive({
-        as.numeric(input$winter_onpeak_demand)
-      })
-      
-      winter_dc_offpeak <- reactive({
-        as.numeric(input$winter_offpeak_demand)
-      })
       
       
       summer_partpeak_demand <- 0
@@ -10835,7 +9335,7 @@ server <- function(input, output, session) {
       )
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "energycostimpact"] <- "Usage Cost"
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "demandcostimpact"] <- "Demand Cost"
-
+      
       df_final$original_modified[df_final$original_modified == "original"] <- "Baseline"
       df_final$original_modified[df_final$original_modified == "modified"] <- "Modified"
       
@@ -10845,27 +9345,13 @@ server <- function(input, output, session) {
       
       df_final$month <- factor(df_final$month, levels = month.name)
       
-    } else if (identical(input$tou_ed, c("Demand charge ($/kW)")) && input$tou_mm_y_n == "No" && input$tou_periods == "No") {
+    } else if (!usage_incl() && demand_incl() && !has_monthlymax() && !has_partpeak()) {
       
       
       summer_max_demand <- 0
       
       winter_max_demand <- 0
       
-      summer_fixed_rate <- reactive({
-        as.numeric(input$summer_fixed_rate)
-      })
-      
-      winter_fixed_rate <- reactive({
-        as.numeric(input$winter_fixed_rate)
-      })
-      
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
       
       all_hours <- data.frame(allhours = 0:23)
       all_hours_onpeak_summer <- data.frame(allhours = summer_onpeak_start_hour():summer_onpeak_end_hour())
@@ -10876,12 +9362,7 @@ server <- function(input, output, session) {
       summer_offpeak_start_hour <- min(all_hours_offpeak_summer)
       summer_offpeak_end_hour <- max(all_hours_offpeak_summer)
       
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
+      
       
       all_hours <- data.frame(allhours = 0:23)
       all_hours_onpeak_winter <- data.frame(allhours = winter_onpeak_start_hour():winter_onpeak_end_hour())
@@ -10892,54 +9373,6 @@ server <- function(input, output, session) {
       winter_offpeak_start_hour <- min(all_hours_offpeak_winter)
       winter_offpeak_end_hour <- max(all_hours_offpeak_winter)
       
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
-      
-      summer_partpeak_start_hour <- reactive({
-        as.numeric(input$summer_partpeak_start_hour)
-      })
-      summer_partpeak_end_hour <- reactive({
-        as.numeric(input$summer_partpeak_end_hour)
-      })
-      
-      winter_partpeak_start_hour <- reactive({
-        as.numeric(input$winter_partpeak_start_hour)
-      })
-      
-      winter_partpeak_end_hour <- reactive({
-        as.numeric(input$winter_partpeak_end_hour)
-      })
-      
-      
-      
-      
-      
-      
-      summer_dc_onpeak <- reactive({
-        as.numeric(input$summer_onpeak_demand)
-      })
-      
-      summer_dc_offpeak <- reactive({
-        as.numeric(input$summer_offpeak_demand)
-      })
-      
-      winter_dc_onpeak <- reactive({
-        as.numeric(input$winter_onpeak_demand)
-      })
-      
-      winter_dc_offpeak <- reactive({
-        as.numeric(input$winter_offpeak_demand)
-      })
       
       
       summer_partpeak_demand <- 0
@@ -11240,7 +9673,7 @@ server <- function(input, output, session) {
       )
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "energycostimpact"] <- "Usage Cost"
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "demandcostimpact"] <- "Demand Cost"
-
+      
       df_final$original_modified[df_final$original_modified == "original"] <- "Baseline"
       df_final$original_modified[df_final$original_modified == "modified"] <- "Modified"
       
@@ -11250,108 +9683,7 @@ server <- function(input, output, session) {
       
       df_final$month <- factor(df_final$month, levels = month.name)
       
-    } else if (identical(input$tou_ed, c("Demand charge ($/kW)")) && input$tou_mm_y_n == "Yes" && input$tou_periods == "Yes") {
-      
-      
-      summer_max_demand <- reactive({
-        as.numeric(input$summer_max_demand)
-      })
-      
-      winter_max_demand <- reactive({
-        as.numeric(input$winter_max_demand)
-      })
-      
-      summer_fixed_rate <- reactive({
-        as.numeric(input$summer_fixed_rate)
-      })
-      
-      winter_fixed_rate <- reactive({
-        as.numeric(input$winter_fixed_rate)
-      })
-      
-      summer_offpeak_start_hour <- reactive({
-        as.numeric(input$summer_offpeak_start)
-      })
-      summer_offpeak_end_hour <- reactive({
-        as.numeric(input$summer_offpeak_end)
-      })
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
-      
-      winter_offpeak_start_hour <- reactive({
-        as.numeric(input$winter_offpeak_start)
-      })
-      winter_offpeak_end_hour <- reactive({
-        as.numeric(input$winter_offpeak_end)
-      })
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
-      
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
-      
-      summer_partpeak_start_hour <- reactive({
-        as.numeric(input$summer_partpeak_start_hour)
-      })
-      summer_partpeak_end_hour <- reactive({
-        as.numeric(input$summer_partpeak_end_hour)
-      })
-      
-      winter_partpeak_start_hour <- reactive({
-        as.numeric(input$winter_partpeak_start_hour)
-      })
-      
-      winter_partpeak_end_hour <- reactive({
-        as.numeric(input$winter_partpeak_end_hour)
-      })
-      
-      
-      
-      
-      
-      
-      summer_dc_onpeak <- reactive({
-        as.numeric(input$summer_onpeak_demand)
-      })
-      
-      summer_dc_offpeak <- reactive({
-        as.numeric(input$summer_offpeak_demand)
-      })
-      
-      winter_dc_onpeak <- reactive({
-        as.numeric(input$winter_onpeak_demand)
-      })
-      
-      winter_dc_offpeak <- reactive({
-        as.numeric(input$winter_offpeak_demand)
-      })
-      
-      summer_partpeak_demand <- reactive({
-        input$summer_partpeak_demand
-      })
-      
-      winter_partpeak_demand <- reactive({
-        input$winter_partpeak_demand
-      })
-      
+    } else if (!usage_incl() && demand_incl() && has_monthlymax() && has_partpeak()) {
       
       
       filtered_df_summeroff <- df_merged %>%
@@ -11649,7 +9981,7 @@ server <- function(input, output, session) {
       )
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "energycostimpact"] <- "Usage Cost"
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "demandcostimpact"] <- "Demand Cost"
-
+      
       df_final$original_modified[df_final$original_modified == "original"] <- "Baseline"
       df_final$original_modified[df_final$original_modified == "modified"] <- "Modified"
       
@@ -11659,104 +9991,12 @@ server <- function(input, output, session) {
       
       df_final$month <- factor(df_final$month, levels = month.name)
       
-    } else if (identical(input$tou_ed, c("Demand charge ($/kW)")) && input$tou_mm_y_n == "No" && input$tou_periods == "Yes") {
+    } else if (!usage_incl() && demand_incl() && !has_monthlymax() && has_partpeak()) {
       
       
       summer_max_demand <- 0
       
       winter_max_demand <- 0
-      
-      summer_fixed_rate <- reactive({
-        as.numeric(input$summer_fixed_rate)
-      })
-      
-      winter_fixed_rate <- reactive({
-        as.numeric(input$winter_fixed_rate)
-      })
-      
-      summer_offpeak_start_hour <- reactive({
-        as.numeric(input$summer_offpeak_start)
-      })
-      summer_offpeak_end_hour <- reactive({
-        as.numeric(input$summer_offpeak_end)
-      })
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
-      
-      winter_offpeak_start_hour <- reactive({
-        as.numeric(input$winter_offpeak_start)
-      })
-      winter_offpeak_end_hour <- reactive({
-        as.numeric(input$winter_offpeak_end)
-      })
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
-      
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
-      
-      summer_partpeak_start_hour <- reactive({
-        as.numeric(input$summer_partpeak_start_hour)
-      })
-      summer_partpeak_end_hour <- reactive({
-        as.numeric(input$summer_partpeak_end_hour)
-      })
-      
-      winter_partpeak_start_hour <- reactive({
-        as.numeric(input$winter_partpeak_start_hour)
-      })
-      
-      winter_partpeak_end_hour <- reactive({
-        as.numeric(input$winter_partpeak_end_hour)
-      })
-      
-      
-      
-      
-      
-      
-      summer_dc_onpeak <- reactive({
-        as.numeric(input$summer_onpeak_demand)
-      })
-      
-      summer_dc_offpeak <- reactive({
-        as.numeric(input$summer_offpeak_demand)
-      })
-      
-      winter_dc_onpeak <- reactive({
-        as.numeric(input$winter_onpeak_demand)
-      })
-      
-      winter_dc_offpeak <- reactive({
-        as.numeric(input$winter_offpeak_demand)
-      })
-      
-      summer_partpeak_demand <- reactive({
-        input$summer_partpeak_demand
-      })
-      
-      winter_partpeak_demand <- reactive({
-        input$winter_partpeak_demand
-      })
-      
       
       
       filtered_df_summeroff <- df_merged %>%
@@ -12054,7 +10294,7 @@ server <- function(input, output, session) {
       )
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "energycostimpact"] <- "Usage Cost"
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "demandcostimpact"] <- "Demand Cost"
-
+      
       df_final$original_modified[df_final$original_modified == "original"] <- "Baseline"
       df_final$original_modified[df_final$original_modified == "modified"] <- "Modified"
       
@@ -12064,64 +10304,7 @@ server <- function(input, output, session) {
       
       df_final$month <- factor(df_final$month, levels = month.name)
       
-    } else if (all(c("Usage charge ($/kWh)", "Demand charge ($/kW)") %in% input$tou_ed) && input$tou_mm_y_n == "Yes" && input$tou_periods == "No") {
-      summer_offpeak_start_hour <- reactive({
-        as.numeric(input$summer_offpeak_start)
-      })
-      summer_offpeak_end_hour <- reactive({
-        as.numeric(input$summer_offpeak_end)
-      })
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
-      winter_offpeak_start_hour <- reactive({
-        as.numeric(input$winter_offpeak_start)
-      })
-      winter_offpeak_end_hour <- reactive({
-        as.numeric(input$winter_offpeak_end)
-      })
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
-      summer_dc_onpeak <- reactive({
-        input$summer_onpeak_demand
-      })
-      summer_dc_offpeak <- reactive({
-        input$summer_offpeak_demand
-      })
-      summer_max_demand <- reactive({
-        input$summer_max_demand
-      })
-      winter_dc_onpeak <- reactive({
-        input$winter_onpeak_demand
-      })
-      winter_dc_offpeak <- reactive({
-        input$winter_offpeak_demand
-      })
-      winter_max_demand <- reactive({
-        input$winter_max_demand
-      })
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
-      
-      
-      
+    } else if (usage_incl() && demand_incl() && has_monthlymax() && !has_partpeak()) {
       
       
       
@@ -12387,7 +10570,7 @@ server <- function(input, output, session) {
       )
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "energycostimpact"] <- "Usage Cost"
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "demandcostimpact"] <- "Demand Cost"
-
+      
       df_final$original_modified[df_final$original_modified == "original"] <- "Baseline"
       df_final$original_modified[df_final$original_modified == "modified"] <- "Modified"
       
@@ -12398,61 +10581,11 @@ server <- function(input, output, session) {
       df_final$month <- factor(df_final$month, levels = month.name)
       
     } else {
-      summer_offpeak_start_hour <- reactive({
-        as.numeric(input$summer_offpeak_start)
-      })
-      summer_offpeak_end_hour <- reactive({
-        as.numeric(input$summer_offpeak_end)
-      })
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
-      winter_offpeak_start_hour <- reactive({
-        as.numeric(input$winter_offpeak_start)
-      })
-      winter_offpeak_end_hour <- reactive({
-        as.numeric(input$winter_offpeak_end)
-      })
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
-      summer_dc_onpeak <- reactive({
-        input$summer_onpeak_demand
-      })
-      summer_dc_offpeak <- reactive({
-        input$summer_offpeak_demand
-      })
+      
       summer_max_demand <- 0
-        
-      winter_dc_onpeak <- reactive({
-        input$winter_onpeak_demand
-      })
-      winter_dc_offpeak <- reactive({
-        input$winter_offpeak_demand
-      })
+      
+      
       winter_max_demand <- 0
-        
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
-      
-      
-      
       
       
       
@@ -12718,7 +10851,7 @@ server <- function(input, output, session) {
       )
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "energycostimpact"] <- "Usage Cost"
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "demandcostimpact"] <- "Demand Cost"
-
+      
       df_final$original_modified[df_final$original_modified == "original"] <- "Baseline"
       df_final$original_modified[df_final$original_modified == "modified"] <- "Modified"
       
@@ -12754,7 +10887,7 @@ server <- function(input, output, session) {
     df_lcac <- na.omit(df_lcac)
     
     annual_costsavings <- sum(df_lcac$cost)
-
+    
     df_lcac <- df_lcac %>%
       drop_na() %>% 
       group_by(month) %>%
@@ -12785,85 +10918,85 @@ server <- function(input, output, session) {
     
     lcac_macc_plotly <- ggplotly(lcac_macc)
     
-   if( any(df_lcac$co2_impact > 0)) {
-    
-  lcac_macc_plotly <- lcac_macc_plotly %>%
-      layout(showlegend = TRUE, legend = list(font = list(size = 10)),
-        annotations = list(
-          list(
-            x =0,
-            y = 0.99,
-            text = if_else(annual_costsavings<=0,
-                           paste("Annual Costs Reduction = $",format(round(-annual_costsavings), big.mark = ",", scientific = FALSE),"/yr",sep = ""),
-                           paste("Annual Costs Increase = $",format(round(annual_costsavings), big.mark = ",", scientific = FALSE),"/yr",sep = "")),
-            showarrow = FALSE,
-            xref = "paper",
-            yref = "paper",
-            xanchor = "left",
-            yanchor = "top"
-          ),
-          list(
-            x =0,
-            y = 0.85,
-            text = if_else(annual_co2savings>=0,
-                           paste("Annual CO<sub>2</sub>e Reduction = ",format(round(annual_co2savings), big.mark = ",", scientific = FALSE)," MTCO<sub>2</sub>e/yr",sep = ""),
-                           paste("Annual CO<sub>2</sub>e Increase = ",format(round(-annual_co2savings), big.mark = ",", scientific = FALSE)," MTCO<sub>2</sub>e/yr",sep = "")),
-            showarrow = FALSE,
-            xref = "paper",
-            yref = "paper",
-            xanchor = "left",
-            yanchor = "bottom"
-          )
-         )
-      )
- 
-    output$lcac_plot <- renderPlotly({
-      lcac_macc_plotly <- ggplotly(lcac_macc_plotly)
+    if( any(df_lcac$co2_impact > 0)) {
+      
       lcac_macc_plotly <- lcac_macc_plotly %>%
-        config(displayModeBar = T,
-               modeBarButtonsToRemove = list("zoom2d",
-                                             "zoomIn2d",
-                                             "zoomOut2d",
-                                             "autoScale2d",
-                                             "resetScale2d",
-                                             "hoverClosestCartesian",
-                                             "hoverCompareCartesian", 
-                                             "lasso2d",
-                                             "select2d",
-                                             "zoom3d",
-                                             "pan3d",
-                                             "orbitRotation",
-                                             "tableRotation",
-                                             "handleDrag3d",
-                                             "resetCameraDefault3d",
-                                             "resetCameraLastSave3d", 
-                                             "hoverClosest3d",
-                                             "zoomInGeo",
-                                             "zoomOutGeo",
-                                             "resetGeo", 
-                                             "hoverClosestGeo",
-                                             "hoverClosestGl2d",
-                                             "hoverClosestPie", 
-                                             "toggleHover", 
-                                             "resetViews", 
-                                             "toggleSpikelines"))
-      return(lcac_macc_plotly)
-    })  }  else {
-      output$lcac_plot <- renderPlotly({
-        plotly_empty() %>% layout(
-          annotations = list(
-            text = "The 'Added Load' inputs do not lead to emission savings.\n Therefore, we cannot create an abatement plot.",
-            x = 0.5,
-            y = 0.5,
-            showarrow = FALSE,
-            font = list(size = 20)
-          )
+        layout(showlegend = TRUE, legend = list(font = list(size = 10)),
+               annotations = list(
+                 list(
+                   x =0,
+                   y = 0.99,
+                   text = if_else(annual_costsavings<=0,
+                                  paste("Annual Costs Reduction = $",format(round(-annual_costsavings), big.mark = ",", scientific = FALSE),"/yr",sep = ""),
+                                  paste("Annual Costs Increase = $",format(round(annual_costsavings), big.mark = ",", scientific = FALSE),"/yr",sep = "")),
+                   showarrow = FALSE,
+                   xref = "paper",
+                   yref = "paper",
+                   xanchor = "left",
+                   yanchor = "top"
+                 ),
+                 list(
+                   x =0,
+                   y = 0.85,
+                   text = if_else(annual_co2savings>=0,
+                                  paste("Annual CO<sub>2</sub>e Reduction = ",format(round(annual_co2savings), big.mark = ",", scientific = FALSE)," MTCO<sub>2</sub>e/yr",sep = ""),
+                                  paste("Annual CO<sub>2</sub>e Increase = ",format(round(-annual_co2savings), big.mark = ",", scientific = FALSE)," MTCO<sub>2</sub>e/yr",sep = "")),
+                   showarrow = FALSE,
+                   xref = "paper",
+                   yref = "paper",
+                   xanchor = "left",
+                   yanchor = "bottom"
+                 )
+               )
         )
-      })
-    }
-
-   cost_savings_summary <- df_final %>% 
-     drop_na() %>% 
+      
+      output$lcac_plot <- renderPlotly({
+        lcac_macc_plotly <- ggplotly(lcac_macc_plotly)
+        lcac_macc_plotly <- lcac_macc_plotly %>%
+          config(displayModeBar = T,
+                 modeBarButtonsToRemove = list("zoom2d",
+                                               "zoomIn2d",
+                                               "zoomOut2d",
+                                               "autoScale2d",
+                                               "resetScale2d",
+                                               "hoverClosestCartesian",
+                                               "hoverCompareCartesian", 
+                                               "lasso2d",
+                                               "select2d",
+                                               "zoom3d",
+                                               "pan3d",
+                                               "orbitRotation",
+                                               "tableRotation",
+                                               "handleDrag3d",
+                                               "resetCameraDefault3d",
+                                               "resetCameraLastSave3d", 
+                                               "hoverClosest3d",
+                                               "zoomInGeo",
+                                               "zoomOutGeo",
+                                               "resetGeo", 
+                                               "hoverClosestGeo",
+                                               "hoverClosestGl2d",
+                                               "hoverClosestPie", 
+                                               "toggleHover", 
+                                               "resetViews", 
+                                               "toggleSpikelines"))
+        return(lcac_macc_plotly)
+      })  }  else {
+        output$lcac_plot <- renderPlotly({
+          plotly_empty() %>% layout(
+            annotations = list(
+              text = "The 'Added Load' inputs do not lead to emission savings.\n Therefore, we cannot create an abatement plot.",
+              x = 0.5,
+              y = 0.5,
+              showarrow = FALSE,
+              font = list(size = 20)
+            )
+          )
+        })
+      }
+    
+    cost_savings_summary <- df_final %>% 
+      drop_na() %>% 
       group_by(original_modified, energy_demand) %>% 
       summarise(cost = sum(cost))
     
@@ -12971,25 +11104,25 @@ server <- function(input, output, session) {
     
     df_annual_final <- df_final %>%
       group_by(original_modified, energy_demand) %>%
-      summarise(annual_costs = sum(cost))
+      summarise(annual_costs = sum(cost), .groups = 'drop')
     
     min <- min(0.8 * df_annual_final$value)
     max <- max(1.3 * df_annual_final$value)
     
     annual_cost_for_annual_graph <- df_final %>% 
       group_by(original_modified) %>% 
-      summarise(annual_cost = sum(cost))
-
+      summarise(annual_cost = sum(cost), .groups = 'drop')
+    
     annual_cost_for_annual_graph_y_axis <- max(annual_cost_for_annual_graph$annual_cost)
     
-   label_cost_second <-  if_else(usage_cost_savings>=0 & demand_cost_savings >=0,
-            paste0("Usage Cost Savings= ",dollar(usage_cost_savings, accuracy = 1) , "/yr","\n","Demand Cost Savings= ",dollar(demand_cost_savings, accuracy = 1),"/yr"),
-            if_else(usage_cost_savings<0 & demand_cost_savings <0,
-            paste0("Usage Cost Increase= ",dollar(-usage_cost_savings, accuracy = 1) , "/yr","\n","Demand Cost Increase= ",dollar(-demand_cost_savings, accuracy = 1),"/yr"),
-            if_else(usage_cost_savings<0 & demand_cost_savings >=0,
-            paste0("Usage Cost Increase= ",dollar(-usage_cost_savings, accuracy = 1) , "/yr","\n","Demand Cost Savings= ",dollar(demand_cost_savings, accuracy = 1),"/yr"),
-            paste0("Usage Cost Savings= ",dollar(usage_cost_savings, accuracy = 1) , "/yr","\n","Demand Cost Increase= ",dollar(-demand_cost_savings, accuracy = 1),"/yr"))))
-
+    label_cost_second <-  if_else(usage_cost_savings>=0 & demand_cost_savings >=0,
+                                  paste0("Usage Cost Savings= ",dollar(usage_cost_savings, accuracy = 1) , "/yr","\n","Demand Cost Savings= ",dollar(demand_cost_savings, accuracy = 1),"/yr"),
+                                  if_else(usage_cost_savings<0 & demand_cost_savings <0,
+                                          paste0("Usage Cost Increase= ",dollar(-usage_cost_savings, accuracy = 1) , "/yr","\n","Demand Cost Increase= ",dollar(-demand_cost_savings, accuracy = 1),"/yr"),
+                                          if_else(usage_cost_savings<0 & demand_cost_savings >=0,
+                                                  paste0("Usage Cost Increase= ",dollar(-usage_cost_savings, accuracy = 1) , "/yr","\n","Demand Cost Savings= ",dollar(demand_cost_savings, accuracy = 1),"/yr"),
+                                                  paste0("Usage Cost Savings= ",dollar(usage_cost_savings, accuracy = 1) , "/yr","\n","Demand Cost Increase= ",dollar(-demand_cost_savings, accuracy = 1),"/yr"))))
+    
     
     output$cost_plot_annual <- renderPlotly({
       p <- ggplot() +
@@ -13074,7 +11207,7 @@ server <- function(input, output, session) {
       mutate(type = sub(" .*", "", type))  %>% 
       mutate(month = factor(month, levels = month.name)) %>%
       arrange(type, month)
-      
+    
     
     output$co2_plot_annual <- renderPlotly({
       p <-  ggplot() +
@@ -13128,7 +11261,7 @@ server <- function(input, output, session) {
         config(displayModeBar = T, modeBarButtonsToRemove = list("zoom2d", "zoomIn2d", "zoomOut2d", "autoScale2d", "resetScale2d", "hoverClosestCartesian", "hoverCompareCartesian", "lasso2d", "select2d", "zoom3d", "pan3d", "orbitRotation", "tableRotation", "handleDrag3d", "resetCameraDefault3d", "resetCameraLastSave3d", "hoverClosest3d", "zoomInGeo", "zoomOutGeo", "resetGeo", "hoverClosestGeo", "hoverClosestGl2d", "hoverClosestPie", "toggleHover", "resetViews", "toggleSpikelines"))
       
       return(p2)
-          })
+    })
     
     output$download_co2em_data_monthly  <- downloadHandler(
       filename = function() {
@@ -13254,7 +11387,7 @@ server <- function(input, output, session) {
     if (is.null(loadpf_file)) {
       return(NULL)
     }
-
+    
     if(input$emissions_type == "U.S. EPA's 2022 eGRID" && input$state != "") {
       df_em_rate_0 <-  read_excel("AllUploadFiles_ToolTesting/States Emission Factors/eGRID/eGRID 2022.xlsx")
       if (input$green_manual == "Green Button: 15-Minute") {
@@ -13388,7 +11521,7 @@ server <- function(input, output, session) {
     }
     
     if (input$green_manual == "Custom Hourly Load") {
-
+      
       df_loadpf_long_fin <- read_excel(loadpf_file$datapath)
       
       df_loadpf_long_fin <- df_loadpf_long_fin %>%
@@ -13455,15 +11588,15 @@ server <- function(input, output, session) {
       
       df_loadpf_2 <- cbind(df_loadpf_sorted, days, order) # bind the three dataframes
       
-       if (work_on_weekends == "Y") {
+      if (work_on_weekends == "Y") {
         
-         df_loadpf_3 <- df_loadpf_2 %>%
-           mutate(
-             kwhpd = energy_usage_k_wh/days,
-             baseline_demand_pd = 0.3*billed_demand_k_w,
-             peak_demand_pd = billed_demand_k_w,
-             mid_demand_pd = (kwhpd - non_working_hours*baseline_demand_pd-peak_demand_pd*peak_hours)/mid_low_hours
-           )
+        df_loadpf_3 <- df_loadpf_2 %>%
+          mutate(
+            kwhpd = energy_usage_k_wh/days,
+            baseline_demand_pd = 0.3*billed_demand_k_w,
+            peak_demand_pd = billed_demand_k_w,
+            mid_demand_pd = (kwhpd - non_working_hours*baseline_demand_pd-peak_demand_pd*peak_hours)/mid_low_hours
+          )
         
         df_loadpf_4 <-  df_loadpf_3 %>% 
           pivot_longer(cols = !c("month":"kwhpd"),
@@ -13517,7 +11650,7 @@ server <- function(input, output, session) {
           return(weekdays_count$count)
         }
         
-      
+        
         df_loadpf_3 <- df_loadpf_2 %>%
           mutate(
             no_of_weekdays = mapply(count_weekdays, year, order)
@@ -13596,7 +11729,7 @@ server <- function(input, output, session) {
       
       df_merged <- df_loadpf_long_fin %>%
         full_join(df_em_rate, by = "datetime")
-
+      
       df_merged$co2em_inv <- (df_merged$em_rate * df_merged[, 5]* (1-input$perc_clean * 0.01)) / 1000
       
       df_merged$mod_load <- df_merged$Load
@@ -13669,7 +11802,7 @@ server <- function(input, output, session) {
       })
       
       df_loadpf_long_fin <- updated_df()
-
+      
       df_merged <- merge( df_loadpf_long_fin, df_em_rate,by = "datetime", all = TRUE)
       
       df_merged$co2em_inv <- (df_merged$em_rate * df_merged$Load* (1-input$perc_clean * 0.01)) / 1000
@@ -13747,7 +11880,7 @@ server <- function(input, output, session) {
       })
       
       df_loadpf_long_fin <- updated_df()
-
+      
       df_merged <- merge( df_loadpf_long_fin,df_em_rate_15, by = "datetime", all = TRUE)
       
       df_merged$co2em_inv <- (df_merged$em_rate * df_merged$Load* (1-input$perc_clean * 0.01)) / 1000
@@ -13768,7 +11901,7 @@ server <- function(input, output, session) {
       end_date <- date_range()[2]+1
       df_merged <- subset(df_merged, datetime >= start_date & datetime < end_date)
     }
-
+    
     
     for (i in 1:nrow(data)) {
       if (input$addData == "Upload Existing Spreadsheet") {
@@ -13793,7 +11926,7 @@ server <- function(input, output, session) {
               mutate(time = format(as.POSIXct(datetime, origin = "1970-01-01"), format = "%H:%M"),
                      mod_load = ifelse(as.ITime(time) >= time_to_min & as.ITime(time) <= time_to_max & (mod_load + scl_value) >=0 , mod_load + scl_value, ifelse(as.ITime(time) >= time_to_min & as.ITime(time) <= time_to_max & (mod_load + scl_value) <0 , 0, mod_load))) %>% 
               select(-time)
-          
+            
             
           } else {
             
@@ -13817,7 +11950,7 @@ server <- function(input, output, session) {
               weekday <- weekdays(date)
               return(weekday %in% c("Saturday", "Sunday"))
             }
-
+            
             df_merged$is_weekend_test <- sapply(df_merged$datetime, is_weekend_test)
             
             df_merged1 <- df_merged %>%
@@ -13861,12 +11994,12 @@ server <- function(input, output, session) {
             scl_value <- scl_value
             
             df_merged <- df_merged
-
+            
             df_merged1 <- df_merged %>%
               mutate(time = format(as.POSIXct(datetime, origin = "1970-01-01"), format = "%H:%M"),
-                mod_load = if_else((as.ITime(time) >= time_to_min) & (as.ITime(time) <= time_to_max) & ((mod_load + scl_value) >=0) ,
-                                       mod_load + scl_value,
-                                       if_else((as.ITime(time) >= time_to_min) & (as.ITime(time) <= time_to_max) & ((mod_load + scl_value) <0) , 0, mod_load))) %>% 
+                     mod_load = if_else((as.ITime(time) >= time_to_min) & (as.ITime(time) <= time_to_max) & ((mod_load + scl_value) >=0) ,
+                                        mod_load + scl_value,
+                                        if_else((as.ITime(time) >= time_to_min) & (as.ITime(time) <= time_to_max) & ((mod_load + scl_value) <0) , 0, mod_load))) %>% 
               select(-time)
             
           } else {
@@ -13880,9 +12013,9 @@ server <- function(input, output, session) {
             
             df_merged1 <- df_merged %>%
               mutate(time = format(as.POSIXct(datetime, origin = "1970-01-01"), format = "%H:%M"),
-                mod_load = if_else((as.ITime(time) >= time_to_min) & (as.ITime(time) <= time_to_max) & ((mod_load + scl_value) >=0) ,
-                                       mod_load + scl_value,
-                                       if_else((as.ITime(time) >= time_to_min) & (as.ITime(time) <= time_to_max) & ((mod_load + scl_value) <0) , 0, mod_load))) %>% 
+                     mod_load = if_else((as.ITime(time) >= time_to_min) & (as.ITime(time) <= time_to_max) & ((mod_load + scl_value) >=0) ,
+                                        mod_load + scl_value,
+                                        if_else((as.ITime(time) >= time_to_min) & (as.ITime(time) <= time_to_max) & ((mod_load + scl_value) <0) , 0, mod_load))) %>% 
               select(-time)
             
           }
@@ -13902,7 +12035,7 @@ server <- function(input, output, session) {
               mutate(time = format(as.POSIXct(datetime, origin = "1970-01-01"), format = "%H:%M"),
                      mod_load = ifelse(as.ITime(time) >= time_to_min & as.ITime(time) <= time_to_max & is_weekend_test==FALSE & (mod_load + scl_value)>=0, mod_load + scl_value, ifelse(as.ITime(time) >= time_to_min & as.ITime(time) <= time_to_max & is_weekend_test == FALSE & (mod_load + scl_value)<0,0,mod_load))) %>%
               select(-c(is_weekend_test,time))
-
+            
             
           } else {
             
@@ -13934,7 +12067,7 @@ server <- function(input, output, session) {
     }
     
     df_merged <- df_merged
-
+    
     df_merged$co2_em_inv_mod <- (df_merged$em_rate * df_merged$mod_load* (1-input$perc_clean * 0.01)) / 1000
     total_co2_saved <- sum(df_merged$co2em_inv) - sum(df_merged$co2_em_inv_mod)
     df_merged_lcac <- df_merged
@@ -14011,7 +12144,7 @@ server <- function(input, output, session) {
     
     start_date_graph <- as.Date(date_range()[1])
     end_date_graph <- start_date_graph + 6
- 
+    
     output$co2_emissions_change_plot <- renderPlotly({
       plot_ly() %>%
         add_lines(data = df_merged,
@@ -14073,37 +12206,11 @@ server <- function(input, output, session) {
     df_merged$ogcost <- df_merged$Load
     df_merged$modcost <- df_merged$mod_load
     
-    summer_start_month <- reactive({
-      match(input$summer_month1, month.name)
-    })
-    summer_end_month <- reactive({
-      match(input$summer_month2, month.name)
-    })
-    winter_start_month <- reactive({
-      match(input$winter_month1, month.name)
-    })
     
-    winter_end_month <- reactive({
-      match(input$winter_month2, month.name)
-    })
     
-    if (is.null(input$tou_ed) && input$tou_mm_y_n == "Yes") { ##No TOU for either energy or demand. But fixed demand charge present.
+    if (fixed_usage() && fixed_demand() && has_monthlymax()) {  
       
-      summer_max_demand <- reactive({
-        input$summer_max_demand
-      })
       
-      winter_max_demand <- reactive({
-        input$winter_max_demand
-      })
-      
-      winter_fixed_rate <- reactive({
-        input$winter_fixed_rate
-      })
-      
-      summer_fixed_rate <- reactive({
-        input$summer_fixed_rate
-      })
       
       
       # Filter for summer months
@@ -14201,7 +12308,7 @@ server <- function(input, output, session) {
       )
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "energycostimpact"] <- "Usage Cost"
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "demandcostimpact"] <- "Demand Cost"
-
+      
       df_final$original_modified[df_final$original_modified == "original"] <- "Baseline"
       df_final$original_modified[df_final$original_modified == "modified"] <- "Modified"
       
@@ -14211,22 +12318,7 @@ server <- function(input, output, session) {
       
       df_final$month <- factor(df_final$month, levels = month.name)
       
-    } else if (is.null(input$tou_ed) && input$tou_mm_y_n == "No") {
-      summer_max_demand <- reactive({
-        input$summer_max_demand
-      })
-      
-      winter_max_demand <- reactive({
-        input$winter_max_demand
-      })
-      
-      winter_fixed_rate <- reactive({
-        input$winter_fixed_rate
-      })
-      
-      summer_fixed_rate <- reactive({
-        input$summer_fixed_rate
-      })
+    } else if (fixed_usage() && fixed_demand() && !has_monthlymax()) {
       
       # Filter for summer months
       filtered_df_summeroff <- df_merged %>%
@@ -14320,7 +12412,7 @@ server <- function(input, output, session) {
       )
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "energycostimpact"] <- "Usage Cost"
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "demandcostimpact"] <- "Demand Cost"
-
+      
       df_final$original_modified[df_final$original_modified == "original"] <- "Baseline"
       df_final$original_modified[df_final$original_modified == "modified"] <- "Modified"
       
@@ -14330,21 +12422,8 @@ server <- function(input, output, session) {
       
       df_final$month <- factor(df_final$month, levels = month.name)
       
-    } else if (identical(input$tou_ed, c("Usage charge ($/kWh)")) && input$tou_mm_y_n == "Yes" && input$tou_periods == "No") {
-      summer_max_demand <- reactive({
-        input$summer_max_demand
-      })
+    } else if (usage_incl() && !demand_incl() && has_monthlymax() && !has_partpeak()) {
       
-      winter_max_demand <- reactive({
-        input$winter_max_demand
-      })
-      
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
       
       all_hours <- data.frame(allhours = 0:23)
       all_hours_onpeak_summer <- data.frame(allhours = summer_onpeak_start_hour():summer_onpeak_end_hour())
@@ -14355,12 +12434,7 @@ server <- function(input, output, session) {
       summer_offpeak_start_hour <- min(all_hours_offpeak_summer)
       summer_offpeak_end_hour <- max(all_hours_offpeak_summer)
       
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
+      
       
       all_hours <- data.frame(allhours = 0:23)
       all_hours_onpeak_winter <- data.frame(allhours = winter_onpeak_start_hour():winter_onpeak_end_hour())
@@ -14371,18 +12445,6 @@ server <- function(input, output, session) {
       winter_offpeak_start_hour <- min(all_hours_offpeak_winter)
       winter_offpeak_end_hour <- max(all_hours_offpeak_winter)
       
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
       
       winter_dc_onpeak <- 0
       summer_dc_onpeak <- 0
@@ -14650,7 +12712,7 @@ server <- function(input, output, session) {
       )
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "energycostimpact"] <- "Usage Cost"
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "demandcostimpact"] <- "Demand Cost"
-
+      
       df_final$original_modified[df_final$original_modified == "original"] <- "Baseline"
       df_final$original_modified[df_final$original_modified == "modified"] <- "Modified"
       
@@ -14660,14 +12722,9 @@ server <- function(input, output, session) {
       
       df_final$month <- factor(df_final$month, levels = month.name)
       
-    }else if (identical(input$tou_ed, c("Usage charge ($/kWh)")) && input$tou_mm_y_n == "No" && input$tou_periods == "No") {
+    }else if (usage_incl() && !demand_incl() && !has_monthlymax() && !has_partpeak()) {
       
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
+      
       
       all_hours <- data.frame(allhours = 0:23)
       all_hours_onpeak_summer <- data.frame(allhours = summer_onpeak_start_hour():summer_onpeak_end_hour())
@@ -14678,12 +12735,7 @@ server <- function(input, output, session) {
       summer_offpeak_start_hour <- min(all_hours_offpeak_summer)
       summer_offpeak_end_hour <- max(all_hours_offpeak_summer)
       
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
+      
       
       all_hours <- data.frame(allhours = 0:23)
       all_hours_onpeak_winter <- data.frame(allhours = winter_onpeak_start_hour():winter_onpeak_end_hour())
@@ -14694,18 +12746,7 @@ server <- function(input, output, session) {
       winter_offpeak_start_hour <- min(all_hours_offpeak_winter)
       winter_offpeak_end_hour <- max(all_hours_offpeak_winter)
       
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
+      
       
       winter_dc_onpeak <- 0
       summer_dc_onpeak <- 0
@@ -14973,7 +13014,7 @@ server <- function(input, output, session) {
       )
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "energycostimpact"] <- "Usage Cost"
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "demandcostimpact"] <- "Demand Cost"
-
+      
       df_final$original_modified[df_final$original_modified == "original"] <- "Baseline"
       df_final$original_modified[df_final$original_modified == "modified"] <- "Modified"
       
@@ -14982,150 +13023,9 @@ server <- function(input, output, session) {
       
       
       df_final$month <- factor(df_final$month, levels = month.name)
-    } else if (all(c("Usage charge ($/kWh)", "Demand charge ($/kW)") %in% input$tou_ed) && input$tou_mm_y_n == "Yes" && input$tou_periods == "Yes") {
-      
-      summer_offpeak_start_hour <- reactive({
-        as.numeric(input$summer_offpeak_start)
-      })
-      
-      summer_offpeak_end_hour <- reactive({
-        as.numeric(input$summer_offpeak_end)
-      })
-      
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
-      
-      winter_offpeak_start_hour <- reactive({
-        as.numeric(input$winter_offpeak_start)
-      })
-      
-      winter_offpeak_end_hour <- reactive({
-        as.numeric(input$winter_offpeak_end)
-      })
-      
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
-      
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
-      
-      summer_partpeak_start_hour <- reactive({
-        as.numeric(input$summer_partpeak_start_hour)
-      })
-      summer_partpeak_end_hour <- reactive({
-        as.numeric(input$summer_partpeak_end_hour)
-      })
-      
-      winter_partpeak_start_hour <- reactive({
-        as.numeric(input$winter_partpeak_start_hour)
-      })
-      
-      winter_partpeak_end_hour <- reactive({
-        as.numeric(input$winter_partpeak_end_hour)
-      })
-      
-      summer_partpeak_rate <- reactive({
-        input$summer_partpeak_rate
-      })
-      
-      winter_partpeak_rate <- reactive({
-        input$winter_partpeak_rate
-      })
+    } else if (usage_incl() && demand_incl() && has_monthlymax() && has_partpeak()) {
       
       
-      summer_start_month <- reactive({
-        match(input$summer_month1, month.name)
-      })
-      summer_end_month <- reactive({
-        match(input$summer_month2, month.name)
-      })
-      summer_offpeak_start_hour <- reactive({
-        as.numeric(input$summer_offpeak_start)
-      })
-      summer_offpeak_end_hour <- reactive({
-        as.numeric(input$summer_offpeak_end)
-      })
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
-      winter_start_month <- reactive({
-        match(input$winter_month1, month.name)
-      })
-      winter_end_month <- reactive({
-        match(input$winter_month2, month.name)
-      })
-      winter_offpeak_start_hour <- reactive({
-        as.numeric(input$winter_offpeak_start)
-      })
-      winter_offpeak_end_hour <- reactive({
-        as.numeric(input$winter_offpeak_end)
-      })
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
-      summer_dc_onpeak <- reactive({
-        input$summer_onpeak_demand
-      })
-      summer_dc_offpeak <- reactive({
-        input$summer_offpeak_demand
-      })
-      summer_max_demand <- reactive({
-        input$summer_max_demand
-      })
-      winter_dc_onpeak <- reactive({
-        input$winter_onpeak_demand
-      })
-      winter_dc_offpeak <- reactive({
-        input$winter_offpeak_demand
-      })
-      winter_max_demand <- reactive({
-        input$winter_max_demand
-      })
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
-      
-      summer_partpeak_demand <- reactive({
-        input$summer_partpeak_demand
-      })
-      
-      winter_partpeak_demand <- reactive({
-        input$winter_partpeak_demand
-      })
       
       filtered_df_summeroff <- df_merged %>%
         filter(month(datetime) >= summer_start_month() & month(datetime) <= summer_end_month())
@@ -15466,7 +13366,7 @@ server <- function(input, output, session) {
       )
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "energycostimpact"] <- "Usage Cost"
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "demandcostimpact"] <- "Demand Cost"
-
+      
       df_final$original_modified[df_final$original_modified == "original"] <- "Baseline"
       df_final$original_modified[df_final$original_modified == "modified"] <- "Modified"
       
@@ -15476,145 +13376,9 @@ server <- function(input, output, session) {
       
       df_final$month <- factor(df_final$month, levels = month.name)
       
-    } else if (all(c("Usage charge ($/kWh)", "Demand charge ($/kW)") %in% input$tou_ed) && input$tou_mm_y_n == "No" && input$tou_periods == "Yes") {
-      
-      summer_offpeak_start_hour <- reactive({
-        as.numeric(input$summer_offpeak_start)
-      })
-      
-      summer_offpeak_end_hour <- reactive({
-        as.numeric(input$summer_offpeak_end)
-      })
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
+    } else if (usage_incl() && demand_incl() && !has_monthlymax() && has_partpeak()) {
       
       
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
-      
-      
-      winter_offpeak_start_hour <- reactive({
-        as.numeric(input$winter_offpeak_start)
-      })
-      winter_offpeak_end_hour <- reactive({
-        as.numeric(input$winter_offpeak_end)
-      })
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
-      
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
-      
-      summer_partpeak_start_hour <- reactive({
-        as.numeric(input$summer_partpeak_start_hour)
-      })
-      summer_partpeak_end_hour <- reactive({
-        as.numeric(input$summer_partpeak_end_hour)
-      })
-      
-      winter_partpeak_start_hour <- reactive({
-        as.numeric(input$winter_partpeak_start_hour)
-      })
-      
-      winter_partpeak_end_hour <- reactive({
-        as.numeric(input$winter_partpeak_end_hour)
-      })
-      
-      summer_partpeak_rate <- reactive({
-        input$summer_partpeak_rate
-      })
-      
-      winter_partpeak_rate <- reactive({
-        input$winter_partpeak_rate
-      })
-      
-      
-      
-      
-      summer_start_month <- reactive({
-        match(input$summer_month1, month.name)
-      })
-      summer_end_month <- reactive({
-        match(input$summer_month2, month.name)
-      })
-      summer_offpeak_start_hour <- reactive({
-        as.numeric(input$summer_offpeak_start)
-      })
-      summer_offpeak_end_hour <- reactive({
-        as.numeric(input$summer_offpeak_end)
-      })
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
-      winter_start_month <- reactive({
-        match(input$winter_month1, month.name)
-      })
-      winter_end_month <- reactive({
-        match(input$winter_month2, month.name)
-      })
-      winter_offpeak_start_hour <- reactive({
-        as.numeric(input$winter_offpeak_start)
-      })
-      winter_offpeak_end_hour <- reactive({
-        as.numeric(input$winter_offpeak_end)
-      })
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
-      summer_dc_onpeak <- reactive({
-        input$summer_onpeak_demand
-      })
-      summer_dc_offpeak <- reactive({
-        input$summer_offpeak_demand
-      })
-      winter_dc_onpeak <- reactive({
-        input$winter_onpeak_demand
-      })
-      winter_dc_offpeak <- reactive({
-        input$winter_offpeak_demand
-      })
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
-      
-      summer_partpeak_demand <- reactive({
-        input$summer_partpeak_demand
-      })
-      
-      winter_partpeak_demand <- reactive({
-        input$winter_partpeak_demand
-      })
       
       filtered_df_summeroff <- df_merged %>%
         filter(month(datetime) >= summer_start_month() & month(datetime) <= summer_end_month())
@@ -15957,7 +13721,7 @@ server <- function(input, output, session) {
       )
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "energycostimpact"] <- "Usage Cost"
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "demandcostimpact"] <- "Demand Cost"
-
+      
       df_final$original_modified[df_final$original_modified == "original"] <- "Baseline"
       df_final$original_modified[df_final$original_modified == "modified"] <- "Modified"
       
@@ -15967,114 +13731,8 @@ server <- function(input, output, session) {
       
       df_final$month <- factor(df_final$month, levels = month.name)
       
-    } else if (identical(input$tou_ed, c("Usage charge ($/kWh)")) && input$tou_mm_y_n == "Yes" && input$tou_periods == "Yes") {
-      summer_max_demand <- reactive({
-        input$summer_max_demand
-      })
+    } else if (usage_incl() && !demand_incl() && has_monthlymax() && has_partpeak()) {
       
-      winter_max_demand <- reactive({
-        input$winter_max_demand
-      })
-      
-      summer_offpeak_start_hour <- reactive({
-        as.numeric(input$summer_offpeak_start)
-      })
-      summer_offpeak_end_hour <- reactive({
-        as.numeric(input$summer_offpeak_end)
-      })
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
-      
-      winter_offpeak_start_hour <- reactive({
-        as.numeric(input$winter_offpeak_start)
-      })
-      winter_offpeak_end_hour <- reactive({
-        as.numeric(input$winter_offpeak_end)
-      })
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
-      
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
-      
-      summer_partpeak_start_hour <- reactive({
-        as.numeric(input$summer_partpeak_start_hour)
-      })
-      summer_partpeak_end_hour <- reactive({
-        as.numeric(input$summer_partpeak_end_hour)
-      })
-      
-      winter_partpeak_start_hour <- reactive({
-        as.numeric(input$winter_partpeak_start_hour)
-      })
-      
-      winter_partpeak_end_hour <- reactive({
-        as.numeric(input$winter_partpeak_end_hour)
-      })
-      
-      summer_partpeak_rate <- reactive({
-        input$summer_partpeak_rate
-      })
-      
-      winter_partpeak_rate <- reactive({
-        input$winter_partpeak_rate
-      })
-      
-      
-      summer_start_month <- reactive({
-        match(input$summer_month1, month.name)
-      })
-      summer_end_month <- reactive({
-        match(input$summer_month2, month.name)
-      })
-      summer_offpeak_start_hour <- reactive({
-        as.numeric(input$summer_offpeak_start)
-      })
-      summer_offpeak_end_hour <- reactive({
-        as.numeric(input$summer_offpeak_end)
-      })
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
-      winter_start_month <- reactive({
-        match(input$winter_month1, month.name)
-      })
-      winter_end_month <- reactive({
-        match(input$winter_month2, month.name)
-      })
-      winter_offpeak_start_hour <- reactive({
-        as.numeric(input$winter_offpeak_start)
-      })
-      winter_offpeak_end_hour <- reactive({
-        as.numeric(input$winter_offpeak_end)
-      })
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
       
       summer_dc_onpeak <- 0
       
@@ -16088,18 +13746,7 @@ server <- function(input, output, session) {
       
       winter_partpeak_demand <- 0
       
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
+      
       
       
       filtered_df_summeroff <- df_merged %>%
@@ -16442,7 +14089,7 @@ server <- function(input, output, session) {
       )
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "energycostimpact"] <- "Usage Cost"
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "demandcostimpact"] <- "Demand Cost"
-
+      
       df_final$original_modified[df_final$original_modified == "original"] <- "Baseline"
       df_final$original_modified[df_final$original_modified == "modified"] <- "Modified"
       
@@ -16452,71 +14099,7 @@ server <- function(input, output, session) {
       
       df_final$month <- factor(df_final$month, levels = month.name)
       
-    } else if (identical(input$tou_ed, c("Usage charge ($/kWh)")) && input$tou_mm_y_n == "No" && input$tou_periods == "Yes") {
-      
-      summer_offpeak_start_hour <- reactive({
-        as.numeric(input$summer_offpeak_start)
-      })
-      summer_offpeak_end_hour <- reactive({
-        as.numeric(input$summer_offpeak_end)
-      })
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
-      
-      winter_offpeak_start_hour <- reactive({
-        as.numeric(input$winter_offpeak_start)
-      })
-      winter_offpeak_end_hour <- reactive({
-        as.numeric(input$winter_offpeak_end)
-      })
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
-      
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
-      
-      summer_partpeak_start_hour <- reactive({
-        as.numeric(input$summer_partpeak_start_hour)
-      })
-      summer_partpeak_end_hour <- reactive({
-        as.numeric(input$summer_partpeak_end_hour)
-      })
-      
-      winter_partpeak_start_hour <- reactive({
-        as.numeric(input$winter_partpeak_start_hour)
-      })
-      
-      winter_partpeak_end_hour <- reactive({
-        as.numeric(input$winter_partpeak_end_hour)
-      })
-      
-      summer_partpeak_rate <- reactive({
-        input$summer_partpeak_rate
-      })
-      
-      winter_partpeak_rate <- reactive({
-        input$winter_partpeak_rate
-      })
-      
-      
+    } else if (usage_incl() && !demand_incl() && !has_monthlymax() && has_partpeak()) {
       
       
       
@@ -16877,7 +14460,7 @@ server <- function(input, output, session) {
       )
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "energycostimpact"] <- "Usage Cost"
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "demandcostimpact"] <- "Demand Cost"
-
+      
       df_final$original_modified[df_final$original_modified == "original"] <- "Baseline"
       df_final$original_modified[df_final$original_modified == "modified"] <- "Modified"
       
@@ -16887,31 +14470,9 @@ server <- function(input, output, session) {
       
       df_final$month <- factor(df_final$month, levels = month.name)
       
-    } else if (identical(input$tou_ed, c("Demand charge ($/kW)")) && input$tou_mm_y_n == "Yes" && input$tou_periods == "No") {
+    } else if (!usage_incl() && demand_incl() && has_monthlymax() && !has_partpeak()) {
       
       
-      summer_max_demand <- reactive({
-        as.numeric(input$summer_max_demand)
-      })
-      
-      winter_max_demand <- reactive({
-        as.numeric(input$winter_max_demand)
-      })
-      
-      summer_fixed_rate <- reactive({
-        as.numeric(input$summer_fixed_rate)
-      })
-      
-      winter_fixed_rate <- reactive({
-        as.numeric(input$winter_fixed_rate)
-      })
-      
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
       
       all_hours <- data.frame(allhours = 0:23)
       all_hours_onpeak_summer <- data.frame(allhours = summer_onpeak_start_hour():summer_onpeak_end_hour())
@@ -16922,12 +14483,7 @@ server <- function(input, output, session) {
       summer_offpeak_start_hour <- min(all_hours_offpeak_summer)
       summer_offpeak_end_hour <- max(all_hours_offpeak_summer)
       
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
+      
       
       all_hours <- data.frame(allhours = 0:23)
       all_hours_onpeak_winter <- data.frame(allhours = winter_onpeak_start_hour():winter_onpeak_end_hour())
@@ -16938,54 +14494,7 @@ server <- function(input, output, session) {
       winter_offpeak_start_hour <- min(all_hours_offpeak_winter)
       winter_offpeak_end_hour <- max(all_hours_offpeak_winter)
       
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
       
-      summer_partpeak_start_hour <- reactive({
-        as.numeric(input$summer_partpeak_start_hour)
-      })
-      summer_partpeak_end_hour <- reactive({
-        as.numeric(input$summer_partpeak_end_hour)
-      })
-      
-      winter_partpeak_start_hour <- reactive({
-        as.numeric(input$winter_partpeak_start_hour)
-      })
-      
-      winter_partpeak_end_hour <- reactive({
-        as.numeric(input$winter_partpeak_end_hour)
-      })
-      
-      
-      
-      
-      
-      
-      summer_dc_onpeak <- reactive({
-        as.numeric(input$summer_onpeak_demand)
-      })
-      
-      summer_dc_offpeak <- reactive({
-        as.numeric(input$summer_offpeak_demand)
-      })
-      
-      winter_dc_onpeak <- reactive({
-        as.numeric(input$winter_onpeak_demand)
-      })
-      
-      winter_dc_offpeak <- reactive({
-        as.numeric(input$winter_offpeak_demand)
-      })
       
       
       summer_partpeak_demand <- 0
@@ -17288,7 +14797,7 @@ server <- function(input, output, session) {
       )
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "energycostimpact"] <- "Usage Cost"
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "demandcostimpact"] <- "Demand Cost"
-
+      
       df_final$original_modified[df_final$original_modified == "original"] <- "Baseline"
       df_final$original_modified[df_final$original_modified == "modified"] <- "Modified"
       
@@ -17298,27 +14807,14 @@ server <- function(input, output, session) {
       
       df_final$month <- factor(df_final$month, levels = month.name)
       
-    } else if (identical(input$tou_ed, c("Demand charge ($/kW)")) && input$tou_mm_y_n == "No" && input$tou_periods == "No") {
+    } else if (!usage_incl() && demand_incl() && !has_monthlymax() && !has_partpeak()) {
       
       
       summer_max_demand <- 0
       
       winter_max_demand <- 0
       
-      summer_fixed_rate <- reactive({
-        as.numeric(input$summer_fixed_rate)
-      })
       
-      winter_fixed_rate <- reactive({
-        as.numeric(input$winter_fixed_rate)
-      })
-      
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
       
       all_hours <- data.frame(allhours = 0:23)
       all_hours_onpeak_summer <- data.frame(allhours = summer_onpeak_start_hour():summer_onpeak_end_hour())
@@ -17329,12 +14825,7 @@ server <- function(input, output, session) {
       summer_offpeak_start_hour <- min(all_hours_offpeak_summer)
       summer_offpeak_end_hour <- max(all_hours_offpeak_summer)
       
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
+      
       
       all_hours <- data.frame(allhours = 0:23)
       all_hours_onpeak_winter <- data.frame(allhours = winter_onpeak_start_hour():winter_onpeak_end_hour())
@@ -17345,54 +14836,6 @@ server <- function(input, output, session) {
       winter_offpeak_start_hour <- min(all_hours_offpeak_winter)
       winter_offpeak_end_hour <- max(all_hours_offpeak_winter)
       
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
-      
-      summer_partpeak_start_hour <- reactive({
-        as.numeric(input$summer_partpeak_start_hour)
-      })
-      summer_partpeak_end_hour <- reactive({
-        as.numeric(input$summer_partpeak_end_hour)
-      })
-      
-      winter_partpeak_start_hour <- reactive({
-        as.numeric(input$winter_partpeak_start_hour)
-      })
-      
-      winter_partpeak_end_hour <- reactive({
-        as.numeric(input$winter_partpeak_end_hour)
-      })
-      
-      
-      
-      
-      
-      
-      summer_dc_onpeak <- reactive({
-        as.numeric(input$summer_onpeak_demand)
-      })
-      
-      summer_dc_offpeak <- reactive({
-        as.numeric(input$summer_offpeak_demand)
-      })
-      
-      winter_dc_onpeak <- reactive({
-        as.numeric(input$winter_onpeak_demand)
-      })
-      
-      winter_dc_offpeak <- reactive({
-        as.numeric(input$winter_offpeak_demand)
-      })
       
       
       summer_partpeak_demand <- 0
@@ -17693,7 +15136,7 @@ server <- function(input, output, session) {
       )
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "energycostimpact"] <- "Usage Cost"
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "demandcostimpact"] <- "Demand Cost"
-
+      
       df_final$original_modified[df_final$original_modified == "original"] <- "Baseline"
       df_final$original_modified[df_final$original_modified == "modified"] <- "Modified"
       
@@ -17703,107 +15146,7 @@ server <- function(input, output, session) {
       
       df_final$month <- factor(df_final$month, levels = month.name)
       
-    } else if (identical(input$tou_ed, c("Demand charge ($/kW)")) && input$tou_mm_y_n == "Yes" && input$tou_periods == "Yes") {
-      
-      
-      summer_max_demand <- reactive({
-        as.numeric(input$summer_max_demand)
-      })
-      
-      winter_max_demand <- reactive({
-        as.numeric(input$winter_max_demand)
-      })
-      
-      summer_fixed_rate <- reactive({
-        as.numeric(input$summer_fixed_rate)
-      })
-      
-      winter_fixed_rate <- reactive({
-        as.numeric(input$winter_fixed_rate)
-      })
-      
-      summer_offpeak_start_hour <- reactive({
-        as.numeric(input$summer_offpeak_start)
-      })
-      summer_offpeak_end_hour <- reactive({
-        as.numeric(input$summer_offpeak_end)
-      })
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
-      
-      winter_offpeak_start_hour <- reactive({
-        as.numeric(input$winter_offpeak_start)
-      })
-      winter_offpeak_end_hour <- reactive({
-        as.numeric(input$winter_offpeak_end)
-      })
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
-      
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
-      
-      summer_partpeak_start_hour <- reactive({
-        as.numeric(input$summer_partpeak_start_hour)
-      })
-      summer_partpeak_end_hour <- reactive({
-        as.numeric(input$summer_partpeak_end_hour)
-      })
-      
-      winter_partpeak_start_hour <- reactive({
-        as.numeric(input$winter_partpeak_start_hour)
-      })
-      
-      winter_partpeak_end_hour <- reactive({
-        as.numeric(input$winter_partpeak_end_hour)
-      })
-      
-      
-      
-      
-      
-      
-      summer_dc_onpeak <- reactive({
-        as.numeric(input$summer_onpeak_demand)
-      })
-      
-      summer_dc_offpeak <- reactive({
-        as.numeric(input$summer_offpeak_demand)
-      })
-      
-      winter_dc_onpeak <- reactive({
-        as.numeric(input$winter_onpeak_demand)
-      })
-      
-      winter_dc_offpeak <- reactive({
-        as.numeric(input$winter_offpeak_demand)
-      })
-      
-      summer_partpeak_demand <- reactive({
-        input$summer_partpeak_demand
-      })
-      
-      winter_partpeak_demand <- reactive({
-        input$winter_partpeak_demand
-      })
+    } else if (!usage_incl() && demand_incl() && has_monthlymax() && has_partpeak()) {
       
       
       
@@ -18102,7 +15445,7 @@ server <- function(input, output, session) {
       )
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "energycostimpact"] <- "Usage Cost"
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "demandcostimpact"] <- "Demand Cost"
-
+      
       df_final$original_modified[df_final$original_modified == "original"] <- "Baseline"
       df_final$original_modified[df_final$original_modified == "modified"] <- "Modified"
       
@@ -18112,103 +15455,13 @@ server <- function(input, output, session) {
       
       df_final$month <- factor(df_final$month, levels = month.name)
       
-    } else if (identical(input$tou_ed, c("Demand charge ($/kW)")) && input$tou_mm_y_n == "No" && input$tou_periods == "Yes") {
+    } else if (!usage_incl() && demand_incl() && !has_monthlymax() && has_partpeak()) {
       
       
       summer_max_demand <- 0
       
       winter_max_demand <- 0
       
-      summer_fixed_rate <- reactive({
-        as.numeric(input$summer_fixed_rate)
-      })
-      
-      winter_fixed_rate <- reactive({
-        as.numeric(input$winter_fixed_rate)
-      })
-      
-      summer_offpeak_start_hour <- reactive({
-        as.numeric(input$summer_offpeak_start)
-      })
-      summer_offpeak_end_hour <- reactive({
-        as.numeric(input$summer_offpeak_end)
-      })
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
-      
-      winter_offpeak_start_hour <- reactive({
-        as.numeric(input$winter_offpeak_start)
-      })
-      winter_offpeak_end_hour <- reactive({
-        as.numeric(input$winter_offpeak_end)
-      })
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
-      
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
-      
-      summer_partpeak_start_hour <- reactive({
-        as.numeric(input$summer_partpeak_start_hour)
-      })
-      summer_partpeak_end_hour <- reactive({
-        as.numeric(input$summer_partpeak_end_hour)
-      })
-      
-      winter_partpeak_start_hour <- reactive({
-        as.numeric(input$winter_partpeak_start_hour)
-      })
-      
-      winter_partpeak_end_hour <- reactive({
-        as.numeric(input$winter_partpeak_end_hour)
-      })
-      
-      
-      
-      
-      
-      
-      summer_dc_onpeak <- reactive({
-        as.numeric(input$summer_onpeak_demand)
-      })
-      
-      summer_dc_offpeak <- reactive({
-        as.numeric(input$summer_offpeak_demand)
-      })
-      
-      winter_dc_onpeak <- reactive({
-        as.numeric(input$winter_onpeak_demand)
-      })
-      
-      winter_dc_offpeak <- reactive({
-        as.numeric(input$winter_offpeak_demand)
-      })
-      
-      summer_partpeak_demand <- reactive({
-        input$summer_partpeak_demand
-      })
-      
-      winter_partpeak_demand <- reactive({
-        input$winter_partpeak_demand
-      })
       
       
       
@@ -18507,7 +15760,7 @@ server <- function(input, output, session) {
       )
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "energycostimpact"] <- "Usage Cost"
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "demandcostimpact"] <- "Demand Cost"
-
+      
       df_final$original_modified[df_final$original_modified == "original"] <- "Baseline"
       df_final$original_modified[df_final$original_modified == "modified"] <- "Modified"
       
@@ -18517,65 +15770,7 @@ server <- function(input, output, session) {
       
       df_final$month <- factor(df_final$month, levels = month.name)
       
-    } else if (all(c("Usage charge ($/kWh)", "Demand charge ($/kW)") %in% input$tou_ed) && input$tou_mm_y_n == "Yes" && input$tou_periods == "No") {
-      summer_offpeak_start_hour <- reactive({
-        as.numeric(input$summer_offpeak_start)
-      })
-      summer_offpeak_end_hour <- reactive({
-        as.numeric(input$summer_offpeak_end)
-      })
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
-      winter_offpeak_start_hour <- reactive({
-        as.numeric(input$winter_offpeak_start)
-      })
-      winter_offpeak_end_hour <- reactive({
-        as.numeric(input$winter_offpeak_end)
-      })
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
-      summer_dc_onpeak <- reactive({
-        input$summer_onpeak_demand
-      })
-      summer_dc_offpeak <- reactive({
-        input$summer_offpeak_demand
-      })
-      summer_max_demand <- reactive({
-        input$summer_max_demand
-      })
-      winter_dc_onpeak <- reactive({
-        input$winter_onpeak_demand
-      })
-      winter_dc_offpeak <- reactive({
-        input$winter_offpeak_demand
-      })
-      winter_max_demand <- reactive({
-        input$winter_max_demand
-      })
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
-      
-      
-      
-      
+    } else if (usage_incl() && demand_incl() && has_monthlymax() && !has_partpeak()) {
       
       
       filtered_df_summeroff <- df_merged %>%
@@ -18840,7 +16035,7 @@ server <- function(input, output, session) {
       )
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "energycostimpact"] <- "Usage Cost"
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "demandcostimpact"] <- "Demand Cost"
-
+      
       df_final$original_modified[df_final$original_modified == "original"] <- "Baseline"
       df_final$original_modified[df_final$original_modified == "modified"] <- "Modified"
       
@@ -18851,58 +16046,12 @@ server <- function(input, output, session) {
       df_final$month <- factor(df_final$month, levels = month.name)
       
     } else {
-      summer_offpeak_start_hour <- reactive({
-        as.numeric(input$summer_offpeak_start)
-      })
-      summer_offpeak_end_hour <- reactive({
-        as.numeric(input$summer_offpeak_end)
-      })
-      summer_onpeak_start_hour <- reactive({
-        as.numeric(input$summer_onpeak_start)
-      })
-      summer_onpeak_end_hour <- reactive({
-        as.numeric(input$summer_onpeak_end)
-      })
-      winter_offpeak_start_hour <- reactive({
-        as.numeric(input$winter_offpeak_start)
-      })
-      winter_offpeak_end_hour <- reactive({
-        as.numeric(input$winter_offpeak_end)
-      })
-      winter_onpeak_start_hour <- reactive({
-        as.numeric(input$winter_onpeak_start)
-      })
-      winter_onpeak_end_hour <- reactive({
-        as.numeric(input$winter_onpeak_end)
-      })
-      summer_dc_onpeak <- reactive({
-        input$summer_onpeak_demand
-      })
-      summer_dc_offpeak <- reactive({
-        input$summer_offpeak_demand
-      })
+      
       summer_max_demand <- 0
       
-      winter_dc_onpeak <- reactive({
-        input$winter_onpeak_demand
-      })
-      winter_dc_offpeak <- reactive({
-        input$winter_offpeak_demand
-      })
+      
       winter_max_demand <- 0
       
-      summer_offpeak_rate <- reactive({
-        input$summer_offpeak_rate
-      })
-      summer_onpeak_rate <- reactive({
-        input$summer_onpeak_rate
-      })
-      winter_offpeak_rate <- reactive({
-        input$winter_offpeak_rate
-      })
-      winter_onpeak_rate <- reactive({
-        input$winter_onpeak_rate
-      })
       
       
       
@@ -19171,7 +16320,7 @@ server <- function(input, output, session) {
       )
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "energycostimpact"] <- "Usage Cost"
       merged_df_costfinal_lcac$energy_demand[merged_df_costfinal_lcac$energy_demand == "demandcostimpact"] <- "Demand Cost"
-
+      
       df_final$original_modified[df_final$original_modified == "original"] <- "Baseline"
       df_final$original_modified[df_final$original_modified == "modified"] <- "Modified"
       
@@ -19183,7 +16332,7 @@ server <- function(input, output, session) {
     }
     
     
-
+    
     
     print(df_final)
     
@@ -19282,55 +16431,55 @@ server <- function(input, output, session) {
     lcac_macc_plotly <- ggplotly(lcac_macc)
     
     if(annual_co2savings >0) {
-    
-    lcac_macc_plotly <- lcac_macc_plotly %>%
-      layout(showlegend = TRUE, legend = list(font = list(size = 10)),
-        annotations = list(
-          list(
-            x = 0.5,
-            y = 0.99,
-            text = if_else(annual_costsavings<=0,
-                           paste("Annual Costs Reduction = $",format(round(-annual_costsavings), big.mark = ",", scientific = FALSE),"/yr",sep = ""),
-                           paste("Annual Costs Increase = $",format(round(annual_costsavings), big.mark = ",", scientific = FALSE),"/yr",sep = "")),
-            showarrow = FALSE,
-            xref = "paper",
-            yref = "paper",
-            xanchor = "right",
-            yanchor = "top"
-          ),
-          list(
-            x = 0.5,
-            y = 0.99,
-            text = if_else(annual_co2savings>=0,
-                           paste("Annual CO<sub>2</sub>e Reduction = ",format(round(annual_co2savings), big.mark = ",", scientific = FALSE)," MTCO<sub>2</sub>e/yr",sep = ""),
-                           paste("Annual CO<sub>2</sub>e Increase = ",format(round(-annual_co2savings), big.mark = ",", scientific = FALSE)," MTCO<sub>2</sub>e/yr",sep = "")),
-            showarrow = FALSE,
-            xref = "paper",
-            yref = "paper",
-            xanchor = "right",
-            yanchor = "bottom"
-          )
-        )
-      )
-    
-    output$lcac_plot <- renderPlotly({
-      lcac_macc_plotly <- ggplotly(lcac_macc_plotly)
+      
       lcac_macc_plotly <- lcac_macc_plotly %>%
-        config(displayModeBar = T, modeBarButtonsToRemove = list("zoom2d", "zoomIn2d", "zoomOut2d", "autoScale2d", "resetScale2d", "hoverClosestCartesian", "hoverCompareCartesian", "lasso2d", "select2d", "zoom3d", "pan3d", "orbitRotation", "tableRotation", "handleDrag3d", "resetCameraDefault3d", "resetCameraLastSave3d", "hoverClosest3d", "zoomInGeo", "zoomOutGeo", "resetGeo", "hoverClosestGeo", "hoverClosestGl2d", "hoverClosestPie", "toggleHover", "resetViews", "toggleSpikelines"))
-      return(lcac_macc_plotly)
-    })
-    
-    
-    
-    output$download_lcac_data <- downloadHandler(
-      filename = function() {
-        "lcac_data.xlsx"
-      },
-      content = function(file) {
-        write.xlsx(df_lcac, file) 
-      }
-    )
-    
+        layout(showlegend = TRUE, legend = list(font = list(size = 10)),
+               annotations = list(
+                 list(
+                   x = 0.5,
+                   y = 0.99,
+                   text = if_else(annual_costsavings<=0,
+                                  paste("Annual Costs Reduction = $",format(round(-annual_costsavings), big.mark = ",", scientific = FALSE),"/yr",sep = ""),
+                                  paste("Annual Costs Increase = $",format(round(annual_costsavings), big.mark = ",", scientific = FALSE),"/yr",sep = "")),
+                   showarrow = FALSE,
+                   xref = "paper",
+                   yref = "paper",
+                   xanchor = "right",
+                   yanchor = "top"
+                 ),
+                 list(
+                   x = 0.5,
+                   y = 0.99,
+                   text = if_else(annual_co2savings>=0,
+                                  paste("Annual CO<sub>2</sub>e Reduction = ",format(round(annual_co2savings), big.mark = ",", scientific = FALSE)," MTCO<sub>2</sub>e/yr",sep = ""),
+                                  paste("Annual CO<sub>2</sub>e Increase = ",format(round(-annual_co2savings), big.mark = ",", scientific = FALSE)," MTCO<sub>2</sub>e/yr",sep = "")),
+                   showarrow = FALSE,
+                   xref = "paper",
+                   yref = "paper",
+                   xanchor = "right",
+                   yanchor = "bottom"
+                 )
+               )
+        )
+      
+      output$lcac_plot <- renderPlotly({
+        lcac_macc_plotly <- ggplotly(lcac_macc_plotly)
+        lcac_macc_plotly <- lcac_macc_plotly %>%
+          config(displayModeBar = T, modeBarButtonsToRemove = list("zoom2d", "zoomIn2d", "zoomOut2d", "autoScale2d", "resetScale2d", "hoverClosestCartesian", "hoverCompareCartesian", "lasso2d", "select2d", "zoom3d", "pan3d", "orbitRotation", "tableRotation", "handleDrag3d", "resetCameraDefault3d", "resetCameraLastSave3d", "hoverClosest3d", "zoomInGeo", "zoomOutGeo", "resetGeo", "hoverClosestGeo", "hoverClosestGl2d", "hoverClosestPie", "toggleHover", "resetViews", "toggleSpikelines"))
+        return(lcac_macc_plotly)
+      })
+      
+      
+      
+      output$download_lcac_data <- downloadHandler(
+        filename = function() {
+          "lcac_data.xlsx"
+        },
+        content = function(file) {
+          write.xlsx(df_lcac, file) 
+        }
+      )
+      
     }  else {
       output$lcac_plot <- renderPlotly({
         plotly_empty() %>% layout(
@@ -19427,7 +16576,7 @@ server <- function(input, output, session) {
                    nrow = 1
         )
       
-
+      
       gg_cost_plot2 <- ggplotly(gg_cost_plot, tooltip = "text")
       
       gg_cost_plot2 <- gg_cost_plot2 %>%
@@ -19466,7 +16615,7 @@ server <- function(input, output, session) {
     
     df_annual_final <- df_final %>%
       group_by(original_modified, energy_demand) %>%
-      summarise(annual_costs = sum(cost))
+      summarise(annual_costs = sum(cost), .groups = 'drop')
     
     
     min <- min(0.8 * df_annual_final$value)
@@ -19474,7 +16623,7 @@ server <- function(input, output, session) {
     
     annual_cost_for_annual_graph <- df_final %>% 
       group_by(original_modified) %>% 
-      summarise(annual_cost = sum(cost))
+      summarise(annual_cost = sum(cost), .groups = 'drop')
     
     annual_cost_for_annual_graph_y_axis <- max(annual_cost_for_annual_graph$annual_cost)
     annual_cost_for_annual_graph_y_axis <- annual_cost_for_annual_graph_y_axis
@@ -19567,10 +16716,10 @@ server <- function(input, output, session) {
     co2_annual_final <- co2_annual_final
     
     co2_annual_final_export <- co2_annual_final %>% 
-       select(-concat) %>% 
-       rename("CO2e Emissions Profile (kg/month)" = co2) %>% 
-       mutate(type = sub(" .*", "", type))  %>% 
-       mutate(month = factor(month, levels = month.name)) %>%
+      select(-concat) %>% 
+      rename("CO2e Emissions Profile (kg/month)" = co2) %>% 
+      mutate(type = sub(" .*", "", type))  %>% 
+      mutate(month = factor(month, levels = month.name)) %>%
       arrange(type, month)
     
     output$co2_plot_annual <- renderPlotly({
@@ -19677,10 +16826,10 @@ server <- function(input, output, session) {
     )
   })
   
-   observeEvent(input$reset_input, {
-     shinyjs::reset("side-panel")
-   
-   #Reset button event handler
+  observeEvent(input$reset_input, {
+    shinyjs::reset("side-panel")
+    
+    #Reset button event handler
     updateRadioButtons(session, "green_manual", selected = "12 Months Utility Bills")
     updateSelectInput(session, "emissions_type", selected = "2022")
     updateSelectInput(session, "state", selected = "")
