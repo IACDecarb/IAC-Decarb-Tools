@@ -87,7 +87,7 @@ ui <- fluidPage(
           br(),
           h1("Suggested Citation"),
           tags$p(
-            "Ali Qamar, Muhammad, Khan, Ovais, Karki, Unique, Sinha, Vedant, Kissock, John, and Rao, Prakash. Levelized Cost Curve Tool (LCC) (2025) . Available: industrialdecarb.lbl.gov/apps/lcc/. doi:doi.org/10.11578/dc.20240807.3",
+            "Ali Qamar, Muhammad, Khan, Ovais, Karki, Unique, Sinha, Vedant, Kissock, Kelly, and Rao, Prakash. Levelized Cost Curve Tool (LCC) (2025) . Available: industrialdecarb.lbl.gov/apps/lcc/. doi:doi.org/10.11578/dc.20240807.3",
             style = "font-size: 18px; font-style: italic;"
           )
         )
