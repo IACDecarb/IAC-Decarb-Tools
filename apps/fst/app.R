@@ -273,6 +273,12 @@ ui <- fluidPage(
           tags$p(
             "1. Estimate Product Energy, Energy costs, and Emissions Intensity based on associated processes or equipment.",
             style = "font-size: 18px;"
+          ),
+          br(),
+          h1("Suggested Citation"),
+          tags$p(
+            "Khan, Ovais, Ali Qamar, Muhammad, Karki, Unique, Sinha, Vedant, Kissock, Kelly & Rao, Prakash. Facility Sankey Tool (FST) (2025). Available: industrialdecarb.lbl.gov/apps/fst. doi: doi.org/10.11578/dc.20240813.3",
+            style = "font-size: 18px; font-style: italic;"
           )
         )
       ),

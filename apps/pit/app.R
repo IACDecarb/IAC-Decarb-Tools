@@ -76,6 +76,12 @@ ui <- fluidPage(
           tags$p("3. Run technical analysis.", style = "font-size: 18px;"),
           tags$p("4. Specify economic and emissions inputs to perform economic and emission analysis.", style = "font-size: 18px;"),
           tags$p("5. Download results.", style = "font-size: 18px;"),
+          br(),
+          h1("Suggested Citation"),
+          tags$p(
+            "Khan, Ovais, Ali Qamar, Muhammad, Karki, Unique, Kissock, Kelly, Rao, Prakash. Pinch Heat Integration Tool (PIT) (2025). Available: industrialdecarb.lbl.gov/apps/pit/. doi: 10.11578/dc.20250709.5",
+            style = "font-size: 18px; font-style: italic;"
+          )
         )
       ),
       tags$div(
