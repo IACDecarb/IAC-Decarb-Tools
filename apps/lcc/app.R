@@ -84,6 +84,12 @@ ui <- fluidPage(
           h3("Tab 3: Emissions"),
           tags$p("1. View and customize Levelized Cost of Avoided CO₂e (LCAC) Diagram.", style = "font-size: 18px;"),
           tags$p("2. Download LCAC Diagram.", style = "font-size: 18px;"),
+          br(),
+          h1("Suggested Citation"),
+          tags$p(
+            "Ali Qamar, Muhammad, Khan, Ovais, Karki, Unique, Sinha, Vedant, Kissock, John, and Rao, Prakash. Levelized Cost Curve Tool (LCC) (2025) . Available: industrialdecarb.lbl.gov/apps/lcc/. doi:doi.org/10.11578/dc.20240807.3",
+            style = "font-size: 18px; font-style: italic;"
+          )
         )
       ),
       tags$div(
