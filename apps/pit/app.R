@@ -1150,11 +1150,11 @@ server <- function(input, output, session) {
     t_uni <- uni[[1, "tin"]]
     q_uni <- uni[[1, "q"]]
     data <- tibble(
-      'Metric' = c('Heat Exchange Potential','Heat Pump - Source Potential','Heat Pump - Source Temperature',
+      'Metric' = c('Heat Exchange Potential', 'Pinch Temperature - Needs Heating','Pinch Temperature - Needs Cooling','Heat Pump - Source Potential','Heat Pump - Source Temperature',
                   'Heat Pump - Sink Potential','Heat Pump - Sink Temperature','High Temperature Heating Requirement','Heat Pump Source Streams','Heat Exchange Streams - Needs Cooling',
                   'Heat Exchange Streams - Needs Heating','Heat Pump Sink Streams','High Temperature Heating Streams'),
-      'Value' = c(all_q$qhx,all_q$qhp.so,wavg.source(),all_q$qhp.si,wavg.sink(),all_q$qbg, lb.hp.so(),lb.hx.c(), lb.hx.nh(), lb.hp.si(),lb.ht()),
-      'Units' = c(q_uni,q_uni,t_uni,q_uni,t_uni,q_uni,'','','','','')
+      'Value' = c(all_q$qhx,coor$y_coor, coor$y_coor+coor$p_lab, all_q$qhp.so,wavg.source(),all_q$qhp.si,wavg.sink(),all_q$qbg, lb.hp.so(),lb.hx.c(), lb.hx.nh(), lb.hp.si(),lb.ht()),
+      'Units' = c(q_uni,t_uni,t_uni,q_uni,t_uni,q_uni,t_uni,q_uni,'','','','','')
     )
     data
   })
@@ -1495,8 +1495,8 @@ server <- function(input, output, session) {
              slope = (endy-starty)/(endx-startx),
              intercept = starty - (slope*startx))
     
-    min_temp <- min(line_seg_fc$starty)
-    max_temp <- max(line_seg_fh$endy)
+    min_temp <- min(line_seg_fc$starty, line_seg_fh$starty)
+    max_temp <- max(line_seg_fh$endy, line_seg_fc$endy)
     
     gcc <- tibble(
       'temp' = seq(min_temp,max_temp, by=0.1),
