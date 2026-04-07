@@ -1564,6 +1564,9 @@ server <- function(input, output, session) {
     y_max_limit = max(gcc$x)
     x_max_limit = max(gcc$temp)
     
+    y_min_limit = min(gcc$x)
+    x_min_limit = min(gcc$temp)
+    
     p <- ggplot(gcc, aes(x = temp, y = x)) +
       geom_line() +  # main line, no hover text here
       geom_point(aes(
@@ -1580,8 +1583,8 @@ server <- function(input, output, session) {
         axis.text = element_text(size = 15),
         plot.title = element_text(size = 24)
       ) +
-      scale_y_continuous(limits = c(0, y_max_limit)) +
-      scale_x_continuous(limits = c(0, x_max_limit)) +
+      scale_y_continuous(limits = c(y_min_limit, y_max_limit)) +
+      scale_x_continuous(limits = c(x_min_limit, x_max_limit)) +
       ggtitle("Grand Composite Curve")
     
     
