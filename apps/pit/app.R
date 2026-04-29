@@ -13,6 +13,8 @@ library(plotly)
 library(openxlsx)
 library(bslib)
 
+
+
 # UI ----
 
 ui <- fluidPage(
@@ -582,7 +584,8 @@ server <- function(input, output, session) {
       select('temps' =tout)%>% 
       unique()
     df2 <- bind_rows(tinc, toutc) %>% 
-      arrange(desc(temps)) 
+      arrange(desc(temps)) %>% 
+      unique
     
     new_df1c <- df2[1:(nrow(df2) - 1), ]
     new_df2c <- df2[-1, ]
@@ -636,7 +639,8 @@ server <- function(input, output, session) {
       select('temps' = tout)%>% 
       unique()
     df <- bind_rows(tin, tout) %>% 
-      arrange(temps)
+      arrange(temps) %>% 
+      unique()
     
     new_df1 <- df[1:(nrow(df) - 1), ]
     new_df2 <- df[-1, ]
@@ -1275,7 +1279,7 @@ server <- function(input, output, session) {
       )
       
       
-      ifelse (min(forPlot.h$q_cum) >=0, xint2 <- max(forPlot.c$q_cum),xint2 <- max(forPlot.c$q_cum))
+      ifelse (max(forPlot.h$q_cum) >=max(forPlot.c$q_cum), xint2 <- max(forPlot.c$q_cum),xint2 <- max(forPlot.h$q_cum))
       pinch <- pinch +  
         geom_vline(xintercept = xint1, linetype = "dashed", color = "steelblue")+
         geom_vline(xintercept = xint2, linetype = "dashed", color = "steelblue")+
@@ -1387,8 +1391,8 @@ server <- function(input, output, session) {
     if (input$hl == 'Yes') {
       
       pinch <- pinch +
-        geom_text_repel(data = lb, aes(x = pos.x, y = pos.y, label = lab)) +
-        geom_text_repel(data = lb.c, aes(x = pos.xc, y = pos.yc, label = labc))
+        geom_text_repel(data = lb, aes(x = pos.x, y = pos.y, label = lab), max.overlaps = Inf) +
+        geom_text_repel(data = lb.c, aes(x = pos.xc, y = pos.yc, label = labc), max.overlaps = Inf)
       
     }
     
