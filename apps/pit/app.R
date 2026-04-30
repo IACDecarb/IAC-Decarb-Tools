@@ -553,7 +553,7 @@ server <- function(input, output, session) {
       filter(stream_type == "Needs Cooling")
     for (ii in  1:nrow(hold)) {
       if (hold$tin[ii] == hold$tout[ii]) {
-        hold$tout[ii] = hold$tout[ii]
+        hold$tout[ii] = hold$tout[ii] - 0.01
       }
     }
     hold
@@ -567,7 +567,7 @@ server <- function(input, output, session) {
       filter(stream_type == "Needs Heating")
     for (ii in  1:nrow(hold)) {
       if (hold$tin[ii] == hold$tout[ii]) {
-        hold$tout[ii] = hold$tout[ii]
+        hold$tout[ii] = hold$tout[ii] + 0.01
       }
     }
     hold
