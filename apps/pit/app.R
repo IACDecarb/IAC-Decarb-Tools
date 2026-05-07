@@ -12,8 +12,71 @@ library(ggrepel)
 library(plotly)
 library(openxlsx)
 library(bslib)
+library(shinychat)
+#library(ellmer)
 
+pta <- function(streams, dTmin) {
+  streams$CP = streams$q / (abs(streams$tin - streams$tout))
+  
+  streams$T_max <- ifelse(streams$stream_type == "Needs Cooling", streams$tin - dTmin/2, streams$tout + dTmin/2)
+  streams$T_min <- ifelse(streams$stream_type == "Needs Cooling", streams$tout - dTmin/2, streams$tin + dTmin/2)
+  
+  intervals <- sort(unique(c(streams$T_max, streams$T_min)), decreasing = TRUE)
+  n_intervals <- length(intervals) - 1
+  
+  dH <- numeric(n_intervals)
+  
+  for (i in 1:n_intervals) {
+    T_upper <- intervals[i]
+    T_lower <- intervals[i+1]
+    
+    active_H <- streams$stream_type == "Needs Cooling" & streams$T_max >= T_upper & streams$T_min <= T_lower
+    active_C <- streams$stream_type == "Needs Heating" & streams$T_max >= T_upper & streams$T_min <= T_lower
+    
+    CP_H <- sum(streams$CP[active_H])
+    CP_C <- sum(streams$CP[active_C])
+    
+    dH[i] <- (CP_H - CP_C) * (T_upper - T_lower)
+  }
+  
+  cascade <- numeric(n_intervals + 1)
+  cascade[1] <- 0 
+  
+  for (i in 1:n_intervals) {
+    cascade[i+1] <- cascade[i] + dH[i]
+  }
+  
+  Qh_min <- max(0, -min(cascade))
+  
+  revised_cascade <- cascade + Qh_min
 
+  pinch_index <- which.min(revised_cascade) 
+  pinch_T_shifted <- intervals[pinch_index]
+  
+  Qc_min <- revised_cascade[length(revised_cascade)]
+  
+  return(list(
+    Qh_min = Qh_min,
+    Qc_min = Qc_min,
+    Pinch_T_shifted = pinch_T_shifted,
+    Intervals = intervals,
+    Heat_Cascade = revised_cascade
+  ))
+}
+interpolate_path <- function(x_seq, y_seq, target_x) {
+  for (i in 1:(length(x_seq) - 1)) {
+    x1 <- x_seq[i]
+    x2 <- x_seq[i+1]
+    if ((target_x >= x1 && target_x <= x2) || (target_x <= x1 && target_x >= x2)) {
+      y1 <- y_seq[i]
+      y2 <- y_seq[i+1]
+      interpolated_y <- y1 + (target_x - x1) * (y2 - y1) / (x2 - x1)
+      
+      return(interpolated_y)
+    }
+  }
+  return(NA) 
+}
 
 # UI ----
 
@@ -21,34 +84,25 @@ ui <- fluidPage(
   useShinyjs(),
   theme = shinytheme("flatly"),
   titlePanel("Pinch Heat Integration Tool"),
+  
+  # --- 1. Your Original Tabset Panel (Restored to full width) ---
   tabsetPanel(
     id = "tabs",
+    
+    # --- TAB 1: Load Inputs ---
     tabPanel(
       "Load Inputs",
       sidebarLayout(
         sidebarPanel(
-          tags$style(HTML(
-            "
-      #downloadData1 {
-        font-weight: bold;
-        font-size: 18px;
-      }
-    "
-          )),
+          tags$style(HTML("
+            #downloadData1 { font-weight: bold; font-size: 18px; }
+            #downloadData2 { font-weight: bold; font-size: 16px; }
+          ")),
           downloadLink("downloadData1", "Download Pinch Heat Integration Tool - Input Sheet"),
-          br(),
-          br(),
-          br(),
+          br(), br(), br(),
           fileInput("file", "Upload PIT - Input Sheet"),
           br(),
-          tags$style(HTML("
-      #downloadData2 {
-        font-weight: bold;
-        font-size: 16px;
-      }
-    ")),
           downloadLink("downloadData2", "Download Tool Documentation")
-          
         ),
         mainPanel(
           h1("Instructions"),
@@ -88,34 +142,25 @@ ui <- fluidPage(
       ),
       tags$div(
         style = "bottom: 0; width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: center; align-items: flex-end; padding: 10px 0;",
-        # Center the container
         tags$div(
           style = "text-align: left; margin-right: 150px;",
-          # Left-align content and add spacing
           tags$img(src = "lbnl.png", style = "max-height: 50px; margin-left: 0px;"),
           tags$p(tags$b("Prakash Rao"), style = "margin-top: 0.5px; margin-left: 0px;"),
           tags$p("prao@lbl.gov", style = "margin-top: 0.5px; margin-left: 0px;")
         ),
         tags$div(
           style = "text-align: left;",
-          # Left-align content
           tags$img(src = "ucdavis_logo_gold.png", style = "max-height: 50px;"),
           tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px;"),
           tags$p("jkissock@ucdavis.edu", style = "margin-top: 0.5px;")
         )
       )
-      
     ),
+    
+    # --- TAB 2: Main Pinch ---
     tabPanel("Main Pinch",
              sidebarLayout(
                sidebarPanel(
-                 tags$style(HTML("
-      #downloadData1 {
-        font-weight: bold;
-        font-size: 16px;
-      }
-    ")),
-                 
                  textInput('title', 'Add Pinch Title'),
                  numericInput("pinchdt", "Enter Pinch Temperature", 10),
                  selectInput('pt','Show Pinch Hot/Cold Side Temperatures', c('No','Yes')),
@@ -132,12 +177,9 @@ ui <- fluidPage(
                                             numericInput("yax","Specify y-axis limit" , 0)
                             )
                  ),
-                 
                  downloadButton("downloadPNG", "Click Here to Download plot as Image"),
-                 br(),
-                 br(),
+                 br(), br(),
                  downloadButton("downloadtab", "Click Here to Download Pinch Summary Table")
-                 
                ),
                mainPanel(
                  span(textOutput("error1"), style="color:red"),
@@ -145,64 +187,57 @@ ui <- fluidPage(
                  span(textOutput("pinch_notes"), style="font-size: 12px"),
                  br(),
                  textOutput('ercode'),
-                 br(),
-                 br(),
+                 br(), br(),
                  uiOutput("tit"),
-                 tableOutput("myTable"),
-                 
+                 tableOutput("myTable")
                )
              ),
              tags$div(
                style = "bottom: 0; width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: center; align-items: flex-end; padding: 10px 0;",
-               # Center the container
                tags$div(
                  style = "text-align: left; margin-right: 150px;",
-                 # Left-align content and add spacing
                  tags$img(src = "lbnl.png", style = "max-height: 50px; margin-left: 0px;"),
                  tags$p(tags$b("Prakash Rao"), style = "margin-top: 0.5px; margin-left: 0px;"),
                  tags$p("prao@lbl.gov", style = "margin-top: 0.5px; margin-left: 0px;")
                ),
                tags$div(
                  style = "text-align: left;",
-                 # Left-align content
                  tags$img(src = "ucdavis_logo_gold.png", style = "max-height: 50px;"),
                  tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px;"),
                  tags$p("jkissock@ucdavis.edu", style = "margin-top: 0.5px;")
                )
              )
-             
     ),
+    
+    # --- TAB 3: GCC ---
     tabPanel("GCC",
              sidebarLayout(
                sidebarPanel(
                  downloadButton("downloadgcc", "Click Here to Download plot as Image")
                ),
                mainPanel(
-                 fluidRow(
-                 ),
-                 withSpinner(plotlyOutput("gcc_plot", height = '600px'), color = "#0dc5c1"),
+                 fluidRow(),
+                 withSpinner(plotlyOutput("gcc_plot", height = '600px'), color = "#0dc5c1")
                )
-               
              ),
              tags$div(
                style = "bottom: 0; width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: center; align-items: flex-end; padding: 10px 0;",
-               # Center the container
                tags$div(
                  style = "text-align: left; margin-right: 150px;",
-                 # Left-align content and add spacing
                  tags$img(src = "lbnl.png", style = "max-height: 50px; margin-left: 0px;"),
                  tags$p(tags$b("Prakash Rao"), style = "margin-top: 0.5px; margin-left: 0px;"),
                  tags$p("prao@lbl.gov", style = "margin-top: 0.5px; margin-left: 0px;")
                ),
                tags$div(
                  style = "text-align: left;",
-                 # Left-align content
                  tags$img(src = "ucdavis_logo_gold.png", style = "max-height: 50px;"),
                  tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px;"),
                  tags$p("jkissock@ucdavis.edu", style = "margin-top: 0.5px;")
                )
              )
     ),
+    
+    # --- TAB 4: Heat Exchanger ---
     tabPanel("Heat Exchanger",
              sidebarLayout(
                sidebarPanel(
@@ -210,63 +245,20 @@ ui <- fluidPage(
                  selectInput("stream2", "Choose Stream 2", character(0)),
                  numericInput("eff", "Enter Heat Exchanger Effectiveness", min = 0.01, max = 1, value = 0.8),
                  actionButton("run", "Run Analysis"),
-                 br(),
-                 br(),
+                 br(), br(),
                  downloadButton("downloadtabhx", "Click Here to Heat Exchanger Results Table")
                ),
                mainPanel(
                  fluidRow(
                    div(
-                     style = "
-                     margin-left: 2%;
-                     height: 500px;
-                ",
-                     img(
-                       src = "hx.png",
-                       style =  "width: 800px; height: 500px;"
-                     ),
-                     span(textOutput("thin"),
-                          style = "
-                      color: black;
-                      position: relative;
-                      top: -450px;
-                      left: 250px;
-                      font-size: 20px;
-                    "
-                     ),
-                     span(textOutput("thout"),
-                          style = "
-                      color: black;
-                      position: relative;
-                      top: -85px;
-                      left: 250px;
-                      font-size: 20px;"
-                     ),
-                     span(textOutput("tcout"),
-                          style = "
-                color: black;
-                 position: relative;
-                     top: -507px;
-                     left: 520px;
-                          font-size: 20px;"
-                     ),
-                     span(textOutput("tcin"),
-                          style = "
-                color: black;
-                 position: relative;
-                     top: -141px;
-                     left: 520px;
-                          font-size: 20px;"
-                     ),
-                     span(textOutput("qexch"),
-                          style = "
-                color: black;
-                 position: relative;
-                     top: -380px;
-                     left: 140px;
-                          font-size: 20px;"
-                     )
-                   ),
+                     style = "margin-left: 2%; height: 500px;",
+                     img(src = "hx.png", style = "width: 800px; height: 500px;"),
+                     span(textOutput("thin"), style = "color: black; position: relative; top: -450px; left: 250px; font-size: 20px;"),
+                     span(textOutput("thout"), style = "color: black; position: relative; top: -85px; left: 250px; font-size: 20px;"),
+                     span(textOutput("tcout"), style = "color: black; position: relative; top: -507px; left: 520px; font-size: 20px;"),
+                     span(textOutput("tcin"), style = "color: black; position: relative; top: -141px; left: 520px; font-size: 20px;"),
+                     span(textOutput("qexch"), style = "color: black; position: relative; top: -380px; left: 140px; font-size: 20px;")
+                   )
                  ),
                  h4("Streams Data (Inputs)", align = "left"),
                  tableOutput("hxstreams"),
@@ -274,27 +266,25 @@ ui <- fluidPage(
                  tableOutput("resulthx"),
                  span(textOutput("errorhx"), style="color:red")
                )
-               
              ),
              tags$div(
                style = "bottom: 0; width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: center; align-items: flex-end; padding: 10px 0;",
-               # Center the container
                tags$div(
                  style = "text-align: left; margin-right: 150px;",
-                 # Left-align content and add spacing
                  tags$img(src = "lbnl.png", style = "max-height: 50px; margin-left: 0px;"),
                  tags$p(tags$b("Prakash Rao"), style = "margin-top: 0.5px; margin-left: 0px;"),
                  tags$p("prao@lbl.gov", style = "margin-top: 0.5px; margin-left: 0px;")
                ),
                tags$div(
                  style = "text-align: left;",
-                 # Left-align content
                  tags$img(src = "ucdavis_logo_gold.png", style = "max-height: 50px;"),
                  tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px;"),
                  tags$p("jkissock@ucdavis.edu", style = "margin-top: 0.5px;")
                )
              )
     ),
+    
+    # --- TAB 5: Heat Pump ---
     tabPanel("Heat Pump", 
              sidebarLayout(
                sidebarPanel(
@@ -327,7 +317,6 @@ ui <- fluidPage(
                                             tags$small("(only available for select refrigerants and temperature ranges)")
                             )
                  ),
-                 
                  actionButton("run2", "Run Technical Analysis"),
                  h3("Step 2: Energy Cost Analysis"),
                  selectInput("fuel_type", "Select Baseline Fuel", c("Natural Gas", "Propane", "Petroleum Coke", "Distillate or Light Fuel Oil", 
@@ -337,105 +326,26 @@ ui <- fluidPage(
                  numericInput("eff_heat", "Enter Efficiency of Thermal Unit (%)", min = 0.001,max = 100, value = 80),
                  numericInput("oper_hours", "Enter Annual Operating Hours", min = 1, value = 8000),
                  actionButton("run3", "Run Economic Analysis"),
-                 tooltip(
-                   h3("Step 3: Emissions Analysis"),
-                   "This section uses fuel and electricity emission factors to compare emissions from natural gas equipment vs. heat pump."
-                 ),
-                 
                  numericInput("elec_ef", "Enter Electricity Emissions Factor (kg/kWh)", min = 0.001, value = 0.20),
                  actionButton("run4", "Run Emissions Analysis"),
-                 br(),
-                 br(),
-                 downloadButton("downloadtabhp", "Click Here to Download Heat Pump Results Table"),
-                 
+                 br(), br(),
+                 downloadButton("downloadtabhp", "Click Here to Download Heat Pump Results Table")
                ),
                mainPanel(
                  fluidRow(
                    div(
-                     style = "
-                     margin-left: 2%;
-                     height: 500px;
-                ",
-                     img(
-                       src = "hp.png",
-                       style =  "width: 1000px; height: 480px;"
-                     ),
-                     span(textOutput("thin_hp"),
-                          style = "
-                      color: black;
-                      position: relative;
-                      top: -90px;
-                      left: 850px;
-                      font-size: 20px;
-                      width:40px;
-                    "
-                     ),
-                     span(textOutput("thout_hp"),
-                          style = "
-                      color: black;
-                      position: relative;
-                      top: -440px;
-                      left: 850px;
-                      font-size: 20px;"
-                     ),
-                     span(textOutput("tcout_hp"),
-                          style = "
-                color: black;
-                 position: relative;
-                     top: -150px;
-                     left: 110px;
-                          font-size: 20px;"
-                     ),
-                     span(textOutput("tcin_hp"),
-                          style = "
-                color: black;
-                 position: relative;
-                     top: -500px;
-                     left: 110px;
-                          font-size: 20px;"
-                     ),
-                     span(textOutput("qsource"),
-                          style = "
-                color: black;
-                 position: relative;
-                     top: -380px;
-                     left: 80px;
-                          font-size: 15px;
-                          width: 40px;"
-                     ),
-                     span(textOutput("qsink"),
-                          style = "
-                color: black;
-                 position: relative;
-                     top: -400px;
-                     left: 850px;
-                          font-size: 15px;"
-                     ),
-                     span(textOutput("tsource"),
-                          style = "
-                color: black;
-                 position: relative;
-                     top: -360px;
-                     left: 370px;
-                          font-size: 15px;"
-                     ),
-                     span(textOutput("tsink"),
-                          style = "
-                color: black;
-                 position: relative;
-                     top: -380px;
-                     left: 605px;
-                          font-size: 15px;"
-                     ),
-                     span(textOutput("winhp"),
-                          style = "
-                color: black;
-                 position: relative;
-                     top: -605px;
-                     left: 460px;
-                          font-size: 15px;"
-                     )
-                   ),
+                     style = "margin-left: 2%; height: 500px;",
+                     img(src = "hp.png", style = "width: 1000px; height: 480px;"),
+                     span(textOutput("thin_hp"), style = "color: black; position: relative; top: -90px; left: 850px; font-size: 20px; width:40px;"),
+                     span(textOutput("thout_hp"), style = "color: black; position: relative; top: -440px; left: 850px; font-size: 20px;"),
+                     span(textOutput("tcout_hp"), style = "color: black; position: relative; top: -150px; left: 110px; font-size: 20px;"),
+                     span(textOutput("tcin_hp"), style = "color: black; position: relative; top: -500px; left: 110px; font-size: 20px;"),
+                     span(textOutput("qsource"), style = "color: black; position: relative; top: -380px; left: 80px; font-size: 15px; width: 40px;"),
+                     span(textOutput("qsink"), style = "color: black; position: relative; top: -400px; left: 850px; font-size: 15px;"),
+                     span(textOutput("tsource"), style = "color: black; position: relative; top: -360px; left: 370px; font-size: 15px;"),
+                     span(textOutput("tsink"), style = "color: black; position: relative; top: -380px; left: 605px; font-size: 15px;"),
+                     span(textOutput("winhp"), style = "color: black; position: relative; top: -605px; left: 460px; font-size: 15px;")
+                   )
                  ),
                  span(textOutput("image_notes"), style="font-size: 12px"),
                  span(textOutput("stream_data"), style="font-size: 18px"),
@@ -451,28 +361,66 @@ ui <- fluidPage(
              ),
              tags$div(
                style = "bottom: 0; width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: center; align-items: flex-end; padding: 10px 0;",
-               # Center the container
                tags$div(
                  style = "text-align: left; margin-right: 150px;",
-                 # Left-align content and add spacing
                  tags$img(src = "lbnl.png", style = "max-height: 50px; margin-left: 0px;"),
                  tags$p(tags$b("Prakash Rao"), style = "margin-top: 0.5px; margin-left: 0px;"),
                  tags$p("prao@lbl.gov", style = "margin-top: 0.5px; margin-left: 0px;")
                ),
                tags$div(
                  style = "text-align: left;",
-                 # Left-align content
                  tags$img(src = "ucdavis_logo_gold.png", style = "max-height: 50px;"),
                  tags$p(tags$b("Kelly Kissock"), style = "margin-top: 0.5px;"),
                  tags$p("jkissock@ucdavis.edu", style = "margin-top: 0.5px;")
                )
-             ))
-  )
+             )
+    )
+  ),
+  
+  # absolutePanel(
+  #   bottom = "20px", right = "20px", width = "350px",
+  #   fixed = TRUE, draggable = FALSE, style = "z-index: 1000;",
+  #   tags$button(
+  #     type = "button", 
+  #     class = "btn btn-primary", 
+  #     style = "width: 100%; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.3); font-weight: bold; font-size: 16px; padding: 10px;",
+  #     `data-toggle` = "collapse", 
+  #     `data-target` = "#chat_collapse_box",
+  #     "💬 Chat Assistant"
+  #   ),
+  #   div(
+  #     id = "chat_collapse_box", 
+  #     class = "collapse", 
+  #     style = "background: white; border-radius: 8px; padding: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); margin-top: 8px;",
+  #     
+  #     chat_ui(
+  #       id = "chat",
+  #       height = "450px", 
+  #       messages = "**Hello!** Ask me questions about the Pinch Heat Integration Tool."
+  #     )
+  #   )
+  # )
 )
 # Server ----
 
 server <- function(input, output, session) {
   
+  
+  # chat <- ellmer::chat_google_gemini(
+  #   system_prompt = "You are a helpful assistant for the Pinch Heat Integration Tool. Read the user guide to provide context to your answers. Also use general knowledge on the Pinch Analysis."
+  # )
+  # 
+  # chat$chat(
+  #   "Here is the official user documentation. Please read this and use it as your primary knowledge base. Do not use numerical values from the user guide as users will have different numbers. Also remember to convert values in $$ to LaTex",
+  #   ellmer::content_pdf_file("User Guide for Pinch Heat Integration Tool.pdf"),
+  #   echo = "none"
+  # )
+  # 
+  # observeEvent(input$chat_user_input, {
+  #   stream <- chat$stream_async(input$chat_user_input)
+  #   chat_append("chat", stream)
+  # })
+  # 
   
   excelFilePath <- 'Pinch.xlsx'
   copFilePath <- 'cop_table.xlsx'
@@ -571,6 +519,13 @@ server <- function(input, output, session) {
       }
     }
     hold
+  })
+  
+  refined_streams <- reactive({
+    needs_heating <- needs_heating()
+    needs_cooling <- needs_cooling()
+    streams <- rbind(needs_heating, needs_cooling)
+    streams
   })
   
   forPlot.c <- reactive({
@@ -692,132 +647,10 @@ server <- function(input, output, session) {
     forPlot.h <- forPlot.h1()
     forPlot.c <- forPlot.c()
     uni <- uni()
-    heatshift <- max(forPlot.c$q_cum)
-    delta <- max(forPlot.c$q_cum) / 500
-    mdiffh <- 1000
-    mdiffc <- 1000
-    mdiff <- 1000
-    k = 0;
+    stream_data <- refined_streams()
+    pta <- pta(stream_data, pinchdt)
     
-    
-    
-    while (mdiffc > pinchdt) {
-      k = k + 1
-      heatshift <- k * delta
-      forPlot.shift <- forPlot.h %>% 
-        mutate(q_cum = q_cum - heatshift)
-      
-      for (l in nrow(forPlot.c):1) {
-        for (m in 1:(nrow(forPlot.shift) - 1)) {
-          if (forPlot.c[[l, "q_cum"]] >= forPlot.shift[[m, "q_cum"]] & 
-              forPlot.c[[l, "q_cum"]] <= forPlot.shift[[m + 1, "q_cum"]]) {
-            y <- forPlot.c[[l, "tout"]]
-            x <- forPlot.c[[l,'q_cum']]
-            slope <- (forPlot.shift[[m + 1, "tin"]] - 
-                        forPlot.shift[[m, "tin"]]) / (forPlot.shift[[m + 1, "q_cum"]] - 
-                                                        forPlot.shift[[m, "q_cum"]])
-            intercept <- forPlot.shift[[m, "tin"]] - slope * forPlot.shift[[m, "q_cum"]]
-            if (slope == Inf) {
-              y.h <- forPlot.shift[[m, "tin"]]
-            } else {
-              y.h <- intercept + slope * x
-            }
-            dist <- abs(y - y.h)
-            
-            if (dist < mdiffc) {
-              mdiffc = dist
-              if (mdiffc <= pinchdt) {
-                break  # Exit the inner loop when mdiffc < pinchdt
-              }
-              if (forPlot.c[[1, "q_cum"]] > forPlot.shift[[nrow(forPlot.shift), "q_cum"]]) {
-                break  # Exit the inner loop when mdiffc < pinchdt
-              }
-            }
-          }
-        }
-        if (mdiffc <= pinchdt) {
-          break  # Exit the outer loop when mdiffc < pinchdt
-        }
-        if (forPlot.c[[1, "q_cum"]] > forPlot.shift[[nrow(forPlot.shift), "q_cum"]]) {
-          break  # Exit the inner loop when mdiffc < pinchdt
-        }
-      }
-      heatshift_c <- heatshift
-      xc_co <- x
-      yc_co <- y
-      if (forPlot.c[[1, "q_cum"]] > forPlot.shift[[nrow(forPlot.shift), "q_cum"]]) {
-        break  # Exit the inner loop when mdiffc < pinchdt
-      }
-    }
-    hs$c1l <- forPlot.c[[1, "q_cum"]]
-    hs$c1h <- forPlot.shift[[nrow(forPlot.shift), "q_cum"]]
-    diffc <- abs(pinchdt - mdiffc)
-    hs$heatshift_c <- heatshift_c
-    hs$xc_co <- x
-    hs$yc_co <- y
-    hs$diffc <- diffc
-    
-    heatshift <- max(forPlot.c$q_cum)
-    mdiffh <- 1000
-    k = 0;
-    
-    while (mdiffh > pinchdt) {
-      k = k + 1
-      heatshift <- k * delta
-      forPlot.shift <- forPlot.h %>% 
-        mutate(q_cum = q_cum - heatshift)
-      
-      for (l in 1:nrow(forPlot.shift)) {
-        for (m in (nrow(forPlot.c) - 1):1) {
-          if (forPlot.shift[[l, "q_cum"]] >= forPlot.c[[m, "q_cum"]] & forPlot.shift[[l, "q_cum"]] <= 
-              forPlot.c[[m + 1, "q_cum"]]) {
-            y <- forPlot.shift[[l, "tin"]]
-            x <- forPlot.shift[[l,'q_cum']]
-            slope <- (forPlot.c[[m + 1, "tout"]] - forPlot.c[[m, "tout"]]) / (forPlot.c[[m + 1, "q_cum"]] - 
-                                                                                forPlot.c[[m, "q_cum"]])
-            intercept <- forPlot.c[[m, "tout"]] - (slope * forPlot.c[[m, "q_cum"]])
-            if (slope == Inf) {
-              y.h <- forPlot.c[[m, "tout"]]
-            } else {
-              y.h <- intercept + slope * x
-            }
-            dist <- abs(y - y.h)
-            if (dist < mdiffh) {
-              mdiffh = dist
-              if (mdiffh <= pinchdt) {
-                break  # Exit the inner loop when mdiffc < pinchdt
-              }
-              if (forPlot.c[[1, "q_cum"]] > forPlot.shift[[nrow(forPlot.shift), "q_cum"]]) {
-                break  # Exit the inner loop when mdiffc < pinchdt
-              }
-            }
-          }
-        }
-        if (mdiffh <= pinchdt) {
-          break  # Exit the outer loop when mdiffc < pinchdt
-        }
-        if (forPlot.c[[1, "q_cum"]] > forPlot.shift[[nrow(forPlot.shift), "q_cum"]]) {
-          break  # Exit the inner loop when mdiffc < pinchdt
-        }
-      }
-      heatshift_h <- heatshift
-      xh_co <- x
-      yh_co <- y
-      if (forPlot.c[[1, "q_cum"]] > forPlot.shift[[nrow(forPlot.shift), "q_cum"]]) {
-        break  # Exit the inner loop when mdiffc < pinchdt
-      }
-    }
-    hs$c2l <- forPlot.c[[1, "q_cum"]]
-    hs$c2h <- forPlot.shift[[nrow(forPlot.shift), "q_cum"]]
-    
-    heatshift_c <-  hs$heatshift_c
-    
-    heatshift <- ifelse(heatshift_c>heatshift_h, heatshift_h, heatshift_c)
-    diffh <- abs(pinchdt - mdiffh)
-    hs$heatshift_h <- heatshift_h
-    hs$xh_co <- x
-    hs$yh_co <- y
-    hs$diffh <- diffh
+    heatshift <- max(forPlot.c$q_cum) - pta$Qc_min
     hs$heatshift <- heatshift
   })
   
@@ -828,27 +661,64 @@ server <- function(input, output, session) {
     req(input$file)
     req(input$pinchdt)
     pinchdt <- input$pinchdt
-    if (hs$heatshift == hs$heatshift_h) {
-      x_coor <- hs$xh_co
-      y_coor <- hs$yh_co
-      p_lab <- pinchdt
-    } else {
-      x_coor <- hs$xc_co
-      y_coor <- hs$yc_co
-      p_lab <- -pinchdt
+    forPlot.c <- forPlot.c()
+    forPlot.h <- forPlot.h()
+    for (l in nrow(forPlot.c):1) {
+      for (m in 1:(nrow(forPlot.h) - 1)) {
+        if (forPlot.c[[l, "q_cum"]] >= forPlot.h[[m, "q_cum"]] & 
+            forPlot.c[[l, "q_cum"]] <= forPlot.h[[m + 1, "q_cum"]]) {
+          y <- forPlot.c[[l, "tout"]]
+          x <- forPlot.c[[l,'q_cum']]
+          slope <- (forPlot.h[[m + 1, "tin"]] - 
+                      forPlot.h[[m, "tin"]]) / (forPlot.h[[m + 1, "q_cum"]] - 
+                                                  forPlot.h[[m, "q_cum"]])
+          intercept <- forPlot.h[[m, "tin"]] - slope * forPlot.h[[m, "q_cum"]]
+          y.h <- intercept + slope * x
+          forPlot.c[[l, 'dist']] <- abs(y - y.h)
+          
+        }
+      }
     }
+    
+    for (l in 1:nrow(forPlot.h)) {
+      for (m in (nrow(forPlot.c) - 1):1) {
+        if (forPlot.h[[l, "q_cum"]] >= forPlot.c[[m, "q_cum"]] & forPlot.h[[l, "q_cum"]] <= 
+            forPlot.c[[m + 1, "q_cum"]]) {
+          y <- forPlot.h[[l, "tin"]]
+          x <- forPlot.h[[l,'q_cum']]
+          slope <- (forPlot.c[[m + 1, "tout"]] - forPlot.c[[m, "tout"]]) / (forPlot.c[[m + 1, "q_cum"]] - 
+                                                                              forPlot.c[[m, "q_cum"]])
+          intercept <- forPlot.c[[m, "tout"]] - (slope * forPlot.c[[m, "q_cum"]])
+          y.h <- intercept + slope * x
+          forPlot.h[[l, 'dist']] <- abs(y - y.h)
+        }
+      }
+    }
+    
+    for_pt_h <- forPlot.h %>% 
+      filter(dist - pinchdt <= 1e-2)
+    for_pt_c <- forPlot.c %>% 
+      filter(dist - pinchdt <= 1e-2)
+    
+    if (is_empty(for_pt_h$tin)){
+      x_coor <- for_pt_c$q_cum
+      y_coor <- for_pt_c$tout
+      p_lab <- -pinchdt
+      
+    } else {
+      x_coor <- for_pt_h$q_cum
+      y_coor <- for_pt_h$tin
+      p_lab <- pinchdt
+    }
+
     coor$x_coor <- x_coor
     coor$y_coor <- y_coor
     coor$p_lab <- p_lab
-    
-    if (y_coor > (y_coor+p_lab)) {
-      coor$hst <- y_coor
-      coor$cst <- y_coor+p_lab
-    } else {
-      coor$cst <- y_coor
-      coor$hst <- y_coor+p_lab
-    }
-  }) 
+
+
+    coor$hst <- y_coor
+    coor$cst <- y_coor+p_lab
+  })
   
   
   forPlot.h <- reactive({
@@ -1157,18 +1027,18 @@ server <- function(input, output, session) {
       'Metric' = c('Heat Exchange Potential', 'Pinch Temperature - Needs Heating','Pinch Temperature - Needs Cooling','Heat Pump - Source Potential','Heat Pump - Source Temperature',
                   'Heat Pump - Sink Potential','Heat Pump - Sink Temperature','High Temperature Heating Requirement','Heat Pump Source Streams','Heat Exchange Streams - Needs Cooling',
                   'Heat Exchange Streams - Needs Heating','Heat Pump Sink Streams','High Temperature Heating Streams'),
-      'Value' = c(all_q$qhx,coor$y_coor, coor$y_coor+coor$p_lab, all_q$qhp.so,wavg.source(),all_q$qhp.si,wavg.sink(),all_q$qbg, lb.hp.so(),lb.hx.c(), lb.hx.nh(), lb.hp.si(),lb.ht()),
+      'Value' = c(all_q$qhx,round(coor$y_coor,1), round(coor$y_coor+coor$p_lab,1), all_q$qhp.so,wavg.source(),all_q$qhp.si,wavg.sink(),all_q$qbg, lb.hp.so(),lb.hx.c(), lb.hx.nh(), lb.hp.si(),lb.ht()),
       'Units' = c(q_uni,t_uni,t_uni,q_uni,t_uni,q_uni,t_uni,q_uni,'','','','','')
     )
     data
   })
-  
+
   output$myTable <- renderTable({
-    
+
     req(hs$c1l < hs$c1h | hs$c2l < hs$c2h)
     data()
   })
-  
+
   output$error1 <- renderText({
     req(hs$c1l > hs$c1h & hs$c2l > hs$c2h)
     "Error: Pinch Temperature too low, can not be achieved"})
@@ -1199,13 +1069,13 @@ server <- function(input, output, session) {
     qhx.l <- round(all_q$qhx,1)
     cst.l <- round(coor$cst,1)
     hst.l <- round(coor$hst,1)
-    qhp.so.l <- round(all_q$qhp.so,1)
-    qhp.si.l <- round(all_q$qhp.si,1)
-    qbg.l <- round(all_q$qbg,1)
-    lb <- lb()
-    lb.c <- lb.c()
-    wavg.source.l <- wavg.source()
-    wavg.sink.l <- wavg.sink()
+     qhp.so.l <- round(all_q$qhp.so,1)
+     qhp.si.l <- round(all_q$qhp.si,1)
+     qbg.l <- round(all_q$qbg,1)
+     lb <- lb()
+     lb.c <- lb.c()
+     wavg.source.l <- wavg.source()
+     wavg.sink.l <- wavg.sink()
     if (input$yax == 0){
       y_max_limit <- max(max(forPlot.h$tin),max(forPlot.c$tout))+30
     } else {
@@ -1219,7 +1089,7 @@ server <- function(input, output, session) {
     }
     y_min = min(0,min(forPlot.c$tout) - 5,min(forPlot.h$tin) - 5)
     
-    tit <- paste0('Pinch Analysis for ',input$Metric)
+    tit <- paste0('Pinch Analysis for ', input$title)
     pinch <- ggplot() +
       geom_line(data = forPlot.c, aes(x = q_cum, y = tout, color = "Needs Cooling"),arrow = arrow(length=unit(0.30,"cm"), ends="first", type = "closed")) +
       geom_line(data = forPlot.h, aes(x = q_cum, y = tin, color = "Needs Heating"), arrow = arrow(length=unit(0.30,"cm"), ends="last", type = "closed")) +
@@ -1437,145 +1307,37 @@ server <- function(input, output, session) {
   
   # Page 2 - GCC ----
   
-  gcc_data <- reactiveValues()
+  gcc_data_forplot <- reactiveValues()
   
   gcc_plot <- reactive({
     req(input$file)
     req(input$pinchdt)
-    output$ercode <- renderText("")
-    
-    forPlot.h <- forPlot.h()
-    forPlot.c <- forPlot.c()
-    needs_heating <- needs_heating()
-    needs_cooling <- needs_cooling()
     pinchdt = input$pinchdt
     uni <- uni()
     t_uni <- uni[[1, "tin"]]
     q_uni <- uni[[1, "q"]]
+    output$ercode <- renderText("")
     
-    forPlot.c.shift <- forPlot.c %>% 
-      mutate(tout = tout - (0.5*pinchdt))
+    stream_data <- refined_streams()
+    pta <- pta(stream_data, pinchdt)
     
-    forPlot.h.shift <- forPlot.h %>% 
-      mutate(tin = tin + (0.5*pinchdt))
-    
-    
-    
-    
-    line_seg_fc<- tibble(
-      'startx' = 0,
-      'endx' = 0,
-      'starty' = 0,
-      'endy' = 0
+    gcc_data <- data.frame(
+      temp = pta$Intervals,
+      enthalpy = pta$Heat_Cascade
     )
-    for (g in 1:(nrow(forPlot.c.shift)-1)) {
-      line_seg_fc[g,'startx'] <- forPlot.c.shift[g, "q_cum"]
-      line_seg_fc[g,'endx'] <- forPlot.c.shift[g+1, "q_cum"]
-      line_seg_fc[g,'starty'] <- forPlot.c.shift[g, "tout"]
-      line_seg_fc[g,'endy'] <- forPlot.c.shift[g+1, "tout"]
-    }
+    y_max_limit = max(gcc_data$enthalpy)
+    x_max_limit = max(gcc_data$temp)
     
+    y_min_limit = min(gcc_data$enthalpy)
+    x_min_limit = min(gcc_data$temp)
     
-    line_seg_fc <- line_seg_fc %>% 
-      mutate(starty = if_else(starty == endy, starty - 0.00001, starty),
-             slope = (endy-starty)/(endx-startx),
-             intercept = starty - (slope*startx))
+    gcc_data_forplot$gcc_table <- gcc_data
     
-    line_seg_fh<- tibble(
-      'startx' = 0,
-      'endx' = 0,
-      'starty' = 0,
-      'endy' = 0
-    )
-    for (g in 1:(nrow(forPlot.h.shift)-1)) {
-      line_seg_fh[g,'startx'] <- forPlot.h.shift[g, "q_cum"]
-      line_seg_fh[g,'endx'] <- forPlot.h.shift[g+1, "q_cum"]
-      line_seg_fh[g,'starty'] <- forPlot.h.shift[g, "tin"]
-      line_seg_fh[g,'endy'] <- forPlot.h.shift[g+1, "tin"]
-    }
-    
-    line_seg_fh <- line_seg_fh %>% 
-      mutate(starty = if_else(starty == endy, endy + 0.00001, starty),
-             slope = (endy-starty)/(endx-startx),
-             intercept = starty - (slope*startx))
-    
-    min_temp <- min(line_seg_fc$starty, line_seg_fh$starty)
-    max_temp <- max(line_seg_fh$endy, line_seg_fc$endy)
-    
-    gcc <- tibble(
-      'temp' = seq(min_temp,max_temp, by=0.1),
-      'slopefh' = 0,
-      'interceptfh' = 0,
-      'slopefc' = 0,
-      'interceptfc' = 0
-    )
-    
-    for(p in 1:nrow(gcc)){
-      for (q in 1:nrow(line_seg_fh)) {
-        if(gcc[[p,'temp']]>=line_seg_fh[[q,'starty']] & gcc[[p,'temp']]<=line_seg_fh[[q,'endy']]){
-          gcc[[p,'slopefh']] <- line_seg_fh[[q,'slope']]
-          gcc[[p,'interceptfh']] <- line_seg_fh[[q,'intercept']]
-        }
-      }
-    }
-    
-    for(p in 1:nrow(gcc)){
-      for (q in 1:nrow(line_seg_fc)) {
-        if(gcc[[p,'temp']]>=line_seg_fc[[q,'starty']] & gcc[[p,'temp']]<=line_seg_fc[[q,'endy']]){
-          gcc[[p,'slopefc']] <- line_seg_fc[[q,'slope']]
-          gcc[[p,'interceptfc']] <- line_seg_fc[[q,'intercept']]
-        }
-      }
-    }
-    
-    gcc <- gcc %>% 
-      mutate(xc = (temp-interceptfc)/slopefc) %>% 
-      mutate(xh = (temp-interceptfh)/slopefh)
-    
-    idx_fc = line_seg_fc$slope == Inf
-    idx_fh =  line_seg_fh$slope == Inf
-    
-    inf_line_fc = line_seg_fc[idx_fc,]
-    inf_line_fh = line_seg_fh[idx_fh,]
-    
-    if (nrow(inf_line_fc) > 0){
-      for (i in 1:nrow(inf_line_fc)) {
-        st_y = inf_line_fc$starty[i]
-        end_y = inf_line_fc$endy[i]
-        gcc_idx = gcc$temp >= st_y & gcc$temp <= end_y
-        gcc$xc[gcc_idx] = inf_line_fc$endx[i]
-      }
-    }
-    
-    if (nrow(inf_line_fh) > 0){
-      for (i in 1:nrow(inf_line_fh)) {
-        st_y = inf_line_fh$starty[i]
-        end_y = inf_line_fh$endy[i]
-        gcc_idx = gcc$temp >= st_y & gcc$temp <= end_y
-        gcc$xh[gcc_idx] = inf_line_fh$endx[i]
-      }
-    }
-    
-    
-    gcc <- gcc %>% 
-      mutate(xc = ifelse(temp<min(forPlot.c.shift$tout), min(forPlot.c.shift$q_cum), xc)) %>% 
-      mutate(xc = ifelse(temp>max(forPlot.c.shift$tout), max(forPlot.c.shift$q_cum), xc)) %>% 
-      mutate(xh = ifelse(temp<min(forPlot.h.shift$tin), min(forPlot.h.shift$q_cum), xh)) %>% 
-      mutate(xh = ifelse(temp>max(forPlot.h.shift$tin), max(forPlot.h.shift$q_cum), xh)) %>% 
-      mutate(x = abs(xh-xc))
-    gcc_data$gcc_table <- gcc
-    
-    y_max_limit = max(gcc$x)
-    x_max_limit = max(gcc$temp)
-    
-    y_min_limit = min(gcc$x)
-    x_min_limit = min(gcc$temp)
-    
-    p <- ggplot(gcc, aes(x = temp, y = x)) +
+    p <- ggplot(gcc_data, aes(x = temp, y = enthalpy)) +
       geom_line() +  # main line, no hover text here
       geom_point(aes(
         text = paste0("Temperature: ", round(temp, 1), " ", t_uni, 
-                      "<br>Q: ", round(x, 1), " ", q_uni)),
+                      "<br>Q: ", round(enthalpy, 1), " ", q_uni)),
         alpha = 0  # invisible points just for hover text
       ) +
       theme_bw() +
@@ -1591,8 +1353,7 @@ server <- function(input, output, session) {
       scale_x_continuous(limits = c(x_min_limit, x_max_limit)) +
       ggtitle("Grand Composite Curve")
     
-    
-    gcc_plot <- p + coord_flip() 
+    p <- p +coord_flip()
     
   })
   
@@ -2203,37 +1964,48 @@ server <- function(input, output, session) {
       output$resulthp <- renderTable(results_hp)
       results_table$results_hp_rv = results_hp
     } else {
+      if (is_empty(gcc_data_forplot$gcc_table))
+        {output$hperror <- renderText("Error: Please run GCC tab first.")}
+      
+      req(gcc_data_forplot$gcc_table)
       # Temperature Input ----
       results_hp <- tibble(
         'Metric' = c('T,source','T,sink','Q,source','Q,sink','W,in',"COP,h", "COP,c","COP,combined"),
         'Value' = c("","","","", "","","",""),
         'Units' = c("","","","",""," "," "," ")
       )
-      gcc_table <- gcc_data$gcc_table
+      gcc_table <- gcc_data_forplot$gcc_table
       
       source_temp <- input$source_temp
       sink_temp <-input$sink_temp
       pinch_temp <- coor$cst + input$pinchdt/2
       source_table <- gcc_table[gcc_table[["temp"]] <= pinch_temp, ]
       sink_table <- gcc_table[gcc_table[["temp"]] >= pinch_temp, ]
-      qsource_avail <- source_table[source_table$temp == source_temp, "x"]
-      qsink_req <- sink_table[sink_table$temp == sink_temp, "x"]
-      if (sink_temp > pinch_temp && sink_temp < max(gcc_table$temp) && source_temp < pinch_temp && source_temp > min(gcc_table$temp) ){
+      calc_enthalpy <- approxfun(x = gcc_table$temp, y = gcc_table$enthalpy)
+      
+      qsource_avail <- calc_enthalpy(source_temp)
+      qsink_req <- calc_enthalpy(sink_temp)
+      if (sink_temp > pinch_temp && sink_temp <= max(gcc_table$temp) && source_temp < pinch_temp && source_temp >= min(gcc_table$temp) ){
+        
         source_table_poss <- source_table[source_table[["temp"]] >= source_temp, ]
+        source_table_poss <- source_table_poss %>% 
+          add_row(temp = source_temp, enthalpy = qsource_avail) %>% 
+          arrange(desc(temp))
         sink_table_poss <- sink_table[sink_table[["temp"]] <= sink_temp, ]
+        sink_table_poss <- sink_table_poss %>% 
+          add_row(temp = sink_temp, enthalpy = qsink_req) %>% 
+          arrange((temp))
           
         if (input$copmet == 'Enter Heat Pump COP') {
           cop <- input$cop2
           qsink_avail <- qsource_avail*(cop/(cop-1))
           qsink_act <- min(qsink_avail, qsink_req)
           qsource_act <- qsink_act*((cop-1)/cop)
-          tsource_out_idx <- which.min(abs(source_table_poss$x - qsource_act))
-          tsource_out_act <- source_table_poss[tsource_out_idx, "temp"]
-          tsink_out_idx <- which.min(abs(sink_table_poss$x - qsink_act))
-          tsink_out_act <- sink_table_poss[tsink_out_idx, "temp"]
+          calc_source_temp <- approxfun(x = source_table_poss$enthalpy, y = source_table_poss$temp)
+          tsource_out_act <- calc_source_temp(qsource_act) 
+          calc_sink_temp <- approxfun(x = sink_table_poss$enthalpy, y = sink_table_poss$temp)
+          tsink_out_act <- calc_sink_temp(qsink_act)
           w_in <- qsink_act/cop
-          
-          
           
         } else {
           cop_table <- cop_table %>% 
@@ -2251,31 +2023,49 @@ server <- function(input, output, session) {
             t_cond_g = sink_temp
           }
           
-          carnot_cop = (t_cond_g+273)/(t_cond_g-t_evap_g)
+          dt <- 1e6
+          while (dt > 1e-2) {
+            carnot_cop = (t_cond_g+273)/(t_cond_g-t_evap_g)
+            
+            lookup_vals <- tibble(
+              "t_cond" = t_cond_g,
+              "t_evap" = t_evap_g,
+              "t_cond.t_evap" = t_cond_g*t_evap_g,
+              "t_cond_2" = t_cond_g^2,
+              "t_evap_2" = t_evap_g^2
+            )
+            
+            lookup_vals$df <- as_tibble(predict(model1,lookup_vals))
+            
+            
+            df <- as.numeric(lookup_vals$df)
+            
+            cop <- df*carnot_cop
+            
+            qsink_avail <- qsource_avail*(cop/(cop-1))
+            qsink_act <- min(qsink_avail, qsink_req)
+            qsource_act <- qsink_act*((cop-1)/cop)
+            tsource_out_act <-interpolate_path(x_seq = source_table_poss$enthalpy, y_seq = source_table_poss$temp, target_x = qsource_act) 
+            tsink_out_act <- interpolate_path(x_seq = sink_table_poss$enthalpy, y_seq = sink_table_poss$temp, target_x = qsink_act) 
+            w_in <- qsink_act/cop
+            
+
+            if (t_uni == '°F'){ 
+              tsource_out_act_c <- (tsource_out_act-32)*(5/9)
+              tsink_out_act_c <- (tsink_out_act-32)*(5/9)
+              dt <- max(abs(t_evap_g - tsource_out_act_c), abs(t_cond_g - tsink_out_act_c))
+              t_evap_g = (tsource_out_act-32)*(5/9)
+              t_cond_g = (tsink_out_act-32)*(5/9)
+            } else {
+              dt <- abs(max(t_evap_g - tsource_out_act, t_cond_g - tsink_out_act))
+              t_evap_g = tsource_out_act
+              t_cond_g = tsink_out_act
+            }
+            
+            
+          }
           
-          lookup_vals <- tibble(
-            "t_cond" = t_cond_g,
-            "t_evap" = t_evap_g,
-            "t_cond.t_evap" = t_cond_g*t_evap_g,
-            "t_cond_2" = t_cond_g^2,
-            "t_evap_2" = t_evap_g^2
-          )
-          
-          lookup_vals$df <- as_tibble(predict(model1,lookup_vals))
-          
-          
-          df <- as.numeric(lookup_vals$df)
-          
-          cop <- df*carnot_cop
-          
-          qsink_avail <- qsource_avail*(cop/(cop-1))
-          qsink_act <- min(qsink_avail, qsink_req)
-          qsource_act <- qsink_act*((cop-1)/cop)
-          tsource_out_idx <- which.min(abs(source_table_poss$x - qsource_act))
-          tsource_out_act <- source_table_poss[tsource_out_idx, "temp"] + input$pinchdt/2
-          tsink_out_idx <- which.min(abs(sink_table_poss$x - qsink_act))
-          tsink_out_act <- sink_table_poss[tsink_out_idx, "temp"] - input$pinchdt/2
-          w_in <- qsink_act/cop
+
 
           if (t_evap_g < min(cop_table$t_evap) | t_evap_g > max(cop_table$t_evap)|
               t_cond_g < min(cop_table$t_cond) | t_evap_g > max(cop_table$t_cond)) {
@@ -2283,8 +2073,8 @@ server <- function(input, output, session) {
           }
         }
  
-          te <- tsource_out_act - input$pinchdt/2
-          tc <- tsink_out_act + input$pinchdt/2
+          te <- tsource_out_act 
+          tc <- tsink_out_act 
 
         
         cop_c <- cop - 1
