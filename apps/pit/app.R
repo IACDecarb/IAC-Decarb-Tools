@@ -83,8 +83,6 @@ ui <- fluidPage(
   useShinyjs(),
   theme = shinytheme("flatly"),
   titlePanel("Pinch Heat Integration Tool"),
-  
-  # --- 1. Your Original Tabset Panel (Restored to full width) ---
   tabsetPanel(
     id = "tabs",
     
