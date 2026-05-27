@@ -640,7 +640,7 @@ server <- function(input, output, session) {
     stopApp()
   })
   
-  docFilePath <- 'AllUploadFiles_ToolTesting/ELPT User Guide - Draft.pdf'
+  docFilePath <- 'AllUploadFiles_ToolTesting/User Guide for ELPT.pdf'
   
   output$downloaddocu <- downloadHandler(
     filename = function() {

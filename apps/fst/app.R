@@ -251,7 +251,7 @@ ui <- fluidPage(
       }
     "
           )),
-          downloadLink("downloadData2", "Download Tool Documentation (Draft Version)")
+          downloadLink("downloadData2", "Download Tool Documentation")
         ),
         mainPanel(
           h1("Instructions"),
