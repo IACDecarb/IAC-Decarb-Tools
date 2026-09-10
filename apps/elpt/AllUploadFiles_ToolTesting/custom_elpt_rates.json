@@ -1,0 +1,31 @@
+[
+    {
+        "EIA_Utility_ID": "LBNL-CUSTOM",
+        "Utility_Name": "LBNL",
+        "Rate_Name": "Test Case - Fixed 315,000 kWh CBL Hybrid",
+        "OpenEI_ID": "LBNL-HYBRID-315000-V1",
+        "Sector": "Industrial",
+        "Custom_Rate_Type": "fixed_cbl_hybrid",
+        "Custom_Rate_Version": "2026-08-26-fuel-surcharge",
+        "CBL_kWh": 315000,
+        "CBL_Fuel_Surcharge_Per_kWh": 0.045876,
+        "Reference_Billing_Demand_kW": 509,
+        "Rate_Description": "Planning-only synthetic usage tariff with a fixed 315,000 kWh monthly CBL, a $0.045876/kWh fuel surcharge on the CBL, and calendar-month incremental energy prices.",
+        "Basic_Information_Comments": "The PLM energy-block boundaries are permanently resolved using a 509 kW reference billing demand. This is an approximation and does not calculate monthly billing demand.",
+        "Energy_Comments": "The first 315,000 kWh receives the fixed PLM-derived blocks plus a $0.045876/kWh fuel surcharge. Every additional kWh receives only the applicable calendar-month incremental price. There are no separate demand or fixed charges.",
+        "Incremental_Rates_By_Month": [
+            0.090721077,
+            0.040722557,
+            0.037444226,
+            0.038215054,
+            0.035374621,
+            0.057496804,
+            0.133064758,
+            0.101464639,
+            0.036376598,
+            0.034041349,
+            0.03229222,
+            0.041117497
+        ]
+    }
+]

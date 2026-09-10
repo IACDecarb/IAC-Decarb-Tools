@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "source_repository": "https://github.com/IACDecarb/IAC-Decarb-Tools-Dev.git",
+  "source_commit": "d23b1c1ab46ae6ee73123fd615f5b9b0fc390f85",
+  "official_base_commit": "87497c1a27d8f3b6bc76c7f819c66b6ce2d0c673",
+  "prepared_at_utc": "2026-09-10T18:21:03.180837+00:00",
+  "files": {
+    "apps/elpt/.gitignore": {
+      "mode": "100644",
+      "blob": "74d6bce31a44f49595858ce419ee26ac97ca1eeb"
+    },
+    "apps/elpt/AllUploadFiles_ToolTesting/Custom_Hourly_LoadProfileTemplate_PGE.xlsx": {
+      "mode": "100644",
+      "blob": "90b88aa756c607352bd7c59d53ba7a67d14cc6df"
+    },
+    "apps/elpt/AllUploadFiles_ToolTesting/Desert_Multi_Family_Jan_1_2011_to_Jan_1_2012_RetailCustomer_6.xml": {
+      "mode": "100644",
+      "blob": "2de8366c9c7fe25c5f01059bc4453d9caa05b71d"
+    },
+    "apps/elpt/AllUploadFiles_ToolTesting/PG&E_Default_Sample.xlsx": {
+      "mode": "100644",
+      "blob": "6d91be071b226fde02581ebb9a7140262beccd74"
+    },
+    "apps/elpt/AllUploadFiles_ToolTesting/Rate Input Sheet.xlsx": {
+      "mode": "100644",
+      "blob": "6b0330441d6bda709e3ba36a766762b83d680f07"
+    },
+    "apps/elpt/AllUploadFiles_ToolTesting/SCE_GreenButton_15Minute_Mar-May.xml": {
+      "mode": "100644",
+      "blob": "9f2de3687f1e852b495a09144b7f222843bdd2ea"
+    },
+    "apps/elpt/AllUploadFiles_ToolTesting/States Emission Factors/Cambium.zip": {
+      "mode": "100644",
+      "blob": "0f1b130977d461dfb47984d7faaa12f4b14f5d5f"
+    },
+    "apps/elpt/AllUploadFiles_ToolTesting/States Emission Factors/eGRID/eGRID 2022.xlsx": {
+      "mode": "100644",
+      "blob": "b3dca48d3b08cac0e45c9df89ef487503e47f3b7"
+    },
+    "apps/elpt/AllUploadFiles_ToolTesting/User Guide for ELPT.pdf": {
+      "mode": "100644",
+      "blob": "5c17dfe37ebbaca35e3987a243f2311ee7aa486d"
+    },
+    "apps/elpt/AllUploadFiles_ToolTesting/Utility Bills Template.xlsx": {
+      "mode": "100644",
+      "blob": "d2c593c7b46ba75ba7926533ce58308f05dd0504"
+    },
+    "apps/elpt/AllUploadFiles_ToolTesting/custom_elpt_rates.json": {
+      "mode": "100644",
+      "blob": "80ac9ca8386e8260e82c97fd607ee166604723ab"
+    },
+    "apps/elpt/AllUploadFiles_ToolTesting/local_database_rates.json": {
+      "mode": "100644",
+      "blob": "84c2661a451819d27e7ccadfe9b1af398e6a4465"
+    },
+    "apps/elpt/Citations.html": {
+      "mode": "100644",
+      "blob": "8f0cd201157587add46f93e9b79dfbca11b9477b"
+    },
+    "apps/elpt/LEGAL.txt": {
+      "mode": "100644",
+      "blob": "2d6c704408021a7cc6ccda8f35b3fb6cbc6a95a0"
+    },
+    "apps/elpt/LICENSE.txt": {
+      "mode": "100644",
+      "blob": "2454b8004fefa9fa52cf3dea67fd8ba84664710d"
+    },
+    "apps/elpt/RATE_UPDATES.md": {
+      "mode": "100644",
+      "blob": "7e7156f843f3eb8faa13be5b512f125e3aa05955"
+    },
+    "apps/elpt/app.R": {
+      "mode": "100644",
+      "blob": "acc2123e768bcd872a8f451a809878bdfcb39883"
+    },
+    "apps/elpt/rate_calculations.R": {
+      "mode": "100644",
+      "blob": "2d5232cd3aac8fd18bc1979c992ec90c4466edae"
+    },
+    "apps/elpt/refresh_schedule.py": {
+      "mode": "100644",
+      "blob": "cef1f810d86ea25affb36c40c792eed596d10a96"
+    },
+    "apps/elpt/tests/test_hourly_cost_app.R": {
+      "mode": "100644",
+      "blob": "8ca8ac0747740589bb8840eaf0ebd950eb81b547"
+    },
+    "apps/elpt/tests/test_rate_calculations.R": {
+      "mode": "100644",
+      "blob": "f3511b21a65ad0373596aa6128cb248e1465e3fe"
+    },
+    "apps/elpt/tests/test_rate_database_integration.R": {
+      "mode": "100644",
+      "blob": "d1b0183f1e1c6f02fc0248ccfac2e25c982f5ef0"
+    },
+    "apps/elpt/tests/test_rate_refresh.py": {
+      "mode": "100644",
+      "blob": "25b40c3c27f839241c9882bd4d6e3b3b4192f637"
+    },
+    "apps/elpt/update_urdb_rates.py": {
+      "mode": "100644",
+      "blob": "6bd3f50cb367c0620f82b842137df18550574aaa"
+    },
+    "apps/elpt/validate_rate_database.py": {
+      "mode": "100644",
+      "blob": "d8fe8f05b6bf7edc5523a11f40132159b1c6f741"
+    }
+  }
+}
