@@ -19,8 +19,7 @@ library(bslib)
 library(shinyFeedback)
 library(plotly)
 library(scales)
-library(webshot2)
-library(chromote)
+source("image_export.R", local = TRUE)
 
 
 linebreaks <- function(n) {
@@ -104,6 +103,8 @@ ui <- fluidPage(
   use_prompt(),
   includeCSS(system.file("css", "kable_extra.css", package = "kableExtra")),
   tags$head(
+    tags$script(src = "fst-sankey-layout.js"),
+    tags$script(src = "fst-export.js"),
     tags$style(
       HTML(
         "
@@ -316,7 +317,7 @@ ui <- fluidPage(
           numericInput(
             "height_e",
             "Adjust height of downloaded image (px)",
-            500,
+            1250,
             500,
             20000,
             250
@@ -324,12 +325,12 @@ ui <- fluidPage(
           numericInput(
             "width_e",
             "Adjust width of downloaded image (px)",
-            1000,
+            2500,
             750,
             20000,
             250
           ),
-          downloadButton("downloadPNG_e", "Click Here to Download plot as Image"),
+          fst_png_button("downloadPNG_e"),
         ),
         mainPanel(
           tabsetPanel(
@@ -389,7 +390,7 @@ ui <- fluidPage(
           numericInput(
             "height_ec",
             "Adjust height of downloaded image (px)",
-            500,
+            1250,
             500,
             20000,
             250
@@ -397,12 +398,12 @@ ui <- fluidPage(
           numericInput(
             "width_ec",
             "Adjust width of downloaded image (px)",
-            1000,
+            2500,
             750,
             20000,
             250
           ),
-          downloadButton("downloadPNG_ec", "Click Here to Download plot as Image"),
+          fst_png_button("downloadPNG_ec"),
         ),
         mainPanel(
           tabsetPanel(
@@ -458,7 +459,7 @@ ui <- fluidPage(
           numericInput(
             "height",
             "Adjust height of downloaded image (px)",
-            500,
+            1250,
             500,
             20000,
             250
@@ -466,12 +467,12 @@ ui <- fluidPage(
           numericInput(
             "width",
             "Adjust width of downloaded image (px)",
-            1000,
+            2500,
             750,
             20000,
             250
           ),
-          downloadButton("downloadPNG", "Click Here to Download plot as Image"),
+          fst_png_button("downloadPNG"),
         ),
         mainPanel(
           tabsetPanel(
@@ -620,13 +621,13 @@ ui <- fluidPage(
 
 server <- function(input, output, session) {
   excelFilePath <- "Facility Sankey Tool - Input Sheet.xlsx"
-  
+
   docFilePath <- "User Guide for Facility Sankey Tool.pdf"
-  
+
   observeEvent(input$file, {
     updateTabsetPanel(session, "tabs", selected = "Energy Sankey")
   })
-  
+
   output$downloadData1 <- downloadHandler(
     filename = function() {
       basename(excelFilePath)
@@ -635,7 +636,7 @@ server <- function(input, output, session) {
       file.copy(excelFilePath, file)
     }
   )
-  
+
   output$downloadData2 <- downloadHandler(
     filename = function() {
       basename(docFilePath)
@@ -644,7 +645,7 @@ server <- function(input, output, session) {
       file.copy(docFilePath, file)
     }
   )
-  
+
   units_conversion_e <- reactive({
     if (input$units_e == "MWh/yr" & input$perc_e != "Percentage") {
       0.293071 # Conversion factor
@@ -652,8 +653,8 @@ server <- function(input, output, session) {
       1
     }
   })
-  
-  
+
+
   get_nodes_data <- function(filepath, total_name, emission, show_savings = TRUE) {
     aa <- readxl::read_excel(filepath, sheet = "Results", range = "a6:aa189")
     aa <- janitor::clean_names(aa)
@@ -662,12 +663,12 @@ server <- function(input, output, session) {
     } else {
       aa <- aa %>% filter(!is.na(energy_source))
     }
-    
+
     end.use <- tibble::tibble("Name" = aa$source)
     ene.src <- tibble::tibble("Name" = unique(aa$energy_source)) %>%
       na.omit()
-    
-    
+
+
     if (emission == TRUE) {
       ene_sav <- aa %>%
         filter(!is.na(co2e_emissions_savings_mt_co2e_yr) & co2e_emissions_savings_mt_co2e_yr != 0)
@@ -675,32 +676,32 @@ server <- function(input, output, session) {
       ene_sav <- aa %>%
         filter(!is.na(energy_savings) & energy_savings != 0)
     }
-    
+
     non_ele <- ene.src %>% filter(Name != "Electricity")
-    
+
     n_src <- nrow(ene.src)
-    
+
     # Create nodes based on whether there are savings AND show_savings parameter
     nodes.hh <- tibble::tibble("Name" = "")
-    
+
     if (nrow(ene_sav) > 0 && show_savings) {
       # With savings: include Total Baseline
       nodes.hh[1, "Name"] <- "Total Baseline"
       nodes.hh[2, "Name"] <- total_name
       nodes.hh[3, "Name"] <- paste0(total_name, " Saved")
-      
+
       if (emission == TRUE) {
         # For emissions: breakdown by category (Energy, Process, Fugitive)
         energy_savings <- ene_sav %>% filter(energy_or_emissions_category == "Energy")
         if (nrow(energy_savings) > 0) {
           nodes.hh[nrow(nodes.hh) + 1, "Name"] <- "Energy Saved"
         }
-        
+
         process_savings <- ene_sav %>% filter(energy_or_emissions_category == "Process")
         if (nrow(process_savings) > 0) {
           nodes.hh[nrow(nodes.hh) + 1, "Name"] <- "Process Saved"
         }
-        
+
         fugitive_savings <- ene_sav %>% filter(energy_or_emissions_category == "Fugitive")
         if (nrow(fugitive_savings) > 0) {
           nodes.hh[nrow(nodes.hh) + 1, "Name"] <- "Fugitive Saved"
@@ -710,7 +711,7 @@ server <- function(input, output, session) {
         if (nrow(ele_savings) > 0) {
           nodes.hh[nrow(nodes.hh) + 1, "Name"] <- "Electricity Saved"
         }
-        
+
         fuel_savings <- energy_savings %>% filter(energy_source != "Electricity")
         if (nrow(fuel_savings) > 0) {
           nodes.hh[nrow(nodes.hh) + 1, "Name"] <- "Fuel Saved"
@@ -721,7 +722,7 @@ server <- function(input, output, session) {
         if (nrow(ele_savings) > 0) {
           nodes.hh[4, "Name"] <- "Electricity Saved"
         }
-        
+
         fuel_savings <- ene_sav %>% filter(energy_source != "Electricity")
         if (nrow(fuel_savings) > 0) {
           nodes.hh[nrow(nodes.hh) + 1, "Name"] <- "Fuel Saved"
@@ -731,47 +732,47 @@ server <- function(input, output, session) {
       # Without savings or show_savings=FALSE: start with Total Energy only
       nodes.hh[1, "Name"] <- total_name
     }
-    
+
     if (!rlang::is_empty(non_ele$Name)) {
       nodes.hh[nrow(nodes.hh) + 1, "Name"] <- "Fuel"
     }
-    
+
     if (emission == TRUE) {
       em.src <- tibble("Name" = unique(aa$`energy_or_emissions_category`))
       nodes.h <- rbind(nodes.hh, ene.src, end.use, em.src)
     } else {
       nodes.h <- rbind(nodes.hh, ene.src, end.use)
     }
-    
-    
+
+
     nodes <- nodes.h %>%
       filter(!is.na(Name)) %>%
       mutate("No" = row_number()) %>%
       select(No, Name)
-    
+
     return(nodes)
   }
-  
+
   # Emissions Tab ----
   units_conversion <- reactive({
     if (input$units == "lbs. of CO₂e/yr" &
-        input$perc != "Percentage") {
+      input$perc != "Percentage") {
       2204.6226218 # Conversion factor
     } else {
       1
     }
   })
-  
-  
+
+
   # Read the uploaded links Excel file
   ef <- reactive({
     req(input$file)
-    
-    
+
+
     bb <- read_excel(input$file$datapath, sheet = "Emission Inputs (Optional)", range = "l10:r27")
     aa <- read_excel(input$file$datapath, sheet = "Results", range = "a6:aa189")
-    
-    
+
+
     aa <- clean_names(aa)
     aa <- aa %>%
       filter(!is.na(source))
@@ -782,33 +783,33 @@ server <- function(input, output, session) {
       mutate(efta = paste0(energy_source, units)) %>%
       select(efta) %>%
       filter(!is.na(efta))
-    
+
     result <- merge(bb1,
-                    ene.src,
-                    by.x = "Title",
-                    by.y = "Name",
-                    all = FALSE
+      ene.src,
+      by.x = "Title",
+      by.y = "Name",
+      all = FALSE
     )
-    
+
     long_data <- melt(
       result,
       id.vars = c("Title", "Source"),
       variable.name = "Units",
       value.name = "Factors"
     )
-    
+
     display_data <- merge(bb1,
-                          ene.src,
-                          by.x = "Title",
-                          by.y = "Name",
-                          all = FALSE
+      ene.src,
+      by.x = "Title",
+      by.y = "Name",
+      all = FALSE
     )
-    
+
     dd1 <- long_data %>%
       mutate(efta = paste0(Title, Units))
-    
+
     dd2 <- tibble("efta" = unique(fortable$`efta`))
-    
+
     result2 <- merge(dd1, dd2, by = "efta", all = FALSE)
     result2 <- result2 %>%
       select(-efta) %>%
@@ -816,11 +817,11 @@ server <- function(input, output, session) {
       mutate(Units = paste0("MTCO₂e/", Units))
     result2$Factors <- signif(result2$Factors, 3)
     result2$Factors <- format(result2$Factors, scientific = T)
-    
+
     result2
   })
-  
-  
+
+
   tef <- reactive({
     ef <- ef()
     if (is_empty(ef$Factors)) {
@@ -829,66 +830,66 @@ server <- function(input, output, session) {
       "Emission Factors Used"
     }
   })
-  
+
   output$titleef <- renderText({
     text <- tef()
   })
-  
+
   output$table1 <- renderTable({
     # Set to 0 to always display in scientific notation
     ef()
   })
-  
+
   temp <- reactive({
     req(input$file)
-    
-    
+
+
     temp <- read_excel(input$file$datapath, sheet = "Results", range = "a6:aa189")
     temp <- clean_names(temp)
     temp <- temp %>%
       filter(!is.na(source))
     temp
   })
-  
+
   # Reactive for nodes data - Baseline tab (no savings nodes)
   nodes_data <- reactive({
     req(input$file)
     get_nodes_data(input$file$datapath, "Total Emissions", TRUE, show_savings = FALSE)
   })
-  
+
   # Reactive for nodes data - New tab (with savings nodes)
   nodes_data_new <- reactive({
     req(input$file)
     get_nodes_data(input$file$datapath, "Total Emissions", TRUE, show_savings = TRUE)
   })
-  
+
   # Links reactive for Emissions Baseline tab
   links_data <- reactive({
     req(input$file)
     show_savings <- FALSE # For Baseline tab
-    
+
     aa <- read_excel(input$file$datapath, sheet = "Results", range = "a6:aa189")
-    
+
     aa <- clean_names(aa)
     aa <- aa %>%
       filter(!is.na(source))
-    
+
     end.use <- tibble("Name" = aa$`source`)
     ene.src <- tibble("Name" = unique(aa$`energy_source`))
     ene.src <- na.omit(ene.src)
     n_src <- nrow(ene.src)
-    
+
     # Get energy savings data
     ene_sav <- aa %>%
       filter(!is.na(co2e_emissions_savings_mt_co2e_yr & co2e_emissions_savings_mt_co2e_yr != 0))
     em.src <- tibble("Name" = unique(aa$`energy_or_emissions_category`))
-    
+
     # Check if there are savings and if we should show them
     has_savings <- nrow(ene_sav) > 0 && show_savings
-    
+
     # Create nodes structure
     nodes.hh <- tibble("Name" = "")
-    
+
     # Track node indices
     total_baseline_idx <- NULL
     total_emissions_idx <- NULL
@@ -899,7 +900,7 @@ server <- function(input, output, session) {
     electricity_saved_idx <- NULL
     fuel_saved_idx <- NULL
     total_name <- "Total Emissions"
-    
+
     if (has_savings) {
       nodes.hh[1, "Name"] <- "Total Baseline"
       nodes.hh[2, "Name"] <- total_name
@@ -907,26 +908,26 @@ server <- function(input, output, session) {
       total_baseline_idx <- 1
       total_emissions_idx <- 2
       total_emissions_saved_idx <- 3
-      
+
       # Check for savings by category
       energy_savings <- ene_sav %>% filter(energy_or_emissions_category == "Energy")
       if (nrow(energy_savings) > 0) {
         nodes.hh[nrow(nodes.hh) + 1, "Name"] <- "Energy Saved"
         energy_saved_idx <- nrow(nodes.hh)
       }
-      
+
       process_savings <- ene_sav %>% filter(energy_or_emissions_category == "Process")
       if (nrow(process_savings) > 0) {
         nodes.hh[nrow(nodes.hh) + 1, "Name"] <- "Process Saved"
         process_saved_idx <- nrow(nodes.hh)
       }
-      
+
       fugitive_savings <- ene_sav %>% filter(energy_or_emissions_category == "Fugitive")
       if (nrow(fugitive_savings) > 0) {
         nodes.hh[nrow(nodes.hh) + 1, "Name"] <- "Fugitive Saved"
         fugitive_saved_idx <- nrow(nodes.hh)
       }
-      
+
       # If there's Energy Saved, add Electricity and Fuel breakdown
       if (!is.null(energy_saved_idx)) {
         ele_savings <- energy_savings %>% filter(energy_source == "Electricity")
@@ -934,7 +935,7 @@ server <- function(input, output, session) {
           nodes.hh[nrow(nodes.hh) + 1, "Name"] <- "Electricity Saved"
           electricity_saved_idx <- nrow(nodes.hh)
         }
-        
+
         fuel_savings <- energy_savings %>% filter(energy_source != "Electricity")
         if (nrow(fuel_savings) > 0) {
           nodes.hh[nrow(nodes.hh) + 1, "Name"] <- "Fuel Saved"
@@ -946,82 +947,82 @@ server <- function(input, output, session) {
       nodes.hh[1, "Name"] <- total_name
       total_emissions_idx <- 1
     }
-    
+
     non_ele <- ene.src %>%
       filter(Name != "Electricity")
-    
+
     fuel_link_val <- numeric(0)
     if (!is_empty(non_ele$Name)) {
       nodes.hh[nrow(nodes.hh) + 1, "Name"] <- "Fuel"
       fuel_link_val <- nrow(nodes.hh)
     }
-    
+
     nodes.h <- rbind(nodes.hh, ene.src, end.use, em.src)
-    
+
     nodes <- nodes.h %>%
       filter(!is.na(Name)) %>%
       mutate("No" = row_number()) %>%
       select(No, Name)
-    
+
     links.h <- tibble(
       "No" = 0,
       "Source" = 0,
       "Target" = 0,
       "Value" = 0
     )
-    
+
     link_counter <- 0
-    
+
     # 1. Add links from Total Baseline (only if savings exist)
     if (has_savings) {
       # Total Baseline -> Total Emissions
       link_counter <- link_counter + 1
       links.h[link_counter, ] <- list(link_counter, total_baseline_idx - 1, total_emissions_idx - 1, 0)
-      
+
       # Total Baseline -> Total Emissions Saved
       link_counter <- link_counter + 1
       links.h[link_counter, ] <- list(link_counter, total_baseline_idx - 1, total_emissions_saved_idx - 1, 0)
     }
-    
+
     # 2. Add links from Total Emissions Saved to category savings (Energy, Process, Fugitive)
     if (has_savings) {
       if (!is.null(energy_saved_idx)) {
         link_counter <- link_counter + 1
         links.h[link_counter, ] <- list(link_counter, total_emissions_saved_idx - 1, energy_saved_idx - 1, 0)
       }
-      
+
       if (!is.null(process_saved_idx)) {
         link_counter <- link_counter + 1
         links.h[link_counter, ] <- list(link_counter, total_emissions_saved_idx - 1, process_saved_idx - 1, 0)
       }
-      
+
       if (!is.null(fugitive_saved_idx)) {
         link_counter <- link_counter + 1
         links.h[link_counter, ] <- list(link_counter, total_emissions_saved_idx - 1, fugitive_saved_idx - 1, 0)
       }
-      
+
       # 3. Add links from Energy Saved to Electricity/Fuel Saved
       if (!is.null(energy_saved_idx)) {
         if (!is.null(electricity_saved_idx)) {
           link_counter <- link_counter + 1
           links.h[link_counter, ] <- list(link_counter, energy_saved_idx - 1, electricity_saved_idx - 1, 0)
         }
-        
+
         if (!is.null(fuel_saved_idx)) {
           link_counter <- link_counter + 1
           links.h[link_counter, ] <- list(link_counter, energy_saved_idx - 1, fuel_saved_idx - 1, 0)
         }
       }
     }
-    
+
     # 4. Add existing energy flow links (from energy sources to end uses)
     aa.e <- aa %>%
       filter(energy_or_emissions_category == "Energy")
-    
+
     for (i in 1:nrow(aa.e)) {
       link_counter <- link_counter + 1
       links.h[link_counter, "No"] <- link_counter
-      
+
       for (j in 1:nrow(nodes)) {
         if (aa.e[i, "source"] == nodes[j, "Name"]) {
           links.h[link_counter, "Target"] <- nodes[[j, "No"]] - 1
@@ -1032,14 +1033,14 @@ server <- function(input, output, session) {
           links.h[link_counter, "Source"] <- nodes[[j, "No"]] - 1
         }
       }
-      
+
       if (input$perc == "Percentage") {
         links.h[link_counter, "Value"] <- aa.e[i, "percentage_of_total_emissions_baseline"] * 100
       } else {
         links.h[link_counter, "Value"] <- aa.e[i, "co2e_emissions_baseline_mt_co2e_yr"]
       }
     }
-    
+
     # 5. Calculate and add aggregated links from Energy category to energy sources
     skip_rows <- if (has_savings) {
       # Count all the baseline/saved links
@@ -1053,115 +1054,115 @@ server <- function(input, output, session) {
     } else {
       0
     }
-    
+
     links.hh <- links.h %>%
       filter(No > skip_rows) %>%
       group_by(Source) %>%
       summarise(Value = sum(Value))
-    
+
     ele <- nodes %>% filter(Name == "Electricity")
     energy_idx <- nodes %>% filter(Name == "Energy")
-    
+
     if (!is_empty(ele$No)) {
       ele_link_val <- as.numeric(ele$No - 1)
       ele_link <- links.hh %>% filter(Source == ele_link_val)
       links.hh <- links.hh %>% filter(Source != ele_link_val)
-      
+
       if (nrow(ele_link) > 0) {
         link_counter <- link_counter + 1
         links.h[link_counter, ] <- list(link_counter, energy_idx$No - 1, ele_link_val, ele_link$Value)
       }
     }
-    
+
     # Add fuel links
     if (!is_empty(fuel_link_val) && nrow(links.hh) > 0) {
       fuel_total <- sum(links.hh$Value)
       link_counter <- link_counter + 1
       links.h[link_counter, ] <- list(link_counter, energy_idx$No - 1, fuel_link_val - 1, fuel_total)
-      
+
       for (k in 1:nrow(links.hh)) {
         link_counter <- link_counter + 1
         links.h[link_counter, ] <- list(link_counter, fuel_link_val - 1, links.hh$Source[k], links.hh$Value[k])
       }
     }
-    
+
     # 6. Calculate values for savings links (only if savings exist)
     if (has_savings) {
       # Total Emissions Saved value
       total_savings <- sum(ene_sav$co2e_emissions_savings_mt_co2e_yr, na.rm = TRUE)
       baseline_to_saved_link <- which(links.h$Source == (total_baseline_idx - 1) &
-                                        links.h$Target == (total_emissions_saved_idx - 1))
+        links.h$Target == (total_emissions_saved_idx - 1))
       if (length(baseline_to_saved_link) > 0) {
         links.h[baseline_to_saved_link, "Value"] <- total_savings
       }
-      
+
       # Energy Saved value
       if (!is.null(energy_saved_idx)) {
         energy_sav_total <- sum(ene_sav$co2e_emissions_savings_mt_co2e_yr[ene_sav$energy_or_emissions_category == "Energy"], na.rm = TRUE)
         energy_sav_link <- which(links.h$Source == (total_emissions_saved_idx - 1) &
-                                   links.h$Target == (energy_saved_idx - 1))
+          links.h$Target == (energy_saved_idx - 1))
         if (length(energy_sav_link) > 0) {
           links.h[energy_sav_link, "Value"] <- energy_sav_total
         }
-        
+
         # Electricity and Fuel saved values
         if (!is.null(electricity_saved_idx)) {
           ele_sav_total <- sum(ene_sav$co2e_emissions_savings_mt_co2e_yr[ene_sav$energy_or_emissions_category == "Energy" &
-                                                                           ene_sav$energy_source == "Electricity"], na.rm = TRUE)
+            ene_sav$energy_source == "Electricity"], na.rm = TRUE)
           ele_sav_link <- which(links.h$Source == (energy_saved_idx - 1) &
-                                  links.h$Target == (electricity_saved_idx - 1))
+            links.h$Target == (electricity_saved_idx - 1))
           if (length(ele_sav_link) > 0) {
             links.h[ele_sav_link, "Value"] <- ele_sav_total
           }
         }
-        
+
         if (!is.null(fuel_saved_idx)) {
           fuel_sav_total <- sum(ene_sav$co2e_emissions_savings_mt_co2e_yr[ene_sav$energy_or_emissions_category == "Energy" &
-                                                                            ene_sav$energy_source != "Electricity"], na.rm = TRUE)
+            ene_sav$energy_source != "Electricity"], na.rm = TRUE)
           fuel_sav_link <- which(links.h$Source == (energy_saved_idx - 1) &
-                                   links.h$Target == (fuel_saved_idx - 1))
+            links.h$Target == (fuel_saved_idx - 1))
           if (length(fuel_sav_link) > 0) {
             links.h[fuel_sav_link, "Value"] <- fuel_sav_total
           }
         }
       }
-      
+
       # Process Saved value
       if (!is.null(process_saved_idx)) {
         process_sav_total <- sum(ene_sav$co2e_emissions_savings_mt_co2e_yr[ene_sav$energy_or_emissions_category == "Process"], na.rm = TRUE)
         process_sav_link <- which(links.h$Source == (total_emissions_saved_idx - 1) &
-                                    links.h$Target == (process_saved_idx - 1))
+          links.h$Target == (process_saved_idx - 1))
         if (length(process_sav_link) > 0) {
           links.h[process_sav_link, "Value"] <- process_sav_total
         }
       }
-      
+
       # Fugitive Saved value
       if (!is.null(fugitive_saved_idx)) {
         fugitive_sav_total <- sum(ene_sav$co2e_emissions_savings_mt_co2e_yr[ene_sav$energy_or_emissions_category == "Fugitive"], na.rm = TRUE)
         fugitive_sav_link <- which(links.h$Source == (total_emissions_saved_idx - 1) &
-                                     links.h$Target == (fugitive_saved_idx - 1))
+          links.h$Target == (fugitive_saved_idx - 1))
         if (length(fugitive_sav_link) > 0) {
           links.h[fugitive_sav_link, "Value"] <- fugitive_sav_total
         }
       }
-      
+
       # Update Total Baseline -> Total Emissions link
       total_emissions_consumption <- sum(aa.e$co2e_emissions_baseline_mt_co2e_yr, na.rm = TRUE)
       baseline_to_emissions_link <- which(links.h$Source == (total_baseline_idx - 1) &
-                                            links.h$Target == (total_emissions_idx - 1))
+        links.h$Target == (total_emissions_idx - 1))
       if (length(baseline_to_emissions_link) > 0) {
         links.h[baseline_to_emissions_link, "Value"] <- total_emissions_consumption
       }
     }
-    
+
     # 7. Add non-energy emission flows (Process and Fugitive)
     ene <- nodes %>% filter(Name == "Energy")
     ene_link_val <- as.numeric(ene$No - 1)
-    
+
     aa.ne <- aa %>%
       filter(energy_or_emissions_category != "Energy")
-    
+
     if (!is_empty(aa.ne$source)) {
       o <- 0
       for (q in (nrow(links.h) + 1):(nrow(links.h) + nrow(aa.ne))) {
@@ -1184,37 +1185,37 @@ server <- function(input, output, session) {
         }
       }
     }
-    
+
     # 8. Add links from Total Emissions to emission categories
     pr_link_val <- numeric(0)
     fg_link_val <- numeric(0)
-    
+
     pr <- nodes %>% filter(Name == "Process")
     fg <- nodes %>% filter(Name == "Fugitive")
     filter_criteria <- c()
-    
+
     if (!is_empty(pr$No)) {
       pr_link_val <- as.numeric(pr$No - 1)
       filter_criteria <- c(filter_criteria, pr_link_val)
     }
-    
+
     if (!is_empty(fg$No)) {
       fg_link_val <- as.numeric(fg$No - 1)
       filter_criteria <- c(filter_criteria, fg_link_val)
     }
-    
+
     # Always include ene_link_val
     filter_criteria <- c(filter_criteria, ene_link_val)
-    
+
     # Apply the filter and summarise
     links.t <- links.h %>%
       filter(Source %in% filter_criteria) %>%
       group_by(Source) %>%
       summarise(Value = sum(Value))
-    
+
     total_fields <- as.numeric(!is_empty(pr_link_val)) + as.numeric(!is_empty(ene_link_val)) +
       as.numeric(!is_empty(fg_link_val))
-    
+
     v <- 0
     for (m in (nrow(links.h) + 1):(nrow(links.h) + total_fields)) {
       v <- v + 1
@@ -1223,7 +1224,7 @@ server <- function(input, output, session) {
       links.h[m, "Source"] <- total_emissions_idx - 1
       links.h[m, "Value"] <- links.t[v, "Value"]
     }
-    
+
     links <- links.h
     links <- links %>%
       filter(No > 0, !is.na(Value), Value > 0) %>%
@@ -1232,37 +1233,37 @@ server <- function(input, output, session) {
         label = paste0(Source, " → ", Target, ": ", Value)
       ) %>%
       arrange(Source)
-    
+
     return(links)
   })
-  
+
   # Links reactive for Emissions New tab (with savings)
   links_data_new <- reactive({
     req(input$file)
     show_savings <- TRUE # For New tab
-    
+
     aa <- read_excel(input$file$datapath, sheet = "Results", range = "a6:aa189")
-    
+
     aa <- clean_names(aa)
     aa <- aa %>%
       filter(!is.na(source))
-    
+
     end.use <- tibble("Name" = aa$`source`)
     ene.src <- tibble("Name" = unique(aa$`energy_source`))
     ene.src <- na.omit(ene.src)
     n_src <- nrow(ene.src)
-    
+
     # Get energy savings data
     ene_sav <- aa %>%
       filter(!is.na(co2e_emissions_savings_mt_co2e_yr) & co2e_emissions_savings_mt_co2e_yr != 0)
     em.src <- tibble("Name" = unique(aa$`energy_or_emissions_category`))
-    
+
     # Check if there are savings and if we should show them
     has_savings <- nrow(ene_sav) > 0 && show_savings
-    
+
     # Create nodes structure
     nodes.hh <- tibble("Name" = "")
-    
+
     # Track node indices
     total_baseline_idx <- NULL
     total_emissions_idx <- NULL
@@ -1273,7 +1274,7 @@ server <- function(input, output, session) {
     electricity_saved_idx <- NULL
     fuel_saved_idx <- NULL
     total_name <- "Total Emissions"
-    
+
     if (has_savings) {
       nodes.hh[1, "Name"] <- "Total Baseline"
       nodes.hh[2, "Name"] <- total_name
@@ -1281,26 +1282,26 @@ server <- function(input, output, session) {
       total_baseline_idx <- 1
       total_emissions_idx <- 2
       total_emissions_saved_idx <- 3
-      
+
       # Check for savings by category
       energy_savings <- ene_sav %>% filter(energy_or_emissions_category == "Energy")
       if (nrow(energy_savings) > 0) {
         nodes.hh[nrow(nodes.hh) + 1, "Name"] <- "Energy Saved"
         energy_saved_idx <- nrow(nodes.hh)
       }
-      
+
       process_savings <- ene_sav %>% filter(energy_or_emissions_category == "Process")
       if (nrow(process_savings) > 0) {
         nodes.hh[nrow(nodes.hh) + 1, "Name"] <- "Process Saved"
         process_saved_idx <- nrow(nodes.hh)
       }
-      
+
       fugitive_savings <- ene_sav %>% filter(energy_or_emissions_category == "Fugitive")
       if (nrow(fugitive_savings) > 0) {
         nodes.hh[nrow(nodes.hh) + 1, "Name"] <- "Fugitive Saved"
         fugitive_saved_idx <- nrow(nodes.hh)
       }
-      
+
       # If there's Energy Saved, add Electricity and Fuel breakdown
       if (!is.null(energy_saved_idx)) {
         ele_savings <- energy_savings %>% filter(energy_source == "Electricity")
@@ -1308,7 +1309,7 @@ server <- function(input, output, session) {
           nodes.hh[nrow(nodes.hh) + 1, "Name"] <- "Electricity Saved"
           electricity_saved_idx <- nrow(nodes.hh)
         }
-        
+
         fuel_savings <- energy_savings %>% filter(energy_source != "Electricity")
         if (nrow(fuel_savings) > 0) {
           nodes.hh[nrow(nodes.hh) + 1, "Name"] <- "Fuel Saved"
@@ -1320,82 +1321,82 @@ server <- function(input, output, session) {
       nodes.hh[1, "Name"] <- total_name
       total_emissions_idx <- 1
     }
-    
+
     non_ele <- ene.src %>%
       filter(Name != "Electricity")
-    
+
     fuel_link_val <- numeric(0)
     if (!is_empty(non_ele$Name)) {
       nodes.hh[nrow(nodes.hh) + 1, "Name"] <- "Fuel"
       fuel_link_val <- nrow(nodes.hh)
     }
-    
+
     nodes.h <- rbind(nodes.hh, ene.src, end.use, em.src)
-    
+
     nodes <- nodes.h %>%
       filter(!is.na(Name)) %>%
       mutate("No" = row_number()) %>%
       select(No, Name)
-    
+
     links.h <- tibble(
       "No" = 0,
       "Source" = 0,
       "Target" = 0,
       "Value" = 0
     )
-    
+
     link_counter <- 0
-    
+
     # 1. Add links from Total Baseline (only if savings exist)
     if (has_savings) {
       # Total Baseline -> Total Emissions
       link_counter <- link_counter + 1
       links.h[link_counter, ] <- list(link_counter, total_baseline_idx - 1, total_emissions_idx - 1, 0)
-      
+
       # Total Baseline -> Total Emissions Saved
       link_counter <- link_counter + 1
       links.h[link_counter, ] <- list(link_counter, total_baseline_idx - 1, total_emissions_saved_idx - 1, 0)
     }
-    
+
     # 2. Add links from Total Emissions Saved to category savings (Energy, Process, Fugitive)
     if (has_savings) {
       if (!is.null(energy_saved_idx)) {
         link_counter <- link_counter + 1
         links.h[link_counter, ] <- list(link_counter, total_emissions_saved_idx - 1, energy_saved_idx - 1, 0)
       }
-      
+
       if (!is.null(process_saved_idx)) {
         link_counter <- link_counter + 1
         links.h[link_counter, ] <- list(link_counter, total_emissions_saved_idx - 1, process_saved_idx - 1, 0)
       }
-      
+
       if (!is.null(fugitive_saved_idx)) {
         link_counter <- link_counter + 1
         links.h[link_counter, ] <- list(link_counter, total_emissions_saved_idx - 1, fugitive_saved_idx - 1, 0)
       }
-      
+
       # 3. Add links from Energy Saved to Electricity/Fuel Saved
       if (!is.null(energy_saved_idx)) {
         if (!is.null(electricity_saved_idx)) {
           link_counter <- link_counter + 1
           links.h[link_counter, ] <- list(link_counter, energy_saved_idx - 1, electricity_saved_idx - 1, 0)
         }
-        
+
         if (!is.null(fuel_saved_idx)) {
           link_counter <- link_counter + 1
           links.h[link_counter, ] <- list(link_counter, energy_saved_idx - 1, fuel_saved_idx - 1, 0)
         }
       }
     }
-    
+
     # 4. Add existing energy flow links (from energy sources to end uses) - use NEW values
     aa.e <- aa %>%
       filter(energy_or_emissions_category == "Energy")
-    
+
     for (i in 1:nrow(aa.e)) {
       link_counter <- link_counter + 1
       links.h[link_counter, "No"] <- link_counter
-      
+
       for (j in 1:nrow(nodes)) {
         if (aa.e[i, "source"] == nodes[j, "Name"]) {
           links.h[link_counter, "Target"] <- nodes[[j, "No"]] - 1
@@ -1406,11 +1407,11 @@ server <- function(input, output, session) {
           links.h[link_counter, "Source"] <- nodes[[j, "No"]] - 1
         }
       }
-      
-      
+
+
       links.h[link_counter, "Value"] <- aa.e[i, "co2e_emissions_new_mt_co2e_yr"]
     }
-    
+
     # 5. Calculate and add aggregated links from Energy category to energy sources
     skip_rows <- if (has_savings) {
       # Count all the baseline/saved links
@@ -1424,115 +1425,115 @@ server <- function(input, output, session) {
     } else {
       0
     }
-    
+
     links.hh <- links.h %>%
       filter(No > skip_rows) %>%
       group_by(Source) %>%
       summarise(Value = sum(Value))
-    
+
     ele <- nodes %>% filter(Name == "Electricity")
     energy_idx <- nodes %>% filter(Name == "Energy")
-    
+
     if (!is_empty(ele$No)) {
       ele_link_val <- as.numeric(ele$No - 1)
       ele_link <- links.hh %>% filter(Source == ele_link_val)
       links.hh <- links.hh %>% filter(Source != ele_link_val)
-      
+
       if (nrow(ele_link) > 0) {
         link_counter <- link_counter + 1
         links.h[link_counter, ] <- list(link_counter, energy_idx$No - 1, ele_link_val, ele_link$Value)
       }
     }
-    
+
     # Add fuel links
     if (!is_empty(fuel_link_val) && nrow(links.hh) > 0) {
       fuel_total <- sum(links.hh$Value)
       link_counter <- link_counter + 1
       links.h[link_counter, ] <- list(link_counter, energy_idx$No - 1, fuel_link_val - 1, fuel_total)
-      
+
       for (k in 1:nrow(links.hh)) {
         link_counter <- link_counter + 1
         links.h[link_counter, ] <- list(link_counter, fuel_link_val - 1, links.hh$Source[k], links.hh$Value[k])
       }
     }
-    
+
     # 6. Calculate values for savings links (only if savings exist)
     if (has_savings) {
       # Total Emissions Saved value
       total_savings <- sum(ene_sav$co2e_emissions_savings_mt_co2e_yr, na.rm = TRUE)
       baseline_to_saved_link <- which(links.h$Source == (total_baseline_idx - 1) &
-                                        links.h$Target == (total_emissions_saved_idx - 1))
+        links.h$Target == (total_emissions_saved_idx - 1))
       if (length(baseline_to_saved_link) > 0) {
         links.h[baseline_to_saved_link, "Value"] <- total_savings
       }
-      
+
       # Energy Saved value
       if (!is.null(energy_saved_idx)) {
         energy_sav_total <- sum(ene_sav$co2e_emissions_savings_mt_co2e_yr[ene_sav$energy_or_emissions_category == "Energy"], na.rm = TRUE)
         energy_sav_link <- which(links.h$Source == (total_emissions_saved_idx - 1) &
-                                   links.h$Target == (energy_saved_idx - 1))
+          links.h$Target == (energy_saved_idx - 1))
         if (length(energy_sav_link) > 0) {
           links.h[energy_sav_link, "Value"] <- energy_sav_total
         }
-        
+
         # Electricity and Fuel saved values
         if (!is.null(electricity_saved_idx)) {
           ele_sav_total <- sum(ene_sav$co2e_emissions_savings_mt_co2e_yr[ene_sav$energy_or_emissions_category == "Energy" &
-                                                                           ene_sav$energy_source == "Electricity"], na.rm = TRUE)
+            ene_sav$energy_source == "Electricity"], na.rm = TRUE)
           ele_sav_link <- which(links.h$Source == (energy_saved_idx - 1) &
-                                  links.h$Target == (electricity_saved_idx - 1))
+            links.h$Target == (electricity_saved_idx - 1))
           if (length(ele_sav_link) > 0) {
             links.h[ele_sav_link, "Value"] <- ele_sav_total
           }
         }
-        
+
         if (!is.null(fuel_saved_idx)) {
           fuel_sav_total <- sum(ene_sav$co2e_emissions_savings_mt_co2e_yr[ene_sav$energy_or_emissions_category == "Energy" &
-                                                                            ene_sav$energy_source != "Electricity"], na.rm = TRUE)
+            ene_sav$energy_source != "Electricity"], na.rm = TRUE)
           fuel_sav_link <- which(links.h$Source == (energy_saved_idx - 1) &
-                                   links.h$Target == (fuel_saved_idx - 1))
+            links.h$Target == (fuel_saved_idx - 1))
           if (length(fuel_sav_link) > 0) {
             links.h[fuel_sav_link, "Value"] <- fuel_sav_total
           }
         }
       }
-      
+
       # Process Saved value
       if (!is.null(process_saved_idx)) {
         process_sav_total <- sum(ene_sav$co2e_emissions_savings_mt_co2e_yr[ene_sav$energy_or_emissions_category == "Process"], na.rm = TRUE)
         process_sav_link <- which(links.h$Source == (total_emissions_saved_idx - 1) &
-                                    links.h$Target == (process_saved_idx - 1))
+          links.h$Target == (process_saved_idx - 1))
         if (length(process_sav_link) > 0) {
           links.h[process_sav_link, "Value"] <- process_sav_total
         }
       }
-      
+
       # Fugitive Saved value
       if (!is.null(fugitive_saved_idx)) {
         fugitive_sav_total <- sum(ene_sav$co2e_emissions_savings_mt_co2e_yr[ene_sav$energy_or_emissions_category == "Fugitive"], na.rm = TRUE)
         fugitive_sav_link <- which(links.h$Source == (total_emissions_saved_idx - 1) &
-                                     links.h$Target == (fugitive_saved_idx - 1))
+          links.h$Target == (fugitive_saved_idx - 1))
         if (length(fugitive_sav_link) > 0) {
           links.h[fugitive_sav_link, "Value"] <- fugitive_sav_total
         }
       }
-      
+
       # Update Total Baseline -> Total Emissions link (using NEW emissions)
       total_emissions_consumption <- sum(aa$co2e_emissions_new_mt_co2e_yr, na.rm = TRUE)
       baseline_to_emissions_link <- which(links.h$Source == (total_baseline_idx - 1) &
-                                            links.h$Target == (total_emissions_idx - 1))
+        links.h$Target == (total_emissions_idx - 1))
       if (length(baseline_to_emissions_link) > 0) {
         links.h[baseline_to_emissions_link, "Value"] <- total_emissions_consumption
       }
     }
-    
+
     # 7. Add non-energy emission flows (Process and Fugitive) - use NEW values
     ene <- nodes %>% filter(Name == "Energy")
     ene_link_val <- as.numeric(ene$No - 1)
-    
+
     aa.ne <- aa %>%
       filter(energy_or_emissions_category != "Energy")
-    
+
     if (!is_empty(aa.ne$source)) {
       o <- 0
       for (q in (nrow(links.h) + 1):(nrow(links.h) + nrow(aa.ne))) {
@@ -1551,37 +1552,37 @@ server <- function(input, output, session) {
         links.h[q, "Value"] <- aa.ne[o, "co2e_emissions_new_mt_co2e_yr"] # NEW emissions
       }
     }
-    
+
     # 8. Add links from Total Emissions to emission categories
     pr_link_val <- numeric(0)
     fg_link_val <- numeric(0)
-    
+
     pr <- nodes %>% filter(Name == "Process")
     fg <- nodes %>% filter(Name == "Fugitive")
     filter_criteria <- c()
-    
+
     if (!is_empty(pr$No)) {
       pr_link_val <- as.numeric(pr$No - 1)
       filter_criteria <- c(filter_criteria, pr_link_val)
     }
-    
+
     if (!is_empty(fg$No)) {
       fg_link_val <- as.numeric(fg$No - 1)
       filter_criteria <- c(filter_criteria, fg_link_val)
     }
-    
+
     # Always include ene_link_val
     filter_criteria <- c(filter_criteria, ene_link_val)
-    
+
     # Apply the filter and summarise
     links.t <- links.h %>%
       filter(Source %in% filter_criteria) %>%
       group_by(Source) %>%
       summarise(Value = sum(Value))
-    
+
     total_fields <- as.numeric(!is_empty(pr_link_val)) + as.numeric(!is_empty(ene_link_val)) +
       as.numeric(!is_empty(fg_link_val))
-    
+
     v <- 0
     for (m in (nrow(links.h) + 1):(nrow(links.h) + total_fields)) {
       v <- v + 1
@@ -1590,15 +1591,15 @@ server <- function(input, output, session) {
       links.h[m, "Source"] <- total_emissions_idx - 1
       links.h[m, "Value"] <- links.t[v, "Value"]
     }
-    
-    
+
+
     if (input$perc == "Percentage") {
       total_baseline_df <- links.h %>%
         filter(Source == 0) %>%
         group_by(Source) %>%
         summarise(total = sum(Value))
       total_baseline <- total_baseline_df$total
-      
+
       links.h$Value <- links.h$Value * 100 / total_baseline
     }
     links <- links.h
@@ -1609,25 +1610,25 @@ server <- function(input, output, session) {
         label = paste0(Source, " → ", Target, ": ", Value)
       ) %>%
       arrange(Source)
-    
-    
+
+
     return(links)
-    
+
     sankeyNetwork(
       Links = links, Nodes = nodes, Source = "Source",
       Target = "Target", Value = "Value", NodeID = "Name",
       fontSize = 12, nodeWidth = 30
     )
   })
-  
-  
+
+
   s1 <- reactive({
     nodes <- nodes_data()
     links <- links_data()
     names(nodes) <- c("SN", "Name")
     names(links) <- c("SN", "Source", "Target", "Value", "label")
-    
-    
+
+
     sankey_reactive <- reactive({
       sankeyNetwork(
         Links = links,
@@ -1644,9 +1645,9 @@ server <- function(input, output, session) {
         colourScale = JS("d3.scaleSequential(d3.interpolatePlasma);")
       )
     })
-    
+
     sankey <- sankey_reactive()
-    
+
     javascript_string <-
       'function(el, x) {
   d3.select(el).selectAll(".node text")
@@ -1659,20 +1660,21 @@ server <- function(input, output, session) {
       }
     });
 
-  // Clear the viewBox attribute of the first SVG element
-  document.getElementsByTagName("svg")[0].setAttribute("viewBox", "");
+  // Apply sizing only to this widget, including when other charts are visible
+  var svg = el.querySelector("svg");
+  if (svg) svg.removeAttribute("viewBox");
 }'
-    
+
     htmlwidgets::onRender(x = sankey, jsCode = javascript_string)
   })
-  
+
   s1_new <- reactive({
     nodes <- nodes_data_new()
     links <- links_data_new()
     names(nodes) <- c("SN", "Name")
     names(links) <- c("SN", "Source", "Target", "Value", "label")
-    
-    
+
+
     sankey_reactive <- reactive({
       sankeyNetwork(
         Links = links,
@@ -1689,9 +1691,9 @@ server <- function(input, output, session) {
         colourScale = JS("d3.scaleSequential(d3.interpolatePlasma);")
       )
     })
-    
+
     sankey <- sankey_reactive()
-    
+
     javascript_string <-
       'function(el, x) {
   d3.select(el).selectAll(".node text")
@@ -1704,93 +1706,94 @@ server <- function(input, output, session) {
       }
     });
 
-  // Clear the viewBox attribute of the first SVG element
-  document.getElementsByTagName("svg")[0].setAttribute("viewBox", "");
+  // Apply sizing only to this widget, including when other charts are visible
+  var svg = el.querySelector("svg");
+  if (svg) svg.removeAttribute("viewBox");
 }'
-    
+
     htmlwidgets::onRender(x = sankey, jsCode = javascript_string)
   })
-  
+
   output$sankey <- renderSankeyNetwork(s1())
-  
+
   output$diagram <- renderUI({
     temp <- temp()
     nr <- nrow(temp) * input$vsc
     ht <- paste0(nr, "px")
     sankeyNetworkOutput("sankey", height = ht)
   })
-  
+
   output$sankey_new <- renderSankeyNetwork(s1_new())
-  
+
   output$diagram_new <- renderUI({
     temp <- temp()
     nr <- nrow(temp) * input$vsc
     ht <- paste0(nr, "px")
     sankeyNetworkOutput("sankey_new", height = ht)
   })
-  
+
   # Energy Tab ----
-  
+
   # Reactive for nodes data - Baseline tab (no savings nodes)
   nodes_data_energy <- reactive({
     req(input$file)
     get_nodes_data(input$file$datapath, "Total Energy", FALSE, show_savings = FALSE)
   })
-  
+
   # Reactive for nodes data - New tab (with savings nodes)
   nodes_data_energy_new <- reactive({
     req(input$file)
     get_nodes_data(input$file$datapath, "Total Energy", FALSE, show_savings = TRUE)
   })
-  
+
   # Links reactive for Baseline tab
   links_data_energy <- reactive({
     req(input$file)
     show_savings <- FALSE # For Baseline tab
-    
+
     aa <- read_excel(input$file$datapath, sheet = "Results", range = "a6:aa189")
-    
+
     aa <- clean_names(aa)
     aa <- aa %>%
       filter(!is.na(energy_source))
-    
+
     end.use <- tibble("Name" = aa$`source`)
     ene.src <- tibble("Name" = unique(aa$`energy_source`))
     ene.src <- na.omit(ene.src)
     n_src <- nrow(ene.src)
-    
+
     # Get energy savings data
     ene_sav <- aa %>%
       filter(!is.na(energy_savings) & energy_savings != 0)
-    
+
     # Check if there are savings and if we should show them
     has_savings <- nrow(ene_sav) > 0 && show_savings
-    
+
     # Create nodes structure
     nodes.hh <- tibble("Name" = "")
-    
+
     # Track node indices
     total_baseline_idx <- NULL
     total_energy_idx <- NULL
     total_energy_saved_idx <- NULL
     electricity_saved_idx <- NULL
     fuel_saved_idx <- NULL
-    
+
     if (has_savings) {
       nodes.hh[1, "Name"] <- "Total Baseline"
       nodes.hh[2, "Name"] <- "Total Energy"
       total_baseline_idx <- 1
       total_energy_idx <- 2
-      
+
       nodes.hh[3, "Name"] <- "Total Energy Saved"
       total_energy_saved_idx <- 3
-      
+
       ele_savings <- ene_sav %>% filter(energy_source == "Electricity")
       if (nrow(ele_savings) > 0) {
         nodes.hh[4, "Name"] <- "Electricity Saved"
         electricity_saved_idx <- 4
       }
-      
+
       fuel_savings <- ene_sav %>% filter(energy_source != "Electricity")
       if (nrow(fuel_savings) > 0) {
         nodes.hh[nrow(nodes.hh) + 1, "Name"] <- "Fuel Saved"
@@ -1801,65 +1804,65 @@ server <- function(input, output, session) {
       nodes.hh[1, "Name"] <- "Total Energy"
       total_energy_idx <- 1
     }
-    
+
     non_ele <- ene.src %>%
       filter(Name != "Electricity")
-    
+
     fuel_link_val <- numeric(0)
     if (!is_empty(non_ele$Name)) {
       nodes.hh[nrow(nodes.hh) + 1, "Name"] <- "Fuel"
       fuel_link_val <- nrow(nodes.hh)
     }
-    
-    
+
+
     nodes.h <- rbind(nodes.hh, ene.src, end.use)
-    
+
     nodes <- nodes.h %>%
       filter(!is.na(Name)) %>%
       mutate("No" = row_number()) %>%
       select(No, Name)
-    
+
     links.h <- tibble(
       "No" = 0,
       "Source" = 0,
       "Target" = 0,
       "Value" = 0
     )
-    
+
     link_counter <- 0
-    
+
     # 1. Add links from Total Baseline (only if savings exist)
     if (has_savings) {
       # Total Baseline -> Total Energy
       link_counter <- link_counter + 1
       links.h[link_counter, ] <- list(link_counter, total_baseline_idx - 1, total_energy_idx - 1, 0)
-      
+
       # Total Baseline -> Total Energy Saved
       link_counter <- link_counter + 1
       links.h[link_counter, ] <- list(link_counter, total_baseline_idx - 1, total_energy_saved_idx - 1, 0)
     }
-    
+
     # 2. Add links from Total Energy Saved to Electricity Saved and Fuel Saved
     if (has_savings) {
       if (!is.null(electricity_saved_idx)) {
         link_counter <- link_counter + 1
         links.h[link_counter, ] <- list(link_counter, total_energy_saved_idx - 1, electricity_saved_idx - 1, 0)
       }
-      
+
       if (!is.null(fuel_saved_idx)) {
         link_counter <- link_counter + 1
         links.h[link_counter, ] <- list(link_counter, total_energy_saved_idx - 1, fuel_saved_idx - 1, 0)
       }
     }
-    
+
     # 3. Add existing energy flow links (from energy sources to end uses)
     aa.e <- aa %>%
       filter(energy_or_emissions_category == "Energy")
-    
+
     for (i in 1:nrow(aa.e)) {
       link_counter <- link_counter + 1
       links.h[link_counter, "No"] <- link_counter
-      
+
       for (j in 1:nrow(nodes)) {
         if (aa.e[i, "source"] == nodes[j, "Name"]) {
           links.h[link_counter, "Target"] <- nodes[[j, "No"]] - 1
@@ -1870,85 +1873,85 @@ server <- function(input, output, session) {
           links.h[link_counter, "Source"] <- nodes[[j, "No"]] - 1
         }
       }
-      
+
       if (input$perc_e == "Percentage") {
         links.h[link_counter, "Value"] <- aa.e[i, "percentage_of_total_energy_baseline"] * 100
       } else {
         links.h[link_counter, "Value"] <- aa.e[i, "total_energy_baseline_mm_btu_yr"]
       }
     }
-    
+
     # 4. Calculate and add aggregated links from Total Energy to energy sources
     skip_rows <- if (has_savings) 4 else 0
     links.hh <- links.h %>%
       filter(No > skip_rows) %>%
       group_by(Source) %>%
       summarise(Value = sum(Value))
-    
+
     ele <- nodes %>% filter(Name == "Electricity")
-    
+
     if (!is_empty(ele$No)) {
       ele_link_val <- as.numeric(ele$No - 1)
       ele_link <- links.hh %>% filter(Source == ele_link_val)
       links.hh <- links.hh %>% filter(Source != ele_link_val)
-      
+
       if (nrow(ele_link) > 0) {
         link_counter <- link_counter + 1
         links.h[link_counter, ] <- list(link_counter, total_energy_idx - 1, ele_link_val, ele_link$Value)
       }
     }
-    
+
     # Add fuel links
     if (!is_empty(fuel_link_val) && nrow(links.hh) > 0) {
       fuel_total <- sum(links.hh$Value)
       link_counter <- link_counter + 1
       links.h[link_counter, ] <- list(link_counter, total_energy_idx - 1, fuel_link_val - 1, fuel_total)
-      
+
       for (k in 1:nrow(links.hh)) {
         link_counter <- link_counter + 1
         links.h[link_counter, ] <- list(link_counter, fuel_link_val - 1, links.hh$Source[k], links.hh$Value[k])
       }
     }
-    
+
     # 5. Calculate values for savings links (only if savings exist)
     if (has_savings) {
       total_savings <- sum(ene_sav$energy_savings, na.rm = TRUE)
-      
+
       # Update Total Baseline -> Total Energy Saved link
       baseline_to_saved_link <- which(links.h$Source == (total_baseline_idx - 1) &
-                                        links.h$Target == (total_energy_saved_idx - 1))
+        links.h$Target == (total_energy_saved_idx - 1))
       if (length(baseline_to_saved_link) > 0) {
         links.h[baseline_to_saved_link, "Value"] <- total_savings
       }
-      
+
       # Calculate electricity and fuel savings
       if (!is.null(electricity_saved_idx)) {
         ele_sav_total <- sum(ene_sav$energy_savings[ene_sav$energy_source == "Electricity"], na.rm = TRUE)
         ele_sav_link <- which(links.h$Source == (total_energy_saved_idx - 1) &
-                                links.h$Target == (electricity_saved_idx - 1))
+          links.h$Target == (electricity_saved_idx - 1))
         if (length(ele_sav_link) > 0) {
           links.h[ele_sav_link, "Value"] <- ele_sav_total
         }
       }
-      
+
       if (!is.null(fuel_saved_idx)) {
         fuel_sav_total <- sum(ene_sav$energy_savings[ene_sav$energy_source != "Electricity"], na.rm = TRUE)
         fuel_sav_link <- which(links.h$Source == (total_energy_saved_idx - 1) &
-                                 links.h$Target == (fuel_saved_idx - 1))
+          links.h$Target == (fuel_saved_idx - 1))
         if (length(fuel_sav_link) > 0) {
           links.h[fuel_sav_link, "Value"] <- fuel_sav_total
         }
       }
-      
+
       # Update Total Baseline -> Total Energy link
       total_energy_consumption <- sum(aa.e$total_energy_baseline_mm_btu_yr, na.rm = TRUE)
       baseline_to_energy_link <- which(links.h$Source == (total_baseline_idx - 1) &
-                                         links.h$Target == (total_energy_idx - 1))
+        links.h$Target == (total_energy_idx - 1))
       if (length(baseline_to_energy_link) > 0) {
         links.h[baseline_to_energy_link, "Value"] <- total_energy_consumption
       }
     }
-    
+
     # Clean up and finalize links
     links <- links.h %>%
       filter(No > 0, !is.na(Value), Value > 0) %>%
@@ -1957,58 +1960,58 @@ server <- function(input, output, session) {
         label = paste0(Source, " → ", Target, ": ", Value)
       ) %>%
       arrange(Source)
-    
+
     return(links)
   })
-  
+
   # Links reactive for New tab
   links_data_energy_new <- reactive({
     req(input$file)
     show_savings <- TRUE # For New tab
-    
+
     aa <- read_excel(input$file$datapath, sheet = "Results", range = "a6:aa189")
-    
+
     aa <- clean_names(aa)
     aa <- aa %>%
       filter(!is.na(energy_source))
-    
+
     end.use <- tibble("Name" = aa$`source`)
     ene.src <- tibble("Name" = unique(aa$`energy_source`))
     ene.src <- na.omit(ene.src)
     n_src <- nrow(ene.src)
-    
+
     # Get energy savings data
     ene_sav <- aa %>%
       filter(!is.na(energy_savings) & energy_savings != 0)
-    
+
     # Check if there are savings and if we should show them
     has_savings <- nrow(ene_sav) > 0 && show_savings
-    
+
     # Create nodes structure
     nodes.hh <- tibble("Name" = "")
-    
+
     # Track node indices
     total_baseline_idx <- NULL
     total_energy_idx <- NULL
     total_energy_saved_idx <- NULL
     electricity_saved_idx <- NULL
     fuel_saved_idx <- NULL
-    
+
     if (has_savings) {
       nodes.hh[1, "Name"] <- "Total Baseline"
       nodes.hh[2, "Name"] <- "Total Energy"
       total_baseline_idx <- 1
       total_energy_idx <- 2
-      
+
       nodes.hh[3, "Name"] <- "Total Energy Saved"
       total_energy_saved_idx <- 3
-      
+
       ele_savings <- ene_sav %>% filter(energy_source == "Electricity")
       if (nrow(ele_savings) > 0) {
         nodes.hh[4, "Name"] <- "Electricity Saved"
         electricity_saved_idx <- 4
       }
-      
+
       fuel_savings <- ene_sav %>% filter(energy_source != "Electricity")
       if (nrow(fuel_savings) > 0) {
         nodes.hh[nrow(nodes.hh) + 1, "Name"] <- "Fuel Saved"
@@ -2019,65 +2022,65 @@ server <- function(input, output, session) {
       nodes.hh[1, "Name"] <- "Total Energy"
       total_energy_idx <- 1
     }
-    
+
     non_ele <- ene.src %>%
       filter(Name != "Electricity")
-    
+
     fuel_link_val <- numeric(0)
     if (!is_empty(non_ele$Name)) {
       nodes.hh[nrow(nodes.hh) + 1, "Name"] <- "Fuel"
       fuel_link_val <- nrow(nodes.hh)
     }
-    
-    
+
+
     nodes.h <- rbind(nodes.hh, ene.src, end.use)
-    
+
     nodes <- nodes.h %>%
       filter(!is.na(Name)) %>%
       mutate("No" = row_number()) %>%
       select(No, Name)
-    
+
     links.h <- tibble(
       "No" = 0,
       "Source" = 0,
       "Target" = 0,
       "Value" = 0
     )
-    
+
     link_counter <- 0
-    
+
     # 1. Add links from Total Baseline (only if savings exist)
     if (has_savings) {
       # Total Baseline -> Total Energy
       link_counter <- link_counter + 1
       links.h[link_counter, ] <- list(link_counter, total_baseline_idx - 1, total_energy_idx - 1, 0)
-      
+
       # Total Baseline -> Total Energy Saved
       link_counter <- link_counter + 1
       links.h[link_counter, ] <- list(link_counter, total_baseline_idx - 1, total_energy_saved_idx - 1, 0)
     }
-    
+
     # 2. Add links from Total Energy Saved to Electricity Saved and Fuel Saved
     if (has_savings) {
       if (!is.null(electricity_saved_idx)) {
         link_counter <- link_counter + 1
         links.h[link_counter, ] <- list(link_counter, total_energy_saved_idx - 1, electricity_saved_idx - 1, 0)
       }
-      
+
       if (!is.null(fuel_saved_idx)) {
         link_counter <- link_counter + 1
         links.h[link_counter, ] <- list(link_counter, total_energy_saved_idx - 1, fuel_saved_idx - 1, 0)
       }
     }
-    
+
     # 3. Add existing energy flow links (from energy sources to end uses)
     aa.e <- aa %>%
       filter(energy_or_emissions_category == "Energy")
-    
+
     for (i in 1:nrow(aa.e)) {
       link_counter <- link_counter + 1
       links.h[link_counter, "No"] <- link_counter
-      
+
       for (j in 1:nrow(nodes)) {
         if (aa.e[i, "source"] == nodes[j, "Name"]) {
           links.h[link_counter, "Target"] <- nodes[[j, "No"]] - 1
@@ -2088,91 +2091,91 @@ server <- function(input, output, session) {
           links.h[link_counter, "Source"] <- nodes[[j, "No"]] - 1
         }
       }
-      
-      
+
+
       links.h[link_counter, "Value"] <- aa.e[i, "total_energy_new_mm_btu_yr"]
     }
-    
+
     # 4. Calculate and add aggregated links from Total Energy to energy sources
-    
+
     links.hh <- links.h %>%
       group_by(Source) %>%
       summarise(Value = sum(Value))
-    
+
     ele <- nodes %>% filter(Name == "Electricity")
-    
+
     if (!is_empty(ele$No)) {
       ele_link_val <- as.numeric(ele$No - 1)
       ele_link <- links.hh %>% filter(Source == ele_link_val)
       links.hh <- links.hh %>% filter(Source != ele_link_val)
-      
+
       if (nrow(ele_link) > 0) {
         link_counter <- link_counter + 1
         links.h[link_counter, ] <- list(link_counter, total_energy_idx - 1, ele_link_val, ele_link$Value)
       }
     }
-    
+
     # Add fuel links
     if (!is_empty(fuel_link_val) && nrow(links.hh) > 0) {
       fuel_total <- sum(links.hh$Value)
       link_counter <- link_counter + 1
       links.h[link_counter, ] <- list(link_counter, total_energy_idx - 1, fuel_link_val - 1, fuel_total)
-      
+
       for (k in 1:nrow(links.hh)) {
         link_counter <- link_counter + 1
         links.h[link_counter, ] <- list(link_counter, fuel_link_val - 1, links.hh$Source[k], links.hh$Value[k])
       }
     }
-    
+
     # 5. Calculate values for savings links (only if savings exist)
     if (has_savings) {
       total_savings <- sum(ene_sav$energy_savings, na.rm = TRUE)
-      
+
       # Update Total Baseline -> Total Energy Saved link
       baseline_to_saved_link <- which(links.h$Source == (total_baseline_idx - 1) &
-                                        links.h$Target == (total_energy_saved_idx - 1))
+        links.h$Target == (total_energy_saved_idx - 1))
       if (length(baseline_to_saved_link) > 0) {
         links.h[baseline_to_saved_link, "Value"] <- total_savings
       }
-      
+
       # Calculate electricity and fuel savings
       if (!is.null(electricity_saved_idx)) {
         ele_sav_total <- sum(ene_sav$energy_savings[ene_sav$energy_source == "Electricity"], na.rm = TRUE)
         ele_sav_link <- which(links.h$Source == (total_energy_saved_idx - 1) &
-                                links.h$Target == (electricity_saved_idx - 1))
+          links.h$Target == (electricity_saved_idx - 1))
         if (length(ele_sav_link) > 0) {
           links.h[ele_sav_link, "Value"] <- ele_sav_total
         }
       }
-      
+
       if (!is.null(fuel_saved_idx)) {
         fuel_sav_total <- sum(ene_sav$energy_savings[ene_sav$energy_source != "Electricity"], na.rm = TRUE)
         fuel_sav_link <- which(links.h$Source == (total_energy_saved_idx - 1) &
-                                 links.h$Target == (fuel_saved_idx - 1))
+          links.h$Target == (fuel_saved_idx - 1))
         if (length(fuel_sav_link) > 0) {
           links.h[fuel_sav_link, "Value"] <- fuel_sav_total
         }
       }
-      
+
       # Update Total Baseline -> Total Energy link
       total_energy_consumption <- sum(aa.e$total_energy_new_mm_btu_yr, na.rm = TRUE)
       baseline_to_energy_link <- which(links.h$Source == (total_baseline_idx - 1) &
-                                         links.h$Target == (total_energy_idx - 1))
+        links.h$Target == (total_energy_idx - 1))
       if (length(baseline_to_energy_link) > 0) {
         links.h[baseline_to_energy_link, "Value"] <- total_energy_consumption
       }
     }
-    
+
     if (input$perc_e == "Percentage") {
       total_baseline_df <- links.h %>%
         filter(Source == 0) %>%
         group_by(Source) %>%
         summarise(total = sum(Value))
       total_baseline <- total_baseline_df$total
-      
+
       links.h$Value <- links.h$Value * 100 / total_baseline
     }
-    
+
     # Clean up and finalize links
     links <- links.h %>%
       filter(No > 0, !is.na(Value), Value > 0) %>%
@@ -2181,16 +2184,16 @@ server <- function(input, output, session) {
         label = paste0(Source, " → ", Target, ": ", Value)
       ) %>%
       arrange(Source)
-    
+
     return(links)
   })
-  
+
   s1_energy <- reactive({
     nodes <- nodes_data_energy()
     links <- links_data_energy()
     names(nodes) <- c("SN", "Name")
     names(links) <- c("SN", "Source", "Target", "Value", "label")
-    
+
     sankey_reactive <- reactive({
       sankeyNetwork(
         Links = links,
@@ -2207,9 +2210,9 @@ server <- function(input, output, session) {
         colourScale = JS("d3.scaleSequential(d3.interpolatePlasma);")
       )
     })
-    
+
     sankey <- sankey_reactive()
-    
+
     javascript_string <-
       'function(el, x) {
   d3.select(el).selectAll(".node text")
@@ -2222,19 +2225,20 @@ server <- function(input, output, session) {
       }
     });
 
-  // Clear the viewBox attribute of the first SVG element
-  document.getElementsByTagName("svg")[0].setAttribute("viewBox", "");
+  // Apply sizing only to this widget, including when other charts are visible
+  var svg = el.querySelector("svg");
+  if (svg) svg.removeAttribute("viewBox");
 }'
-    
+
     htmlwidgets::onRender(x = sankey, jsCode = javascript_string)
   })
-  
+
   s1_energy_new <- reactive({
     nodes <- nodes_data_energy_new()
     links <- links_data_energy_new()
     names(nodes) <- c("SN", "Name")
     names(links) <- c("SN", "Source", "Target", "Value", "label")
-    
+
     sankey_reactive <- reactive({
       sankeyNetwork(
         Links = links,
@@ -2251,9 +2255,9 @@ server <- function(input, output, session) {
         colourScale = JS("d3.scaleSequential(d3.interpolatePlasma);")
       )
     })
-    
+
     sankey <- sankey_reactive()
-    
+
     javascript_string <-
       'function(el, x) {
   d3.select(el).selectAll(".node text")
@@ -2266,33 +2270,34 @@ server <- function(input, output, session) {
       }
     });
 
-  // Clear the viewBox attribute of the first SVG element
-  document.getElementsByTagName("svg")[0].setAttribute("viewBox", "");
+  // Apply sizing only to this widget, including when other charts are visible
+  var svg = el.querySelector("svg");
+  if (svg) svg.removeAttribute("viewBox");
 }'
-    
+
     htmlwidgets::onRender(x = sankey, jsCode = javascript_string)
   })
-  
+
   # Render outputs for Baseline tab
   output$sankey_energy <- renderSankeyNetwork({
     s1_energy()
     # Your sankey network code using links_data_energy()
     # This will NOT show savings nodes
   })
-  
+
   output$sankey_energy_new <- renderSankeyNetwork({
     s1_energy_new()
     # Your sankey network code using links_data_energy()
     # This will NOT show savings nodes
   })
-  
+
   output$diagram_energy <- renderUI({
     temp <- temp()
     nr <- nrow(temp) * input$vsc_e
     ht <- paste0(nr, "px")
     sankeyNetworkOutput("sankey_energy", height = ht)
   })
-  
+
   # Render outputs for New tab
   output$diagram_energy_new <- renderUI({
     temp <- temp()
@@ -2300,45 +2305,45 @@ server <- function(input, output, session) {
     ht <- paste0(nr, "px")
     sankeyNetworkOutput("sankey_energy_new", height = ht)
   })
-  
+
   # Cost Tab ----
-  
-  
+
+
   nodes_data_energy_costs <- reactive({
     req(input$file)
     get_nodes_data(input$file$datapath, "Total Energy Costs", FALSE, show_savings = FALSE)
   })
-  
+
   nodes_data_energy_costs_new <- reactive({
     req(input$file)
     get_nodes_data(input$file$datapath, "Total Energy Costs", FALSE, show_savings = TRUE)
   })
-  
+
   links_data_energy_costs <- reactive({
     req(input$file)
     show_savings <- FALSE # For Baseline tab
-    
+
     aa <- read_excel(input$file$datapath, sheet = "Results", range = "a6:aa189")
-    
+
     aa <- clean_names(aa)
     aa <- aa %>%
       filter(!is.na(energy_source))
-    
+
     end.use <- tibble("Name" = aa$`source`)
     ene.src <- tibble("Name" = unique(aa$`energy_source`))
     ene.src <- na.omit(ene.src)
     n_src <- nrow(ene.src)
-    
+
     # Get energy savings data
     ene_sav <- aa %>%
       filter(!is.na(energy_savings) & energy_savings != 0)
-    
+
     # Check if there are savings and if we should show them
     has_savings <- nrow(ene_sav) > 0 && show_savings
-    
+
     # Create nodes structure
     nodes.hh <- tibble("Name" = "")
-    
+
     # Track node indices
     total_baseline_idx <- NULL
     total_energy_idx <- NULL
@@ -2351,16 +2356,16 @@ server <- function(input, output, session) {
       nodes.hh[2, "Name"] <- total_name
       total_baseline_idx <- 1
       total_energy_idx <- 2
-      
+
       nodes.hh[3, "Name"] <- paste0(total_name, " Saved")
       total_energy_saved_idx <- 3
-      
+
       ele_savings <- ene_sav %>% filter(energy_source == "Electricity")
       if (nrow(ele_savings) > 0) {
         nodes.hh[4, "Name"] <- "Electricity Cost Saved"
         electricity_saved_idx <- 4
       }
-      
+
       fuel_savings <- ene_sav %>% filter(energy_source != "Electricity")
       if (nrow(fuel_savings) > 0) {
         nodes.hh[nrow(nodes.hh) + 1, "Name"] <- "Fuel Cost Saved"
@@ -2371,65 +2376,65 @@ server <- function(input, output, session) {
       nodes.hh[1, "Name"] <- total_name
       total_energy_idx <- 1
     }
-    
+
     non_ele <- ene.src %>%
       filter(Name != "Electricity")
-    
+
     fuel_link_val <- numeric(0)
     if (!is_empty(non_ele$Name)) {
       nodes.hh[nrow(nodes.hh) + 1, "Name"] <- "Fuel"
       fuel_link_val <- nrow(nodes.hh)
     }
-    
-    
+
+
     nodes.h <- rbind(nodes.hh, ene.src, end.use)
-    
+
     nodes <- nodes.h %>%
       filter(!is.na(Name)) %>%
       mutate("No" = row_number()) %>%
       select(No, Name)
-    
+
     links.h <- tibble(
       "No" = 0,
       "Source" = 0,
       "Target" = 0,
       "Value" = 0
     )
-    
+
     link_counter <- 0
-    
+
     # 1. Add links from Total Baseline (only if savings exist)
     if (has_savings) {
       # Total Baseline -> Total Energy
       link_counter <- link_counter + 1
       links.h[link_counter, ] <- list(link_counter, total_baseline_idx - 1, total_energy_idx - 1, 0)
-      
+
       # Total Baseline -> Total Energy Saved
       link_counter <- link_counter + 1
       links.h[link_counter, ] <- list(link_counter, total_baseline_idx - 1, total_energy_saved_idx - 1, 0)
     }
-    
+
     # 2. Add links from Total Energy Saved to Electricity Saved and Fuel Saved
     if (has_savings) {
       if (!is.null(electricity_saved_idx)) {
         link_counter <- link_counter + 1
         links.h[link_counter, ] <- list(link_counter, total_energy_saved_idx - 1, electricity_saved_idx - 1, 0)
       }
-      
+
       if (!is.null(fuel_saved_idx)) {
         link_counter <- link_counter + 1
         links.h[link_counter, ] <- list(link_counter, total_energy_saved_idx - 1, fuel_saved_idx - 1, 0)
       }
     }
-    
+
     # 3. Add existing energy flow links (from energy sources to end uses)
     aa.e <- aa %>%
       filter(energy_or_emissions_category == "Energy")
-    
+
     for (i in 1:nrow(aa.e)) {
       link_counter <- link_counter + 1
       links.h[link_counter, "No"] <- link_counter
-      
+
       for (j in 1:nrow(nodes)) {
         if (aa.e[i, "source"] == nodes[j, "Name"]) {
           links.h[link_counter, "Target"] <- nodes[[j, "No"]] - 1
@@ -2440,85 +2445,85 @@ server <- function(input, output, session) {
           links.h[link_counter, "Source"] <- nodes[[j, "No"]] - 1
         }
       }
-      
+
       if (input$perc_ec == "Percentage") {
         links.h[link_counter, "Value"] <- aa.e[i, "percentage_of_total_energy_costs_baseline"] * 100
       } else {
         links.h[link_counter, "Value"] <- aa.e[i, "total_energy_costs_baseline_yr"]
       }
     }
-    
+
     # 4. Calculate and add aggregated links from Total Energy to energy sources
     skip_rows <- if (has_savings) 4 else 0
     links.hh <- links.h %>%
       filter(No > skip_rows) %>%
       group_by(Source) %>%
       summarise(Value = sum(Value))
-    
+
     ele <- nodes %>% filter(Name == "Electricity")
-    
+
     if (!is_empty(ele$No)) {
       ele_link_val <- as.numeric(ele$No - 1)
       ele_link <- links.hh %>% filter(Source == ele_link_val)
       links.hh <- links.hh %>% filter(Source != ele_link_val)
-      
+
       if (nrow(ele_link) > 0) {
         link_counter <- link_counter + 1
         links.h[link_counter, ] <- list(link_counter, total_energy_idx - 1, ele_link_val, ele_link$Value)
       }
     }
-    
+
     # Add fuel links
     if (!is_empty(fuel_link_val) && nrow(links.hh) > 0) {
       fuel_total <- sum(links.hh$Value)
       link_counter <- link_counter + 1
       links.h[link_counter, ] <- list(link_counter, total_energy_idx - 1, fuel_link_val - 1, fuel_total)
-      
+
       for (k in 1:nrow(links.hh)) {
         link_counter <- link_counter + 1
         links.h[link_counter, ] <- list(link_counter, fuel_link_val - 1, links.hh$Source[k], links.hh$Value[k])
       }
     }
-    
+
     # 5. Calculate values for savings links (only if savings exist)
     if (has_savings) {
       total_savings <- sum(ene_sav$energy_savings, na.rm = TRUE)
-      
+
       # Update Total Baseline -> Total Energy Saved link
       baseline_to_saved_link <- which(links.h$Source == (total_baseline_idx - 1) &
-                                        links.h$Target == (total_energy_saved_idx - 1))
+        links.h$Target == (total_energy_saved_idx - 1))
       if (length(baseline_to_saved_link) > 0) {
         links.h[baseline_to_saved_link, "Value"] <- total_savings
       }
-      
+
       # Calculate electricity and fuel savings
       if (!is.null(electricity_saved_idx)) {
         ele_sav_total <- sum(ene_sav$energy_savings[ene_sav$energy_source == "Electricity"], na.rm = TRUE)
         ele_sav_link <- which(links.h$Source == (total_energy_saved_idx - 1) &
-                                links.h$Target == (electricity_saved_idx - 1))
+          links.h$Target == (electricity_saved_idx - 1))
         if (length(ele_sav_link) > 0) {
           links.h[ele_sav_link, "Value"] <- ele_sav_total
         }
       }
-      
+
       if (!is.null(fuel_saved_idx)) {
         fuel_sav_total <- sum(ene_sav$energy_savings[ene_sav$energy_source != "Electricity"], na.rm = TRUE)
         fuel_sav_link <- which(links.h$Source == (total_energy_saved_idx - 1) &
-                                 links.h$Target == (fuel_saved_idx - 1))
+          links.h$Target == (fuel_saved_idx - 1))
         if (length(fuel_sav_link) > 0) {
           links.h[fuel_sav_link, "Value"] <- fuel_sav_total
         }
       }
-      
+
       # Update Total Baseline -> Total Energy link
       total_energy_consumption <- sum(aa.e$total_energy_baseline_mm_btu_yr, na.rm = TRUE)
       baseline_to_energy_link <- which(links.h$Source == (total_baseline_idx - 1) &
-                                         links.h$Target == (total_energy_idx - 1))
+        links.h$Target == (total_energy_idx - 1))
       if (length(baseline_to_energy_link) > 0) {
         links.h[baseline_to_energy_link, "Value"] <- total_energy_consumption
       }
     }
-    
+
     # Clean up and finalize links
     links <- links.h %>%
       filter(No > 0, !is.na(Value), Value > 0) %>%
@@ -2527,36 +2532,36 @@ server <- function(input, output, session) {
         label = paste0(Source, " → ", Target, ": ", Value)
       ) %>%
       arrange(Source)
-    
+
     return(links)
   })
-  
+
   links_data_energy_costs_new <- reactive({
     req(input$file)
     show_savings <- TRUE # For Baseline tab
-    
+
     aa <- read_excel(input$file$datapath, sheet = "Results", range = "a6:aa189")
-    
+
     aa <- clean_names(aa)
     aa <- aa %>%
       filter(!is.na(energy_source))
-    
+
     end.use <- tibble("Name" = aa$`source`)
     ene.src <- tibble("Name" = unique(aa$`energy_source`))
     ene.src <- na.omit(ene.src)
     n_src <- nrow(ene.src)
-    
+
     # Get energy savings data
     ene_sav <- aa %>%
       filter(!is.na(energy_savings) & energy_savings != 0) %>%
       mutate(ene_cost_sav = total_energy_costs_baseline_yr - total_energy_costs_new_yr)
-    
+
     # Check if there are savings and if we should show them
     has_savings <- nrow(ene_sav) > 0 && show_savings
-    
+
     # Create nodes structure
     nodes.hh <- tibble("Name" = "")
-    
+
     # Track node indices
     total_baseline_idx <- NULL
     total_energy_idx <- NULL
@@ -2569,16 +2574,16 @@ server <- function(input, output, session) {
       nodes.hh[2, "Name"] <- total_name
       total_baseline_idx <- 1
       total_energy_idx <- 2
-      
+
       nodes.hh[3, "Name"] <- paste0(total_name, " Saved")
       total_energy_saved_idx <- 3
-      
+
       ele_savings <- ene_sav %>% filter(energy_source == "Electricity")
       if (nrow(ele_savings) > 0) {
         nodes.hh[4, "Name"] <- "Electricity Cost Saved"
         electricity_saved_idx <- 4
       }
-      
+
       fuel_savings <- ene_sav %>% filter(energy_source != "Electricity")
       if (nrow(fuel_savings) > 0) {
         nodes.hh[nrow(nodes.hh) + 1, "Name"] <- "Fuel Cost Saved"
@@ -2589,65 +2594,65 @@ server <- function(input, output, session) {
       nodes.hh[1, "Name"] <- total_name
       total_energy_idx <- 1
     }
-    
+
     non_ele <- ene.src %>%
       filter(Name != "Electricity")
-    
+
     fuel_link_val <- numeric(0)
     if (!is_empty(non_ele$Name)) {
       nodes.hh[nrow(nodes.hh) + 1, "Name"] <- "Fuel"
       fuel_link_val <- nrow(nodes.hh)
     }
-    
-    
+
+
     nodes.h <- rbind(nodes.hh, ene.src, end.use)
-    
+
     nodes <- nodes.h %>%
       filter(!is.na(Name)) %>%
       mutate("No" = row_number()) %>%
       select(No, Name)
-    
+
     links.h <- tibble(
       "No" = 0,
       "Source" = 0,
       "Target" = 0,
       "Value" = 0
     )
-    
+
     link_counter <- 0
-    
+
     # 1. Add links from Total Baseline (only if savings exist)
     if (has_savings) {
       # Total Baseline -> Total Energy
       link_counter <- link_counter + 1
       links.h[link_counter, ] <- list(link_counter, total_baseline_idx - 1, total_energy_idx - 1, 0)
-      
+
       # Total Baseline -> Total Energy Saved
       link_counter <- link_counter + 1
       links.h[link_counter, ] <- list(link_counter, total_baseline_idx - 1, total_energy_saved_idx - 1, 0)
     }
-    
+
     # 2. Add links from Total Energy Saved to Electricity Saved and Fuel Saved
     if (has_savings) {
       if (!is.null(electricity_saved_idx)) {
         link_counter <- link_counter + 1
         links.h[link_counter, ] <- list(link_counter, total_energy_saved_idx - 1, electricity_saved_idx - 1, 0)
       }
-      
+
       if (!is.null(fuel_saved_idx)) {
         link_counter <- link_counter + 1
         links.h[link_counter, ] <- list(link_counter, total_energy_saved_idx - 1, fuel_saved_idx - 1, 0)
       }
     }
-    
+
     # 3. Add existing energy flow links (from energy sources to end uses)
     aa.e <- aa %>%
       filter(energy_or_emissions_category == "Energy")
-    
+
     for (i in 1:nrow(aa.e)) {
       link_counter <- link_counter + 1
       links.h[link_counter, "No"] <- link_counter
-      
+
       for (j in 1:nrow(nodes)) {
         if (aa.e[i, "source"] == nodes[j, "Name"]) {
           links.h[link_counter, "Target"] <- nodes[[j, "No"]] - 1
@@ -2658,89 +2663,89 @@ server <- function(input, output, session) {
           links.h[link_counter, "Source"] <- nodes[[j, "No"]] - 1
         }
       }
-      
+
       links.h[link_counter, "Value"] <- aa.e[i, "total_energy_costs_new_yr"]
     }
-    
+
     # 4. Calculate and add aggregated links from Total Energy to energy sources
     links.hh <- links.h %>%
       group_by(Source) %>%
       summarise(Value = sum(Value))
-    
+
     ele <- nodes %>% filter(Name == "Electricity")
-    
+
     if (!is_empty(ele$No)) {
       ele_link_val <- as.numeric(ele$No - 1)
       ele_link <- links.hh %>% filter(Source == ele_link_val)
       links.hh <- links.hh %>% filter(Source != ele_link_val)
-      
+
       if (nrow(ele_link) > 0) {
         link_counter <- link_counter + 1
         links.h[link_counter, ] <- list(link_counter, total_energy_idx - 1, ele_link_val, ele_link$Value)
       }
     }
-    
+
     # Add fuel links
     if (!is_empty(fuel_link_val) && nrow(links.hh) > 0) {
       fuel_total <- sum(links.hh$Value)
       link_counter <- link_counter + 1
       links.h[link_counter, ] <- list(link_counter, total_energy_idx - 1, fuel_link_val - 1, fuel_total)
-      
+
       for (k in 1:nrow(links.hh)) {
         link_counter <- link_counter + 1
         links.h[link_counter, ] <- list(link_counter, fuel_link_val - 1, links.hh$Source[k], links.hh$Value[k])
       }
     }
-    
+
     # 5. Calculate values for savings links (only if savings exist)
     if (has_savings) {
       total_savings <- sum(ene_sav$ene_cost_sav, na.rm = TRUE)
-      
+
       # Update Total Baseline -> Total Energy Saved link
       baseline_to_saved_link <- which(links.h$Source == (total_baseline_idx - 1) &
-                                        links.h$Target == (total_energy_saved_idx - 1))
+        links.h$Target == (total_energy_saved_idx - 1))
       if (length(baseline_to_saved_link) > 0) {
         links.h[baseline_to_saved_link, "Value"] <- total_savings
       }
-      
+
       # Calculate electricity and fuel savings
       if (!is.null(electricity_saved_idx)) {
         ele_sav_total <- sum(ene_sav$ene_cost_sav[ene_sav$energy_source == "Electricity"], na.rm = TRUE)
         ele_sav_link <- which(links.h$Source == (total_energy_saved_idx - 1) &
-                                links.h$Target == (electricity_saved_idx - 1))
+          links.h$Target == (electricity_saved_idx - 1))
         if (length(ele_sav_link) > 0) {
           links.h[ele_sav_link, "Value"] <- ele_sav_total
         }
       }
-      
+
       if (!is.null(fuel_saved_idx)) {
         fuel_sav_total <- sum(ene_sav$ene_cost_sav[ene_sav$energy_source != "Electricity"], na.rm = TRUE)
         fuel_sav_link <- which(links.h$Source == (total_energy_saved_idx - 1) &
-                                 links.h$Target == (fuel_saved_idx - 1))
+          links.h$Target == (fuel_saved_idx - 1))
         if (length(fuel_sav_link) > 0) {
           links.h[fuel_sav_link, "Value"] <- fuel_sav_total
         }
       }
-      
+
       # Update Total Baseline -> Total Energy link
       total_energy_consumption <- sum(aa.e$total_energy_costs_new_yr, na.rm = TRUE)
       baseline_to_energy_link <- which(links.h$Source == (total_baseline_idx - 1) &
-                                         links.h$Target == (total_energy_idx - 1))
+        links.h$Target == (total_energy_idx - 1))
       if (length(baseline_to_energy_link) > 0) {
         links.h[baseline_to_energy_link, "Value"] <- total_energy_consumption
       }
     }
-    
+
     if (input$perc_ec == "Percentage") {
       total_baseline_df <- links.h %>%
         filter(Source == 0) %>%
         group_by(Source) %>%
         summarise(total = sum(Value))
       total_baseline <- total_baseline_df$total
-      
+
       links.h$Value <- links.h$Value * 100 / total_baseline
     }
-    
+
     # Clean up and finalize links
     links <- links.h %>%
       filter(No > 0, !is.na(Value), Value > 0) %>%
@@ -2749,23 +2754,23 @@ server <- function(input, output, session) {
         label = paste0(Source, " → ", Target, ": ", Value)
       ) %>%
       arrange(Source)
-    
+
     return(links)
   })
-  
-  
+
+
   output$move <- renderText("Note: click and drag each node to
                             customize the chart \n")
-  
+
   # Create the Sankey diagram
-  
-  
+
+
   s1_energy_costs <- reactive({
     nodes <- nodes_data_energy_costs()
     links <- links_data_energy_costs()
     names(nodes) <- c("SN", "Name")
     names(links) <- c("SN", "Source", "Target", "Value", "label")
-    
+
     sankey_reactive <- reactive({
       sankeyNetwork(
         Links = links,
@@ -2782,9 +2787,9 @@ server <- function(input, output, session) {
         colourScale = JS("d3.scaleSequential(d3.interpolatePlasma);")
       )
     })
-    
+
     sankey <- sankey_reactive()
-    
+
     javascript_string <-
       'function(el, x) {
   d3.select(el).selectAll(".node text")
@@ -2797,19 +2802,20 @@ server <- function(input, output, session) {
       }
     });
 
-  // Clear the viewBox attribute of the first SVG element
-  document.getElementsByTagName("svg")[0].setAttribute("viewBox", "");
+  // Apply sizing only to this widget, including when other charts are visible
+  var svg = el.querySelector("svg");
+  if (svg) svg.removeAttribute("viewBox");
 }'
-    
+
     htmlwidgets::onRender(x = sankey, jsCode = javascript_string)
   })
-  
+
   s1_energy_costs_new <- reactive({
     nodes <- nodes_data_energy_costs_new()
     links <- links_data_energy_costs_new()
     names(nodes) <- c("SN", "Name")
     names(links) <- c("SN", "Source", "Target", "Value", "label")
-    
+
     sankey_reactive <- reactive({
       sankeyNetwork(
         Links = links,
@@ -2826,9 +2832,9 @@ server <- function(input, output, session) {
         colourScale = JS("d3.scaleSequential(d3.interpolatePlasma);")
       )
     })
-    
+
     sankey <- sankey_reactive()
-    
+
     javascript_string <-
       'function(el, x) {
   d3.select(el).selectAll(".node text")
@@ -2841,38 +2847,39 @@ server <- function(input, output, session) {
       }
     });
 
-  // Clear the viewBox attribute of the first SVG element
-  document.getElementsByTagName("svg")[0].setAttribute("viewBox", "");
+  // Apply sizing only to this widget, including when other charts are visible
+  var svg = el.querySelector("svg");
+  if (svg) svg.removeAttribute("viewBox");
 }'
-    
+
     htmlwidgets::onRender(x = sankey, jsCode = javascript_string)
   })
-  
+
   output$sankey_energy_costs <- renderSankeyNetwork(s1_energy_costs())
   output$sankey_energy_costs_new <- renderSankeyNetwork(s1_energy_costs_new())
-  
-  
+
+
   output$diagram_energy_costs <- renderUI({
     temp <- temp()
     nr <- nrow(temp) * input$vsc_ec
     ht <- paste0(nr, "px")
     sankeyNetworkOutput("sankey_energy_costs", height = ht)
   })
-  
+
   output$diagram_energy_costs_new <- renderUI({
     temp <- temp()
     nr <- nrow(temp) * input$vsc_ec
     ht <- paste0(nr, "px")
     sankeyNetworkOutput("sankey_energy_costs_new", height = ht)
   })
-  
-  
+
+
   output$output_text <- renderUI({
     req(input$file)
     if (nchar(input$cname) > 0 & input$perc != "Percentage") {
       paste0("CO₂e Flow for ", input$cname, " (", input$units, ")")
     } else if (nchar(input$cname) > 0 &
-               input$perc == "Percentage") {
+      input$perc == "Percentage") {
       paste0("CO₂e Flow for ", input$cname, " (%)")
     } else if (input$perc == "Percentage") {
       paste0("CO₂e Flow ", "(%)")
@@ -2885,7 +2892,7 @@ server <- function(input, output, session) {
     if (nchar(input$cname) > 0 & input$perc != "Percentage") {
       paste0("CO₂e Flow for ", input$cname, " (", input$units, ")")
     } else if (nchar(input$cname) > 0 &
-               input$perc == "Percentage") {
+      input$perc == "Percentage") {
       paste0("CO₂e Flow for ", input$cname, " (%)")
     } else if (input$perc == "Percentage") {
       paste0("CO₂e Flow ", "(%)")
@@ -2893,13 +2900,13 @@ server <- function(input, output, session) {
       paste0("CO₂e Flow ", "(", input$units, ")")
     }
   })
-  
+
   output$output_text_e <- renderUI({
     req(input$file)
     if (nchar(input$cname) > 0 & input$perc_e != "Percentage") {
       paste0("Energy Flow for ", input$cname, " (", input$units_e, ")")
     } else if (nchar(input$cname) > 0 &
-               input$perc_e == "Percentage") {
+      input$perc_e == "Percentage") {
       paste0("Energy Flow for ", input$cname, " (%)")
     } else if (input$perc_e == "Percentage") {
       paste0("Energy Flow ", "(%)")
@@ -2912,7 +2919,7 @@ server <- function(input, output, session) {
     if (nchar(input$cname) > 0 & input$perc_e != "Percentage") {
       paste0("Energy Flow for ", input$cname, " (", input$units_e, ")")
     } else if (nchar(input$cname) > 0 &
-               input$perc_e == "Percentage") {
+      input$perc_e == "Percentage") {
       paste0("Energy Flow for ", input$cname, " (%)")
     } else if (input$perc_e == "Percentage") {
       paste0("Energy Flow ", "(%)")
@@ -2920,15 +2927,17 @@ server <- function(input, output, session) {
       paste0("Energy Flow ", "(", input$units_e, ")")
     }
   })
-  
+
   output$output_text_ec <- renderUI({
     req(input$file)
     if (nchar(input$cname) > 0 & input$perc_ec != "Percentage") {
       paste0("Energy Costs Flow for ", input$cname, " ($)")
     } else if (nchar(input$cname) > 0 &
-               input$perc_e == "Percentage") {
+
+               input$perc_ec == "Percentage") {
+
       paste0("Energy Costs Flow for ", input$cname, " (%)")
-    } else if (input$perc_e == "Percentage") {
+    } else if (input$perc_ec == "Percentage") {
       paste0("Energy Costs Flow (%)")
     } else {
       paste0("Energy Costs Flow ($)")
@@ -2939,113 +2948,17 @@ server <- function(input, output, session) {
     if (nchar(input$cname) > 0 & input$perc_ec != "Percentage") {
       paste0("Energy Costs Flow for ", input$cname, " ($)")
     } else if (nchar(input$cname) > 0 &
-               input$perc_e == "Percentage") {
+
+               input$perc_ec == "Percentage") {
+
       paste0("Energy Costs Flow for ", input$cname, " (%)")
-    } else if (input$perc_e == "Percentage") {
+    } else if (input$perc_ec == "Percentage") {
       paste0("Energy Costs Flow (%)")
     } else {
       paste0("Energy Costs Flow ($)")
     }
   })
-  
-  output$downloadPNG <- downloadHandler(
-    filename = function() {
-      paste0("CO2_Flow_", Sys.Date(), ".png")
-    },
-    content = function(file) {
-      # Step 1: Save the widget (the reactive object) to a temporary HTML file
-      temp_html <- tempfile(fileext = ".html")
-      
-      # Save the widget, ensuring it's self-contained
-      # This saved file will respect the final dimensions of the widget when it rendered.
-      htmlwidgets::saveWidget(
-        widget = if (input$tab == "Baseline") {
-          s1()
-        } else {
-          s1_new()
-        },
-        file = temp_html,
-        selfcontained = TRUE
-      )
-      
-      # Step 2: Use webshot2 to screenshot the temporary HTML file
-      webshot2::webshot(
-        url = temp_html,
-        file = file,
-        zoom = 5,
-        vwidth = input$width,
-        vheight = input$height,
-        delay = 1
-      )
-    }
-  )
-  
-  
-  output$downloadPNG_e <- downloadHandler(
-    filename = function() {
-      paste0("Energy_Flow_", Sys.Date(), ".png")
-    },
-    content = function(file) {
-      # Step 1: Save the widget (the reactive object) to a temporary HTML file
-      temp_html <- tempfile(fileext = ".html")
-      
-      # Save the widget, ensuring it's self-contained
-      # This saved file will respect the final dimensions of the widget when it rendered.
-      htmlwidgets::saveWidget(
-        widget = if (input$tab_e == "Baseline") {
-          s1_energy()
-        } else {
-          s1_energy_new()
-        },
-        file = temp_html,
-        selfcontained = TRUE
-      )
-      
-      # Step 2: Use webshot2 to screenshot the temporary HTML file
-      webshot2::webshot(
-        url = temp_html,
-        file = file,
-        zoom = 5,
-        vwidth = input$width,
-        vheight = input$height,
-        delay = 1 # Give the widget time to fully load and size itself
-      )
-    }
-  )
-  
-  
-  output$downloadPNG_ec <- downloadHandler(
-    filename = function() {
-      paste0("Energy_Cost_Flow_", Sys.Date(), ".png")
-    },
-    content = function(file) {
-      # Step 1: Save the widget (the reactive object) to a temporary HTML file
-      temp_html <- tempfile(fileext = ".html")
-      
-      # Save the widget, ensuring it's self-contained
-      # This saved file will respect the final dimensions of the widget when it rendered.
-      htmlwidgets::saveWidget(
-        widget = if (input$tab_ec == "Baseline") {
-          s1_energy_costs()
-        } else {
-          s1_energy_costs_new()
-        },
-        file = temp_html,
-        selfcontained = TRUE
-      )
-      
-      # Step 2: Use webshot2 to screenshot the temporary HTML file
-      webshot2::webshot(
-        url = temp_html,
-        file = file,
-        zoom = 5,
-        vwidth = input$width,
-        vheight = input$height,
-        delay = 1 # Give the widget time to fully load and size itself
-      )
-    }
-  )
-  
+
   output$dynamic_revenue <- renderUI({
     if (input$selected_method == "Revenue-based") {
       fluidRow(style = "display:flex;align-items:flex-end", column(
@@ -3063,354 +2976,354 @@ server <- function(input, output, session) {
   end_use <- reactiveValues(measures = NULL)
   
   stored_values_qty <- reactiveValues(
-    name_inputs = list(),
-    text_inputs = list(),
-    num_inputs = list(),
-    picker_inputs = list()
-  )
-  
-  stored_values_rev_per <- reactiveValues(
-    name_inputs = list(),
-    text_inputs = list(),
-    num_inputs_qty = list(),
-    num_inputs_per = list(),
-    picker_inputs = list()
-  )
-  
-  stored_values_rev <- reactiveValues(
-    name_inputs = list(),
-    text_inputs = list(),
-    num_inputs_qty = list(),
-    num_inputs_cost = list(),
-    picker_inputs = list()
-  )
-  
-  observeEvent(input$products_num, {
-    num <- as.numeric(input$products_num)
-    isolate({
-      stored_values_qty$name_inputs <- head(stored_values_qty$name_inputs, num)
-      stored_values_qty$text_inputs <- head(stored_values_qty$text_inputs, num)
-      stored_values_qty$num_inputs <- head(stored_values_qty$num_inputs, num)
-      stored_values_qty$picker_inputs <- head(stored_values_qty$picker_inputs, num)
-      
-      stored_values_rev_per$name_inputs <- head(stored_values_rev_per$name_inputs, num)
-      stored_values_rev_per$text_inputs <- head(stored_values_rev_per$text_inputs, num)
-      stored_values_rev_per$num_inputs_qty <- head(stored_values_rev_per$num_inputs_qty, num)
-      stored_values_rev_per$num_inputs_per <- head(stored_values_rev_per$num_inputs_per, num)
-      stored_values_rev_per$picker_inputs <- head(stored_values_rev_per$picker_inputs, num)
-      
-      stored_values_rev$name_inputs <- head(stored_values_rev$name_inputs, num)
-      stored_values_rev$text_inputs <- head(stored_values_rev$text_inputs, num)
-      stored_values_rev$num_inputs_qty <- head(stored_values_rev$num_inputs_qty, num)
-      stored_values_rev$num_inputs_cost <- head(stored_values_rev$num_inputs_cost, num)
-      stored_values_rev$picker_inputs <- head(stored_values_rev$picker_inputs, num)
-    })
+  name_inputs = list(),
+  text_inputs = list(),
+  num_inputs = list(),
+  picker_inputs = list()
+)
+
+stored_values_rev_per <- reactiveValues(
+  name_inputs = list(),
+  text_inputs = list(),
+  num_inputs_qty = list(),
+  num_inputs_per = list(),
+  picker_inputs = list()
+)
+
+stored_values_rev <- reactiveValues(
+  name_inputs = list(),
+  text_inputs = list(),
+  num_inputs_qty = list(),
+  num_inputs_cost = list(),
+  picker_inputs = list()
+)
+
+observeEvent(input$products_num, {
+  num <- as.numeric(input$products_num)
+  isolate({
+    stored_values_qty$name_inputs <- head(stored_values_qty$name_inputs, num)
+    stored_values_qty$text_inputs <- head(stored_values_qty$text_inputs, num)
+    stored_values_qty$num_inputs <- head(stored_values_qty$num_inputs, num)
+    stored_values_qty$picker_inputs <- head(stored_values_qty$picker_inputs, num)
+    
+    stored_values_rev_per$name_inputs <- head(stored_values_rev_per$name_inputs, num)
+    stored_values_rev_per$text_inputs <- head(stored_values_rev_per$text_inputs, num)
+    stored_values_rev_per$num_inputs_qty <- head(stored_values_rev_per$num_inputs_qty, num)
+    stored_values_rev_per$num_inputs_per <- head(stored_values_rev_per$num_inputs_per, num)
+    stored_values_rev_per$picker_inputs <- head(stored_values_rev_per$picker_inputs, num)
+    
+    stored_values_rev$name_inputs <- head(stored_values_rev$name_inputs, num)
+    stored_values_rev$text_inputs <- head(stored_values_rev$text_inputs, num)
+    stored_values_rev$num_inputs_qty <- head(stored_values_rev$num_inputs_qty, num)
+    stored_values_rev$num_inputs_cost <- head(stored_values_rev$num_inputs_cost, num)
+    stored_values_rev$picker_inputs <- head(stored_values_rev$picker_inputs, num)
   })
+})
+
+# Single observe to store all current input values
+observe({
+  num <- as.numeric(input$products_num)
+  req(num)
   
-  # Single observe to store all current input values
-  observe({
-    num <- as.numeric(input$products_num)
-    req(num)
-    
-    method <- input$selected_method
-    rev_name <- input$revenue_name
-    
-    for (i in seq_len(num)) {
-      name_id <- paste0("products_name_", i)
-      text_id <- paste0("units_name_", i)
-      qty_id <- paste0("qty_", i)
-      rev_id <- paste0("revenue_", i)
-      picker_id <- paste0("process_", i)
-      
-      if (method == "Quantity-based") {
-        if (!is.null(input[[name_id]])) stored_values_qty$name_inputs[[i]] <- input[[name_id]]
-        if (!is.null(input[[text_id]])) stored_values_qty$text_inputs[[i]] <- input[[text_id]]
-        if (!is.null(input[[qty_id]])) stored_values_qty$num_inputs[[i]] <- input[[qty_id]]
-        if (!is.null(input[[picker_id]])) stored_values_qty$picker_inputs[[i]] <- input[[picker_id]]
-      } else if (method == "Revenue-based") {
-        req(rev_name)
-        if (rev_name == "Revenue %") {
-          if (!is.null(input[[name_id]])) stored_values_rev_per$name_inputs[[i]] <- input[[name_id]]
-          if (!is.null(input[[text_id]])) stored_values_rev_per$text_inputs[[i]] <- input[[text_id]]
-          if (!is.null(input[[qty_id]])) stored_values_rev_per$num_inputs_qty[[i]] <- input[[qty_id]]
-          if (!is.null(input[[rev_id]])) stored_values_rev_per$num_inputs_per[[i]] <- input[[rev_id]]
-          if (!is.null(input[[picker_id]])) stored_values_rev_per$picker_inputs[[i]] <- input[[picker_id]]
-        } else {
-          if (!is.null(input[[name_id]])) stored_values_rev$name_inputs[[i]] <- input[[name_id]]
-          if (!is.null(input[[text_id]])) stored_values_rev$text_inputs[[i]] <- input[[text_id]]
-          if (!is.null(input[[qty_id]])) stored_values_rev$num_inputs_qty[[i]] <- input[[qty_id]]
-          if (!is.null(input[[rev_id]])) stored_values_rev$num_inputs_cost[[i]] <- input[[rev_id]]
-          if (!is.null(input[[picker_id]])) stored_values_rev$picker_inputs[[i]] <- input[[picker_id]]
-        }
-      }
-    }
-  })
+  method <- input$selected_method
+  rev_name <- input$revenue_name
   
-  output$product_inputs <- renderUI({
-    req(input$file)
-    num <- input$products_num
+  for (i in seq_len(num)) {
+    name_id <- paste0("products_name_", i)
+    text_id <- paste0("units_name_", i)
+    qty_id <- paste0("qty_", i)
+    rev_id <- paste0("revenue_", i)
+    picker_id <- paste0("process_", i)
     
-    aa <- read_excel(input$file$datapath, sheet = "Results", range = "a6:aa189") %>%
-      clean_names() %>%
-      filter(!is.na(source))
-    end.use <- tibble("Name" = aa$`source`)
-    end_use$measures <- end.use
-    
-    method <- input$selected_method
-    is_revenue <- method == "Revenue-based"
-    rev_name <- if (is_revenue) input$revenue_name else NULL
-    
-    # Get the right stored values
-    sv <- if (method == "Quantity-based") {
-      stored_values_qty
-    } else if (rev_name == "Revenue %") {
-      stored_values_rev_per
-    } else {
-      stored_values_rev
-    }
-    
-    step_label <- if (method == "Quantity-based") {
-      "Step 2: Enter Quantity-based Inputs"
-    } else {
-      "Step 2: Enter Quantity- and Revenue-based Inputs"
-    }
-    
-    product_boxes <- lapply(1:num, function(i) {
-      picker_val <- if (i <= length(isolate(sv$picker_inputs)) &&
-                        !is.null(isolate(sv$picker_inputs[[i]]))) {
-        isolate(sv$picker_inputs[[i]])
+    if (method == "Quantity-based") {
+      if (!is.null(input[[name_id]])) stored_values_qty$name_inputs[[i]] <- input[[name_id]]
+      if (!is.null(input[[text_id]])) stored_values_qty$text_inputs[[i]] <- input[[text_id]]
+      if (!is.null(input[[qty_id]])) stored_values_qty$num_inputs[[i]] <- input[[qty_id]]
+      if (!is.null(input[[picker_id]])) stored_values_qty$picker_inputs[[i]] <- input[[picker_id]]
+    } else if (method == "Revenue-based") {
+      req(rev_name)
+      if (rev_name == "Revenue %") {
+        if (!is.null(input[[name_id]])) stored_values_rev_per$name_inputs[[i]] <- input[[name_id]]
+        if (!is.null(input[[text_id]])) stored_values_rev_per$text_inputs[[i]] <- input[[text_id]]
+        if (!is.null(input[[qty_id]])) stored_values_rev_per$num_inputs_qty[[i]] <- input[[qty_id]]
+        if (!is.null(input[[rev_id]])) stored_values_rev_per$num_inputs_per[[i]] <- input[[rev_id]]
+        if (!is.null(input[[picker_id]])) stored_values_rev_per$picker_inputs[[i]] <- input[[picker_id]]
       } else {
-        unlist(end_use$measures)
+        if (!is.null(input[[name_id]])) stored_values_rev$name_inputs[[i]] <- input[[name_id]]
+        if (!is.null(input[[text_id]])) stored_values_rev$text_inputs[[i]] <- input[[text_id]]
+        if (!is.null(input[[qty_id]])) stored_values_rev$num_inputs_qty[[i]] <- input[[qty_id]]
+        if (!is.null(input[[rev_id]])) stored_values_rev$num_inputs_cost[[i]] <- input[[rev_id]]
+        if (!is.null(input[[picker_id]])) stored_values_rev$picker_inputs[[i]] <- input[[picker_id]]
       }
-      
-      input_cols <- tagList(
-        column(4, uiOutput(paste0("product_name_ui_", i))),
-        column(4, uiOutput(paste0("units_name_ui_", i))),
-        column(4, uiOutput(paste0("qty_values_", i)))
-      )
-      
-      if (is_revenue) {
-        input_cols <- tagList(input_cols, column(4, uiOutput(paste0("revenue_ui_", i))))
-      }
-      
-      div(tagList(fluidRow(
-        if (i == 1) {
-          column(12, h4(step_label, style = "font-weight: bold; font-size: 18px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; margin-bottom: 15px;"))
-        },
-        div(
-          style = "border: 2px solid #ccc; padding: 15px; border-radius: 5px; margin-bottom: 20px;",
-          fluidRow(style = "display:flex;align-items:flex-end;", input_cols),
-          tags$div(
-            pickerInput(
-              paste0("process_", i),
-              label = tags$span(
-                "Select Processes/Equipment Relevant to this Product:",
-                tags$span(icon(name = "circle-exclamation")) |>
-                  add_prompt(
-                    message = "The list below has been referenced from the excel input sheet.",
-                    position = "right",
-                    size = "large"
-                  )
-              ),
-              choices = end_use$measures,
-              options = list(`actions-box` = TRUE, virtualScroll = T),
-              selected = picker_val,
-              multiple = TRUE,
-              width = "95%"
-            ),
-            class = "brand-picker"
-          )
-        )
-      )))
-    })
-    do.call(tagList, product_boxes)
-  })
+    }
+  }
+})
+
+output$product_inputs <- renderUI({
+  req(input$file)
+  num <- input$products_num
   
-  # Product name observe
-  observe({
-    num <- as.numeric(input$products_num)
-    req(num)
-    
-    method <- input$selected_method
-    rev_name <- input$revenue_name
-    
-    sv <- if (method == "Quantity-based") {
-      stored_values_qty
-    } else if (method == "Revenue-based" && !is.null(rev_name) && rev_name == "Revenue %") {
-      stored_values_rev_per
-    } else {
-      stored_values_rev
-    }
-    
-    for (i in seq_len(num)) {
-      local({
-        idx <- i
-        current_val <- input[[paste0("products_name_", idx)]]
-        
-        name_val <- if (!is.null(current_val) && current_val != "") {
-          current_val
-        } else if (idx <= length(sv$name_inputs) && !is.null(sv$name_inputs[[idx]])) {
-          sv$name_inputs[[idx]]
-        } else { "" }
-        
-        output[[paste0("product_name_ui_", idx)]] <- renderUI({
-          textInput(paste0("products_name_", idx), "Enter Product Name:", value = name_val, width = "95%")
-        })
-      })
-    }
-  }) |> bindEvent(input$products_num, input$selected_method, input$revenue_name)
+  aa <- read_excel(input$file$datapath, sheet = "Results", range = "a6:aa189") %>%
+    clean_names() %>%
+    filter(!is.na(source))
+  end.use <- tibble("Name" = aa$`source`)
+  end_use$measures <- end.use
   
-  # Units name observe
-  observe({
-    num <- as.numeric(input$products_num)
-    req(num)
-    
-    method <- input$selected_method
-    rev_name <- input$revenue_name
-    
-    sv <- if (method == "Quantity-based") {
-      stored_values_qty
-    } else if (method == "Revenue-based" && !is.null(rev_name) && rev_name == "Revenue %") {
-      stored_values_rev_per
+  method <- input$selected_method
+  is_revenue <- method == "Revenue-based"
+  rev_name <- if (is_revenue) input$revenue_name else NULL
+  
+  # Get the right stored values
+  sv <- if (method == "Quantity-based") {
+    stored_values_qty
+  } else if (rev_name == "Revenue %") {
+    stored_values_rev_per
+  } else {
+    stored_values_rev
+  }
+  
+  step_label <- if (method == "Quantity-based") {
+    "Step 2: Enter Quantity-based Inputs"
+  } else {
+    "Step 2: Enter Quantity- and Revenue-based Inputs"
+  }
+  
+  product_boxes <- lapply(1:num, function(i) {
+    picker_val <- if (i <= length(isolate(sv$picker_inputs)) &&
+                      !is.null(isolate(sv$picker_inputs[[i]]))) {
+      isolate(sv$picker_inputs[[i]])
     } else {
-      stored_values_rev
+      unlist(end_use$measures)
     }
     
-    for (i in seq_len(num)) {
-      local({
-        idx <- i
-        current_val <- input[[paste0("units_name_", idx)]]
-        
-        text_val <- if (!is.null(current_val) && current_val != "") {
-          current_val
-        } else if (idx <= length(sv$text_inputs) && !is.null(sv$text_inputs[[idx]])) {
-          sv$text_inputs[[idx]]
-        } else { "metric ton" }
-        
-        output[[paste0("units_name_ui_", idx)]] <- renderUI({
-          textInput(
-            inputId = paste0("units_name_", idx),
+    input_cols <- tagList(
+      column(4, uiOutput(paste0("product_name_ui_", i))),
+      column(4, uiOutput(paste0("units_name_ui_", i))),
+      column(4, uiOutput(paste0("qty_values_", i)))
+    )
+    
+    if (is_revenue) {
+      input_cols <- tagList(input_cols, column(4, uiOutput(paste0("revenue_ui_", i))))
+    }
+    
+    div(tagList(fluidRow(
+      if (i == 1) {
+        column(12, h4(step_label, style = "font-weight: bold; font-size: 18px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; margin-bottom: 15px;"))
+      },
+      div(
+        style = "border: 2px solid #ccc; padding: 15px; border-radius: 5px; margin-bottom: 20px;",
+        fluidRow(style = "display:flex;align-items:flex-end;", input_cols),
+        tags$div(
+          pickerInput(
+            paste0("process_", i),
             label = tags$span(
-              "Enter Units of Quantity:",
+              "Select Processes/Equipment Relevant to this Product:",
               tags$span(icon(name = "circle-exclamation")) |>
                 add_prompt(
-                  message = "Note that units name, such as metric ton, are placeholders only. If you entered kg and pounds for two products, respectively, the tool will not convert them to identical units",
+                  message = "The list below has been referenced from the excel input sheet.",
                   position = "right",
                   size = "large"
                 )
             ),
-            value = text_val,
+            choices = end_use$measures,
+            options = list(`actions-box` = TRUE, virtualScroll = T),
+            selected = picker_val,
+            multiple = TRUE,
             width = "95%"
-          )
-        })
-      })
-    }
-  }) |> bindEvent(input$products_num, input$selected_method, input$revenue_name)
+          ),
+          class = "brand-picker"
+        )
+      )
+    )))
+  })
+  do.call(tagList, product_boxes)
+})
+
+# Product name observe
+observe({
+  num <- as.numeric(input$products_num)
+  req(num)
   
-  # Quantity observe
-  observe({
-    num <- input$products_num
-    method <- input$selected_method
-    is_qty_based <- method == "Quantity-based"
-    rev_name <- if (method == "Revenue-based") input$revenue_name else NULL
-    
-    sv <- if (is_qty_based) {
-      stored_values_qty
-    } else if (!is.null(rev_name) && rev_name == "Revenue %") {
-      stored_values_rev_per
-    } else {
-      stored_values_rev
-    }
-    
-    qty_field <- if (is_qty_based) "num_inputs" else "num_inputs_qty"
-    show_tooltip <- !is_qty_based
-    
-    lapply(1:num, function(i) {
-      output[[paste0("qty_values_", i)]] <- renderUI({
-        num_val <- if (i <= length(isolate(sv[[qty_field]])) &&
-                       !is.null(isolate(sv[[qty_field]][[i]]))) {
-          isolate(sv[[qty_field]][[i]])
-        } else if (is_qty_based) { NULL } else { 0 }
-        
-        lbl <- if (show_tooltip) {
-          tags$span(
-            "Enter Product Quantity:",
+  method <- input$selected_method
+  rev_name <- input$revenue_name
+  
+  sv <- if (method == "Quantity-based") {
+    stored_values_qty
+  } else if (method == "Revenue-based" && !is.null(rev_name) && rev_name == "Revenue %") {
+    stored_values_rev_per
+  } else {
+    stored_values_rev
+  }
+  
+  for (i in seq_len(num)) {
+    local({
+      idx <- i
+      current_val <- input[[paste0("products_name_", idx)]]
+      
+      name_val <- if (!is.null(current_val) && current_val != "") {
+        current_val
+      } else if (idx <= length(sv$name_inputs) && !is.null(sv$name_inputs[[idx]])) {
+        sv$name_inputs[[idx]]
+      } else { "" }
+      
+      output[[paste0("product_name_ui_", idx)]] <- renderUI({
+        textInput(paste0("products_name_", idx), "Enter Product Name:", value = name_val, width = "95%")
+      })
+    })
+  }
+}) |> bindEvent(input$products_num, input$selected_method, input$revenue_name)
+
+# Units name observe
+observe({
+  num <- as.numeric(input$products_num)
+  req(num)
+  
+  method <- input$selected_method
+  rev_name <- input$revenue_name
+  
+  sv <- if (method == "Quantity-based") {
+    stored_values_qty
+  } else if (method == "Revenue-based" && !is.null(rev_name) && rev_name == "Revenue %") {
+    stored_values_rev_per
+  } else {
+    stored_values_rev
+  }
+  
+  for (i in seq_len(num)) {
+    local({
+      idx <- i
+      current_val <- input[[paste0("units_name_", idx)]]
+      
+      text_val <- if (!is.null(current_val) && current_val != "") {
+        current_val
+      } else if (idx <= length(sv$text_inputs) && !is.null(sv$text_inputs[[idx]])) {
+        sv$text_inputs[[idx]]
+      } else { "metric ton" }
+      
+      output[[paste0("units_name_ui_", idx)]] <- renderUI({
+        textInput(
+          inputId = paste0("units_name_", idx),
+          label = tags$span(
+            "Enter Units of Quantity:",
             tags$span(icon(name = "circle-exclamation")) |>
               add_prompt(
-                message = "If quantity value is not available, please select 'Gross Product' revenue calculation method",
+                message = "Note that units name, such as metric ton, are placeholders only. If you entered kg and pounds for two products, respectively, the tool will not convert them to identical units",
                 position = "right",
                 size = "large"
               )
+          ),
+          value = text_val,
+          width = "95%"
+        )
+      })
+    })
+  }
+}) |> bindEvent(input$products_num, input$selected_method, input$revenue_name)
+
+# Quantity observe
+observe({
+  num <- input$products_num
+  method <- input$selected_method
+  is_qty_based <- method == "Quantity-based"
+  rev_name <- if (method == "Revenue-based") input$revenue_name else NULL
+  
+  sv <- if (is_qty_based) {
+    stored_values_qty
+  } else if (!is.null(rev_name) && rev_name == "Revenue %") {
+    stored_values_rev_per
+  } else {
+    stored_values_rev
+  }
+  
+  qty_field <- if (is_qty_based) "num_inputs" else "num_inputs_qty"
+  show_tooltip <- !is_qty_based
+  
+  lapply(1:num, function(i) {
+    output[[paste0("qty_values_", i)]] <- renderUI({
+      num_val <- if (i <= length(isolate(sv[[qty_field]])) &&
+                     !is.null(isolate(sv[[qty_field]][[i]]))) {
+        isolate(sv[[qty_field]][[i]])
+      } else if (is_qty_based) { NULL } else { 0 }
+      
+      lbl <- if (show_tooltip) {
+        tags$span(
+          "Enter Product Quantity:",
+          tags$span(icon(name = "circle-exclamation")) |>
+            add_prompt(
+              message = "If quantity value is not available, please select 'Gross Product' revenue calculation method",
+              position = "right",
+              size = "large"
+            )
+        )
+      } else {
+        "Enter Product Quantity:"
+      }
+      
+      numericInput(paste0("qty_", i), label = lbl, value = num_val, min = 0.0001, width = "95%", step = 0.001)
+    })
+  })
+})
+
+# Revenue observe
+observe({
+  num <- as.numeric(input$products_num)
+  req(num, input$selected_method == "Revenue-based", input$revenue_name)
+  
+  is_pct <- input$revenue_name == "Revenue %"
+  
+  lapply(1:num, function(i) {
+    local({
+      idx <- i
+      output[[paste0("revenue_ui_", idx)]] <- renderUI({
+        if (is_pct) {
+          num_val <- if (idx <= length(isolate(stored_values_rev_per$num_inputs_per)) &&
+                        !is.null(isolate(stored_values_rev_per$num_inputs_per[[idx]]))) {
+            isolate(stored_values_rev_per$num_inputs_per[[idx]])
+          } else { 0 }
+          
+          autonumericInput(
+            inputId = paste0("revenue_", idx),
+            label = paste("Enter Product", idx, "Revenue %:"),
+            value = num_val,
+            currencySymbol = "%", currencySymbolPlacement = "s",
+            minimumValue = "0", maximumValue = "100",
+            align = "left", width = "95%",
+            decimalPlaces = 2, allowDecimalPadding = TRUE
           )
         } else {
-          "Enter Product Quantity:"
-        }
-        
-        numericInput(paste0("qty_", i), label = lbl, value = num_val, min = 0.0001, width = "95%", step = 0.001)
-      })
-    })
-  })
-  
-  # Revenue observe
-  observe({
-    num <- as.numeric(input$products_num)
-    req(num, input$selected_method == "Revenue-based", input$revenue_name)
-    
-    is_pct <- input$revenue_name == "Revenue %"
-    
-    lapply(1:num, function(i) {
-      local({
-        idx <- i
-        output[[paste0("revenue_ui_", idx)]] <- renderUI({
-          if (is_pct) {
-            num_val <- if (idx <= length(isolate(stored_values_rev_per$num_inputs_per)) &&
-                           !is.null(isolate(stored_values_rev_per$num_inputs_per[[idx]]))) {
-              isolate(stored_values_rev_per$num_inputs_per[[idx]])
-            } else { 0 }
-            
-            autonumericInput(
-              inputId = paste0("revenue_", idx),
-              label = paste("Enter Product", idx, "Revenue %:"),
-              value = num_val,
-              currencySymbol = "%", currencySymbolPlacement = "s",
-              minimumValue = "0", maximumValue = "100",
-              align = "left", width = "95%",
-              decimalPlaces = 2, allowDecimalPadding = TRUE
-            )
+          num_val <- if (idx <= length(isolate(stored_values_rev$num_inputs_cost)) &&
+                        !is.null(isolate(stored_values_rev$num_inputs_cost[[idx]]))) {
+            isolate(stored_values_rev$num_inputs_cost[[idx]])
+          } else { 0 }
+          
+          label_text <- if (input$revenue_name == "Gross product revenue ($)") {
+            "Enter Product Gross Revenue ($):"
           } else {
-            num_val <- if (idx <= length(isolate(stored_values_rev$num_inputs_cost)) &&
-                           !is.null(isolate(stored_values_rev$num_inputs_cost[[idx]]))) {
-              isolate(stored_values_rev$num_inputs_cost[[idx]])
-            } else { 0 }
-            
-            label_text <- if (input$revenue_name == "Gross product revenue ($)") {
-              "Enter Product Gross Revenue ($):"
-            } else {
-              "Enter Product Revenue per unit:"
-            }
-            
-            autonumericInput(
-              inputId = paste0("revenue_", idx),
-              label = label_text,
-              value = num_val,
-              decimalPlaces = 2, currencySymbol = "$", currencySymbolPlacement = "p",
-              minimumValue = "0", maximumValue = "10000000000000000000",
-              align = "left", width = "95%",
-              allowDecimalPadding = TRUE
-            )
+            "Enter Product Revenue per unit:"
           }
-        })
+          
+          autonumericInput(
+            inputId = paste0("revenue_", idx),
+            label = label_text,
+            value = num_val,
+            decimalPlaces = 2, currencySymbol = "$", currencySymbolPlacement = "p",
+            minimumValue = "0", maximumValue = "10000000000000000000",
+            align = "left", width = "95%",
+            allowDecimalPadding = TRUE
+          )
+        }
       })
     })
   })
+})
   
   tabsShown <- reactiveVal(FALSE)
-  
+
   # Observe the button press and update the reactive value
   observeEvent(input$calc_int, {
     tabsShown(TRUE)
   })
-  
+
   # Render the tabs conditionally based on the reactive value
   output$mainpanelUI <- renderUI({
     if (tabsShown()) {
@@ -3521,13 +3434,13 @@ server <- function(input, output, session) {
       h3("")
     }
   })
-  
+
   button_clicked <- reactiveVal(FALSE) # Creating a reactive value to track if button has been clicked
   show_results <- reactiveVal(FALSE) # Creating a reactive value to track and show results when the button is clicked first
   calc_type <- reactiveVal("baseline") # In order to track which calculation type is being done: "baseline" or "comparison"
   num_products <- reactiveVal(NULL)
   plot_trigger <- reactiveVal(0) # Adding this line to count trigger for plot updates
-  
+
   # Adding these reactive values to store the dataframes
   results_data <- reactiveValues(
     all_products_summarized = NULL,
@@ -3539,12 +3452,12 @@ server <- function(input, output, session) {
     energy_costs_summarized = NULL,
     energy_costs_summarized_new = NULL
   )
-  
+
   #############################################################################
   ############ Calc_int starts from here#####################################
   #############################################################################
-  
-  
+
+
   observeEvent(input$calc_int, {
     button_clicked(TRUE)
     show_results(TRUE)
@@ -3553,8 +3466,8 @@ server <- function(input, output, session) {
     num <- input$products_num
     num_products(num)
     end.use <- end_use$measures
-    
-    
+
+
     if (input$selected_method == "Quantity-based") {
       for (i in 1:num) {
         exists <- input[[paste0("qty_", i)]] > 0
@@ -3566,7 +3479,7 @@ server <- function(input, output, session) {
         req(exists)
       }
     }
-    
+
     if (input$selected_method == "Revenue-based") {
       for (i in 1:num) {
         exists <- input[[paste0("qty_", i)]] > 0
@@ -3577,7 +3490,7 @@ server <- function(input, output, session) {
         )
         req(exists)
       }
-      
+
       for (i in 1:num) {
         if (input$revenue_name == "Revenue %") {
           exists_r <- input[[paste0("revenue_", i)]] > 0
@@ -3606,11 +3519,11 @@ server <- function(input, output, session) {
         }
       }
     }
-    
+
     aa <- read_excel(input$file$datapath, sheet = "Results", range = "a6:aa189")
-    
+
     aa <- clean_names(aa)
-    
+
     aa <- aa %>%
       filter(!is.na(source)) %>%
       select(
@@ -3620,81 +3533,81 @@ server <- function(input, output, session) {
         total_energy_costs_baseline_yr,
         energy_source
       )
-    
+
     if (input$energy_units_int == "MWh") {
       aa <- aa %>%
         mutate(total_energy_baseline_mm_btu_yr = total_energy_baseline_mm_btu_yr * 0.293071)
     }
-    
+
     aa <- aa
-    
+
     product_dataframe <- function(i) {
       product_data <- aa %>%
         filter(source %in% input[[paste0("process_", i)]])
-      
+
       return(product_data)
     }
-    
+
     sentences <- reactiveVal(character(0))
-    
+
     if (input$selected_method == "Quantity-based") {
       all_product_dfs <- list()
       qty_values <- numeric(num)
-      
+
       for (i in 1:num) {
         df_name <- paste0("product_data_", i, "_df")
         df <- product_dataframe(i)
-        
+
         assign(df_name, df, envir = .GlobalEnv)
-        
+
         all_product_dfs[[df_name]] <- df
-        
+
         ## quantity
         df_qty <- paste0("product_", i, "_qty")
         qty_value <- input[[paste0("qty_", i)]]
         assign(df_qty, qty_value, envir = .GlobalEnv)
       }
-      
+
       assign("dataframes", all_product_dfs, envir = .GlobalEnv)
-      
+
       qty_vector <- numeric(num)
-      
+
       # Calculate process percentages
       for (i in 1:num) {
         df_name <- paste0("product_data_", i, "_df")
         df <- product_dataframe(i)
-        
+
         assign(df_name, df, envir = .GlobalEnv)
-        
+
         all_product_dfs[[df_name]] <- df
-        
-        
+
+
         ## quantity
         df_qty <- paste0("product_", i, "_qty")
         qty_value <- input[[paste0("qty_", i)]]
         assign(df_qty, qty_value, envir = .GlobalEnv)
         qty_vector[i] <- qty_value
       }
-      
+
       # Create named vectors
       names(qty_vector) <- paste0("product_", 1:num, "_qty")
-      
+
       # Assign vectors to global environment
       assign("product_qties", qty_vector, envir = .GlobalEnv)
-      
+
       # Initialize an empty list to store individual product dataframes
       product_breakdowns <- list()
-      
+
       for (i in seq_along(dataframes)) {
         df <- dataframes[[i]]
-        
+
         results <- sapply(
           df$source,
           check_presence,
           dataframes = dataframes,
           current_index = i
         )
-        
+
         product_df <- data.frame(
           product_number = i,
           source = df$source,
@@ -3705,9 +3618,9 @@ server <- function(input, output, session) {
           total_energy_costs_baseline_yr = df$total_energy_costs_baseline_yr,
           stringsAsFactors = FALSE
         )
-        
+
         product_df <- product_df ############################
-        
+
         # Calculate quantity-based and revenue-based emissions
         product_df$qty_based_energy <- mapply(
           apply_proportions,
@@ -3715,9 +3628,9 @@ server <- function(input, output, session) {
           product_df$total_energy_baseline_mm_btu_yr,
           MoreArgs = list(values = product_qties)
         )
-        
+
         product_df <- product_df ############################
-        
+
         # Calculate quantity-based and revenue-based emissions
         product_df$qty_based_emissions <- mapply(
           apply_proportions,
@@ -3725,31 +3638,31 @@ server <- function(input, output, session) {
           product_df$co2e_emissions_baseline_mt_co2e_yr,
           MoreArgs = list(values = product_qties)
         )
-        
+
         product_df <- product_df ############################
-        
+
         product_df$product_qty <- product_qties[i]
         product_df$product_name <- input[[paste0("products_name_", i)]]
         product_df$product_unit <- input[[paste0("units_name_", i)]]
-        
+
         # Calculate emissions intensities
         product_df$qty_based_en_intensity <- product_df$qty_based_energy / product_qties[i]
         product_df$qty_based_em_intensity <- product_df$qty_based_emissions / product_qties[i]
-        
+
         # Store the dataframe in the list
         product_breakdowns[[i]] <- product_df
-        
+
         # Assign individual dataframe to global environment
         assign(paste0("product_", i, "_breakdown"),
-               product_df,
-               envir = .GlobalEnv
+          product_df,
+          envir = .GlobalEnv
         )
       }
       # }
-      
+
       # Combine all product dataframes into a single dataframe
       all_products_breakdown <- do.call(rbind, product_breakdowns)
-      
+
       # Get the mass or revenue based ratio from energy breakdown and apply against costs
       all_products_breakdown <- all_products_breakdown %>%
         mutate(
@@ -3757,20 +3670,20 @@ server <- function(input, output, session) {
           energy_cost_based_intensity = qty_based_energy_costs / product_qty
         ) %>%
         relocate(qty_based_energy_costs, .after = qty_based_energy)
-      
+
       # Assign the combined dataframe to the global environment
       assign("all_products_breakdown",
-             all_products_breakdown,
-             envir = .GlobalEnv
+        all_products_breakdown,
+        envir = .GlobalEnv
       )
-      
+
       if (exists("all_products_breakdown")) {
         all_products_breakdown <- `rownames<-`(all_products_breakdown, NULL)
         all_products_breakdown <- all_products_breakdown %>%
           relocate(product_qty, .after = product_number) %>%
           relocate(product_unit, .after = product_qty) %>%
           relocate(product_name, .before = product_qty)
-        
+
         all_products_summarized <- all_products_breakdown %>%
           mutate(product_name = factor(product_name, levels = unique(product_name))) %>%
           group_by(product_name, product_unit) %>%
@@ -3782,8 +3695,8 @@ server <- function(input, output, session) {
             total_emissions_qty_based_mtco2e_yr = sum(qty_based_emissions, na.rm = TRUE),
             qty_based_emission_intensity_mtco2e_ton = sum(qty_based_em_intensity, na.rm = TRUE) #
           )
-        
-        
+
+
         # Summarize all_products_breakdown by energy costs of each energy source types, and make the dataframe wider to be able to index in the
         # calculated_sentences dataframe below
         energy_costs_summarized <- all_products_breakdown %>%
@@ -3791,8 +3704,8 @@ server <- function(input, output, session) {
           group_by(product_name, energy_source) %>%
           summarise(by_source_energy_costs_intensity = sum(energy_cost_based_intensity)) %>%
           pivot_wider(names_from = "energy_source", values_from = "by_source_energy_costs_intensity")
-        
-        
+
+
         energy_summarized <- all_products_breakdown %>%
           mutate(product_name = factor(product_name, levels = unique(product_name))) %>%
           group_by(product_name, energy_source) %>%
@@ -3801,19 +3714,19 @@ server <- function(input, output, session) {
             .groups = "drop"
           ) %>%
           pivot_wider(names_from = "energy_source", values_from = "by_source_energy_intensity")
-        
-        
+
+
         calculated_sentences_en_0 <- vector("list", num)
-        
+
         for (i in 1:num) {
           product_name <- all_products_summarized$product_name[i]
           unit_name <- input[[paste0("units_name_", i)]]
           energy_sources <- colnames(energy_summarized)[2:ncol(energy_summarized)]
           energy_values <- as.numeric(energy_summarized[i, 2:ncol(energy_summarized)])
-          
+
           product_value <- all_products_summarized$qty_based_energy_intensity_mmbtu_ton[i]
-          
-          
+
+
           product_part <- paste0(
             strong(product_name),
             ": ",
@@ -3821,7 +3734,7 @@ server <- function(input, output, session) {
             " is required to produce ",
             tags$u(paste0("one ", unit_name))
           )
-          
+
           energy_phrases <- if_else(
             !is.na(energy_values) & !is.na(energy_sources) & energy_values != 0,
             paste0(
@@ -3832,22 +3745,22 @@ server <- function(input, output, session) {
             ),
             NA_character_
           )
-          
+
           clean_phrases <- na.omit(energy_phrases)
           energy_part <- paste(clean_phrases, collapse = ", ")
-          
+
           calculated_sentences_en_0[[i]] <- paste0(product_part, ". ", energy_part, ".")
         }
-        
+
         formatted_sentences_en_0 <- format_sentences_bullet(calculated_sentences_en_0)
-        
+
         calculated_sentences_en_1 <- c(
           if_else(
             input$en == TRUE &&
               input$ec == FALSE &&
               input$em == FALSE ||
               input$en == TRUE &&
-              (input$ec == TRUE | input$em == TRUE),
+                (input$ec == TRUE | input$em == TRUE),
             paste0(
               "Based on the user-selected ",
               strong("Quantity-based approach"),
@@ -3862,20 +3775,20 @@ server <- function(input, output, session) {
             )
           )
         )
-        
+
         formatted_sentences_en <- HTML(
           format_sentences(calculated_sentences_en_1),
           formatted_sentences_en_0
         )
-        
+
         calculated_sentences_ec_0 <- vector("list", num)
-        
+
         for (i in 1:num) {
           # Product information part
           product_value <- all_products_summarized$energy_costs_intensity_dollar_qty[i]
           unit_name <- input[[paste0("units_name_", i)]]
           product_name <- all_products_summarized$product_name[i]
-          
+
           product_part <- paste0(
             strong(product_name),
             ": ",
@@ -3883,11 +3796,11 @@ server <- function(input, output, session) {
             " in energy costs is required to produce ",
             tags$u(paste0("one ", input[[paste0("units_name_", i)]]))
           )
-          
+
           # Get all energy sources and their values at once
           energy_values <- as.numeric(energy_costs_summarized[i, 2:ncol(energy_costs_summarized)])
           energy_sources <- colnames(energy_costs_summarized)[2:ncol(energy_costs_summarized)]
-          
+
           # Create all energy source phrases in one vector
           energy_phrases <-
             if_else(
@@ -3902,23 +3815,23 @@ server <- function(input, output, session) {
               ),
               NA_character_
             )
-          
+
           # Combine all energy phrases with commas
           energy_part <- paste(na.omit(energy_phrases), collapse = ", ")
-          
+
           # Final sentence combining product info and all energy sources
           calculated_sentences_ec_0[[i]] <- paste0(product_part, ". ", energy_part, ".")
         }
-        
+
         formatted_sentences_ec_0 <- format_sentences_bullet(calculated_sentences_ec_0)
-        
+
         calculated_sentences_ec_1 <- c(
           if_else(
             input$en == FALSE &&
               input$ec == TRUE &&
               input$em == FALSE ||
               input$en == FALSE &&
-              input$ec == TRUE && input$em == TRUE,
+                input$ec == TRUE && input$em == TRUE,
             paste0(
               "Based on the user-selected ",
               strong("Quantity-based approach"),
@@ -3933,13 +3846,13 @@ server <- function(input, output, session) {
             )
           )
         )
-        
+
         formatted_sentences_ec <- HTML(
           format_sentences(calculated_sentences_ec_1),
           formatted_sentences_ec_0
         )
-        
-        
+
+
         calculated_sentences_em <- c(
           if_else(
             input$en == FALSE && input$ec == FALSE && input$em == TRUE,
@@ -3970,13 +3883,13 @@ server <- function(input, output, session) {
             )
           })
         )
-        
+
         formatted_sentences_em <- format_sentences(calculated_sentences_em)
-        
+
         if (input$en == TRUE &&
-            input$ec == FALSE && input$em == FALSE) {
+          input$ec == FALSE && input$em == FALSE) {
           formatted_sentences <- paste0(formatted_sentences_en)
-          
+
           all_products_summarized <- all_products_summarized %>%
             select(product_name:qty_based_energy_intensity_mmbtu_ton) %>%
             rename(
@@ -4000,9 +3913,9 @@ server <- function(input, output, session) {
               .cols = qty_based_energy_intensity_mmbtu_ton
             )
         } else if (input$en == FALSE &&
-                   input$ec == TRUE && input$em == FALSE) {
+          input$ec == TRUE && input$em == FALSE) {
           formatted_sentences <- paste0(formatted_sentences_ec)
-          
+
           all_products_summarized <- all_products_summarized %>%
             select(
               product_name,
@@ -4017,9 +3930,9 @@ server <- function(input, output, session) {
               "Energy Costs Intensity\n($/unit of Product)" = energy_costs_intensity_dollar_qty
             )
         } else if (input$en == FALSE &&
-                   input$ec == FALSE && input$em == TRUE) {
+          input$ec == FALSE && input$em == TRUE) {
           formatted_sentences <- paste0(formatted_sentences_em)
-          
+
           all_products_summarized <- all_products_summarized %>%
             select(
               product_name,
@@ -4034,10 +3947,10 @@ server <- function(input, output, session) {
               "Emissions Intensity\n(MTCO₂e/unit of Product)" = qty_based_emission_intensity_mtco2e_ton
             )
         } else if (input$en == TRUE &&
-                   input$ec == TRUE && input$em == FALSE) {
+          input$ec == TRUE && input$em == FALSE) {
           formatted_sentences_en <- paste0(formatted_sentences_en)
           formatted_sentences_ec <- paste0(formatted_sentences_ec)
-          
+
           all_products_summarized <- all_products_summarized %>%
             select(
               product_name:qty_based_energy_intensity_mmbtu_ton,
@@ -4067,10 +3980,10 @@ server <- function(input, output, session) {
               .cols = qty_based_energy_intensity_mmbtu_ton
             )
         } else if (input$en == TRUE &&
-                   input$ec == FALSE && input$em == TRUE) {
+          input$ec == FALSE && input$em == TRUE) {
           formatted_sentences_en <- paste0(formatted_sentences_en)
           formatted_sentences_em <- paste0(formatted_sentences_em)
-          
+
           all_products_summarized <- all_products_summarized %>%
             select(
               product_name:qty_based_energy_intensity_mmbtu_ton,
@@ -4100,10 +4013,10 @@ server <- function(input, output, session) {
               .cols = qty_based_energy_intensity_mmbtu_ton
             )
         } else if (input$en == FALSE &&
-                   input$ec == TRUE && input$em == TRUE) {
+          input$ec == TRUE && input$em == TRUE) {
           formatted_sentences_em <- paste0(formatted_sentences_em)
           formatted_sentences_ec <- paste0(formatted_sentences_ec)
-          
+
           all_products_summarized <- all_products_summarized %>%
             select(
               product_name,
@@ -4122,11 +4035,11 @@ server <- function(input, output, session) {
               "Emissions Intensity\n(MTCO₂e/unit of Product)" = qty_based_emission_intensity_mtco2e_ton
             )
         } else if (input$en == TRUE &&
-                   input$ec == TRUE && input$em == TRUE) {
+          input$ec == TRUE && input$em == TRUE) {
           formatted_sentences_en <- paste0(formatted_sentences_en)
           formatted_sentences_ec <- paste0(formatted_sentences_ec)
           formatted_sentences_em <- paste0(formatted_sentences_em)
-          
+
           all_products_summarized <- all_products_summarized %>%
             rename(
               "Product Name" = product_name,
@@ -4153,7 +4066,7 @@ server <- function(input, output, session) {
               .cols = qty_based_energy_intensity_mmbtu_ton
             )
         }
-        
+
         download_excel_file <- all_products_breakdown %>%
           mutate(qty_weight_proportion = qty_based_energy / total_energy_baseline_mm_btu_yr) %>%
           rename(
@@ -4172,8 +4085,8 @@ server <- function(input, output, session) {
           relocate(qty_based_energy_intensity_mmbtu_per_mt, .after = qty_based_energy_consumption_mmbtu_yr) %>%
           relocate(all_products_co2e_emissions_baseline_mt_co2e_yr, .after = total_energy_costs_baseline_yr) %>%
           relocate(energy_cost_based_intensity, .after = qty_based_energy_costs)
-        
-        
+
+
         colnames(download_excel_file) <- c(
           "Product",
           "Product Name",
@@ -4214,28 +4127,28 @@ server <- function(input, output, session) {
           )
         )
       }
-      
+
       # }
     } else {
       # Revenue based approach
-      
+
       all_product_dfs <- list()
       qty_values <- numeric(num)
       revenue_values <- numeric(num)
-      
+
       for (i in 1:num) {
         df_name <- paste0("product_data_", i, "_df")
         df <- product_dataframe(i)
-        
+
         assign(df_name, df, envir = .GlobalEnv)
         all_product_dfs[[df_name]] <- df
-        
-        
+
+
         ## Quantity
         df_qty <- paste0("product_", i, "_qty")
         qty_value <- input[[paste0("qty_", i)]]
         assign(df_qty, qty_value, envir = .GlobalEnv)
-        
+
         ## Revenue
         df_revenue <- paste0("product_", i, "_revenue")
         rev_value <- if_else(
@@ -4249,27 +4162,27 @@ server <- function(input, output, session) {
         )
         assign(df_revenue, rev_value, envir = .GlobalEnv)
       }
-      
+
       assign("dataframes", all_product_dfs, envir = .GlobalEnv)
-      
+
       qty_vector <- numeric(num)
       revenue_vector <- numeric(num)
-      
+
       # Calculate process percentages
       for (i in 1:num) {
         df_name <- paste0("product_data_", i, "_df")
         df <- product_dataframe(i)
-        
+
         assign(df_name, df, envir = .GlobalEnv)
         all_product_dfs[[df_name]] <- df
-        
-        
+
+
         ## qty
         df_qty <- paste0("product_", i, "_qty")
         qty_value <- input[[paste0("qty_", i)]]
         assign(df_qty, qty_value, envir = .GlobalEnv)
         qty_vector[i] <- qty_value
-        
+
         ## Revenue
         df_revenue <- paste0("product_", i, "_revenue")
         rev_value <- if_else(
@@ -4284,28 +4197,28 @@ server <- function(input, output, session) {
         assign(df_revenue, rev_value, envir = .GlobalEnv)
         revenue_vector[i] <- rev_value
       }
-      
+
       # Create named vectors
       names(qty_vector) <- paste0("product_", 1:num, "_qty")
       names(revenue_vector) <- paste0("product_", 1:num, "_revenue")
-      
+
       # Assign vectors to global environment
       assign("product_qties", qty_vector, envir = .GlobalEnv)
       assign("product_revenues", revenue_vector, envir = .GlobalEnv)
-      
+
       # Initialize an empty list to store individual product dataframes
       product_breakdowns <- list()
-      
+
       for (i in seq_along(dataframes)) {
         df <- dataframes[[i]]
-        
+
         results <- sapply(
           df$source,
           check_presence,
           dataframes = dataframes,
           current_index = i
         )
-        
+
         product_df <- data.frame(
           product_number = i,
           source = df$source,
@@ -4316,9 +4229,9 @@ server <- function(input, output, session) {
           total_energy_costs_baseline_yr = df$total_energy_costs_baseline_yr,
           stringsAsFactors = FALSE
         )
-        
+
         product_df <- product_df
-        
+
         # Calculate qty-based and revenue-based energy
         product_df$qty_based_energy <- mapply(
           apply_proportions,
@@ -4326,7 +4239,7 @@ server <- function(input, output, session) {
           product_df$total_energy_baseline_mm_btu_yr,
           MoreArgs = list(values = product_qties)
         )
-        
+
         # Calculate qty-based and revenue-based emissions
         product_df$qty_based_emissions <- mapply(
           apply_proportions,
@@ -4334,33 +4247,33 @@ server <- function(input, output, session) {
           product_df$co2e_emissions_baseline_mt_co2e_yr,
           MoreArgs = list(values = product_qties)
         )
-        
-        
+
+
         product_df$revenue_based_energy <- mapply(
           apply_proportions,
           product_df$presence,
           product_df$total_energy_baseline_mm_btu_yr,
           MoreArgs = list(values = product_revenues)
         )
-        
+
         product_df$revenue_based_emissions <- mapply(
           apply_proportions,
           product_df$presence,
           product_df$co2e_emissions_baseline_mt_co2e_yr,
           MoreArgs = list(values = product_revenues)
         )
-        
+
         product_df$product_qty <- product_qties[i]
         product_df$product_name <- input[[paste0("products_name_", i)]]
         product_df$product_unit <- input[[paste0("units_name_", i)]]
-        
+
         # Calculate energy intensities
         product_df$qty_based_energy_intensity <- product_df$qty_based_energy / product_qties[i]
         product_df$revenue_based_energy_intensity_qty <- product_df$revenue_based_energy / product_qties[i]
         # Calculate emissions intensities
         product_df$qty_based_em_intensity <- product_df$qty_based_emissions / product_qties[i]
         product_df$revenue_based_em_intensity_qty <- product_df$revenue_based_emissions / product_qties[i]
-        
+
         if (input$revenue_name != "Revenue %") {
           product_df$revenue_based_energy_intensity_dollar <- product_df$revenue_based_energy / product_revenues[i]
           product_df$revenue_based_em_intensity_dollar <- product_df$revenue_based_emissions / product_revenues[i]
@@ -4369,20 +4282,20 @@ server <- function(input, output, session) {
           ) * product_df$total_energy_costs_baseline_yr
           ) / product_revenues[i]
         }
-        
+
         # Store the dataframe in the list
         product_breakdowns[[i]] <- product_df
-        
+
         # Assign individual dataframe to global environment
         assign(paste0("product_", i, "_breakdown"),
-               product_df,
-               envir = .GlobalEnv
+          product_df,
+          envir = .GlobalEnv
         )
       }
-      
+
       # Combine all product dataframes into a single dataframe
       all_products_breakdown <- do.call(rbind, product_breakdowns)
-      
+
       # Get the mass or revenue based ratio from energy breakdown and apply against costs
       all_products_breakdown <- all_products_breakdown %>%
         mutate(
@@ -4396,20 +4309,20 @@ server <- function(input, output, session) {
         ) %>%
         relocate(qty_based_energy_costs, .after = revenue_based_energy) %>%
         relocate(revenue_based_energy_costs, .after = qty_based_energy_costs)
-      
+
       # Assign the combined dataframe to the global environment
       assign("all_products_breakdown",
-             all_products_breakdown,
-             envir = .GlobalEnv
+        all_products_breakdown,
+        envir = .GlobalEnv
       )
-      
+
       if (exists("all_products_breakdown")) {
         all_products_breakdown <- `rownames<-`(all_products_breakdown, NULL)
         all_products_breakdown <- all_products_breakdown %>%
           relocate(product_qty, .after = product_number) %>%
           relocate(product_unit, .after = product_qty) %>%
           relocate(product_name, .after = product_number)
-        
+
         if (input$revenue_name == "Revenue %") {
           all_products_summarized <- all_products_breakdown %>%
             mutate(product_name = factor(product_name, levels = unique(product_name))) %>%
@@ -4422,7 +4335,7 @@ server <- function(input, output, session) {
               total_emissions_revenue_based_mtco2e_yr = sum(revenue_based_emissions, na.rm = T),
               revenue_based_emission_intensity_mtco2e_qty = sum(revenue_based_em_intensity_qty, na.rm = T)
             )
-          
+
           # Summarize all_products_breakdown by energy costs of each energy source types for dollar, and make the dataframe wider to be able to index in the
           # calculated_sentences dataframe below
           energy_costs_summarized <- all_products_breakdown %>%
@@ -4432,7 +4345,7 @@ server <- function(input, output, session) {
               by_source_energy_costs_intensity_qty = sum(revenue_based_energy_costs_intensity_qty)
             ) %>%
             pivot_wider(names_from = "energy_source", values_from = "by_source_energy_costs_intensity_qty")
-          
+
           energy_summarized <- all_products_breakdown %>%
             mutate(product_name = factor(product_name, levels = unique(product_name))) %>%
             group_by(product_name, energy_source) %>%
@@ -4441,25 +4354,25 @@ server <- function(input, output, session) {
               .groups = "drop"
             ) %>%
             pivot_wider(names_from = "energy_source", values_from = "by_source_energy_intensity")
-          
-          
+
+
           calculated_sentences_en_0 <- vector("list", num)
-          
+
           for (i in 1:num) {
             product_name <- all_products_summarized$product_name[i]
             unit_name <- input[[paste0("units_name_", i)]]
             energy_sources <- colnames(energy_summarized)[2:ncol(energy_summarized)]
             energy_values <- as.numeric(energy_summarized[i, 2:ncol(energy_summarized)])
-            
+
             product_value_qty <- all_products_summarized$revenue_based_energy_intensity_mmbtu_qty[i]
-            
+
             product_part <- paste0(
               strong(product_name), ": ",
               tags$u(paste0(scales::comma(product_value_qty, accuracy = 0.01), " ", input$energy_units_int, " energy")),
               " is required to produce ",
               tags$u(paste0("one ", unit_name))
             )
-            
+
             energy_phrases <- if_else(
               !is.na(energy_values) & !is.na(energy_sources) & energy_values != 0,
               paste0(
@@ -4470,13 +4383,13 @@ server <- function(input, output, session) {
               ),
               NA_character_
             )
-            
+
             energy_part <- paste(na.omit(energy_phrases), collapse = ", ")
             calculated_sentences_en_0[[i]] <- paste0(product_part, ". ", energy_part, ".")
           }
-          
+
           formatted_sentences_en_0 <- format_sentences_bullet(calculated_sentences_en_0)
-          
+
           calculated_sentences_en_1 <- c(
             paste0(
               "Based on the user-selected ",
@@ -4488,12 +4401,12 @@ server <- function(input, output, session) {
               ") required to produce a unit of product is shown below:<br>"
             )
           )
-          
+
           formatted_sentences_en <- HTML(
             format_sentences(calculated_sentences_en_1),
             formatted_sentences_en_0
           )
-          
+
           calculated_sentences_em <- c(
             if_else(
               input$en == FALSE && input$ec == FALSE && input$em == TRUE,
@@ -4529,17 +4442,17 @@ server <- function(input, output, session) {
               )
             })
           )
-          
+
           formatted_sentences_em <- format_sentences(calculated_sentences_em)
-          
+
           calculated_sentences_ec_0 <- vector("list", num)
-          
+
           for (i in 1:num) {
             # Product information part
             product_value <- all_products_summarized$energy_costs_intensity_revenue_based[i]
             unit_name <- input[[paste0("units_name_", i)]]
             product_name <- all_products_summarized$product_name[i]
-            
+
             product_part <- paste0(
               strong(product_name),
               ": ",
@@ -4547,11 +4460,11 @@ server <- function(input, output, session) {
               " in energy costs is required to proudce ",
               tags$u(paste0("one ", input[[paste0("units_name_", i)]]))
             )
-            
+
             # Get all energy sources and their values at once
             energy_sources <- colnames(energy_costs_summarized)[2:ncol(energy_costs_summarized)]
             energy_values <- as.numeric(energy_costs_summarized[i, 2:ncol(energy_costs_summarized)])
-            
+
             # Create all energy source phrases in one vector
             energy_phrases <-
               if_else(
@@ -4566,23 +4479,23 @@ server <- function(input, output, session) {
                 ),
                 NA_character_
               )
-            
+
             # Combine all energy phrases with commas
             energy_part <- paste(na.omit(energy_phrases), collapse = ", ")
-            
+
             # Final sentence combining product info and all energy sources
             calculated_sentences_ec_0[[i]] <- paste0(product_part, ". ", energy_part, ".")
           }
-          
+
           formatted_sentences_ec_0 <- format_sentences_bullet(calculated_sentences_ec_0)
-          
+
           calculated_sentences_ec_1 <- c(
             if_else(
               input$en == FALSE &&
                 input$ec == TRUE &&
                 input$em == FALSE ||
                 input$en == FALSE &&
-                input$ec == TRUE && input$em == TRUE,
+                  input$ec == TRUE && input$em == TRUE,
               paste0(
                 "Based on the user-selected ",
                 strong("Revenue Percentage-based approach"),
@@ -4597,20 +4510,20 @@ server <- function(input, output, session) {
               )
             )
           )
-          
+
           formatted_sentences_ec <- HTML(
             format_sentences(calculated_sentences_ec_1),
             formatted_sentences_ec_0
           )
-          
+
           all_products_summarized <- all_products_summarized %>%
             ungroup() %>%
             select(-product_number)
-          
+
           if (input$en == TRUE &&
-              input$ec == FALSE && input$em == FALSE) {
+            input$ec == FALSE && input$em == FALSE) {
             formatted_sentences <- paste0(formatted_sentences_en)
-            
+
             all_products_summarized <- all_products_summarized %>%
               select(product_name:revenue_based_energy_intensity_mmbtu_qty) %>%
               rename(
@@ -4634,9 +4547,9 @@ server <- function(input, output, session) {
                 .cols = revenue_based_energy_intensity_mmbtu_qty
               )
           } else if (input$en == FALSE &&
-                     input$ec == TRUE && input$em == FALSE) {
+            input$ec == TRUE && input$em == FALSE) {
             formatted_sentences <- paste0(formatted_sentences_ec)
-            
+
             all_products_summarized <- all_products_summarized %>%
               select(
                 product_name,
@@ -4651,9 +4564,9 @@ server <- function(input, output, session) {
                 "Energy Costs Intensity\n($/unit of Product)" = energy_costs_intensity_revenue_based
               )
           } else if (input$en == FALSE &&
-                     input$ec == FALSE && input$em == TRUE) {
+            input$ec == FALSE && input$em == TRUE) {
             formatted_sentences <- paste0(formatted_sentences_em)
-            
+
             all_products_summarized <- all_products_summarized %>%
               select(
                 product_name,
@@ -4668,10 +4581,10 @@ server <- function(input, output, session) {
                 "Emissions Intensity\n(MTCO₂e/unit of Product)" = revenue_based_emission_intensity_mtco2e_qty
               )
           } else if (input$en == TRUE &&
-                     input$ec == TRUE && input$em == FALSE) {
+            input$ec == TRUE && input$em == FALSE) {
             formatted_sentences_en <- paste0(formatted_sentences_en)
             formatted_sentences_ec <- paste0(formatted_sentences_ec)
-            
+
             all_products_summarized <- all_products_summarized %>%
               select(
                 product_name:revenue_based_energy_intensity_mmbtu_qty,
@@ -4701,10 +4614,10 @@ server <- function(input, output, session) {
                 .cols = revenue_based_energy_intensity_mmbtu_qty
               )
           } else if (input$en == TRUE &&
-                     input$ec == FALSE && input$em == TRUE) {
+            input$ec == FALSE && input$em == TRUE) {
             formatted_sentences_en <- paste0(formatted_sentences_en)
             formatted_sentences_em <- paste0(formatted_sentences_em)
-            
+
             all_products_summarized <- all_products_summarized %>%
               select(
                 product_name:revenue_based_energy_intensity_mmbtu_qty,
@@ -4734,10 +4647,10 @@ server <- function(input, output, session) {
                 .cols = revenue_based_energy_intensity_mmbtu_qty
               )
           } else if (input$en == FALSE &&
-                     input$ec == TRUE && input$em == TRUE) {
+            input$ec == TRUE && input$em == TRUE) {
             formatted_sentences_ec <- paste0(formatted_sentences_ec)
             formatted_sentences_em <- paste0(formatted_sentences_em)
-            
+
             all_products_summarized <- all_products_summarized %>%
               select(
                 product_name,
@@ -4756,11 +4669,11 @@ server <- function(input, output, session) {
                 "Emissions Intensity\n(MTCO₂e/unit of Product)" = revenue_based_emission_intensity_mtco2e_qty
               )
           } else if (input$en == TRUE &&
-                     input$ec == TRUE && input$em == TRUE) {
+            input$ec == TRUE && input$em == TRUE) {
             formatted_sentences_en <- paste0(formatted_sentences_en)
             formatted_sentences_ec <- paste0(formatted_sentences_ec)
             formatted_sentences_em <- paste0(formatted_sentences_em)
-            
+
             all_products_summarized <- all_products_summarized %>%
               rename(
                 "Product Name" = product_name,
@@ -4787,7 +4700,7 @@ server <- function(input, output, session) {
                 .cols = revenue_based_energy_intensity_mmbtu_qty
               )
           }
-          
+
           download_excel_file <- all_products_breakdown %>%
             select(
               -c(
@@ -4810,10 +4723,10 @@ server <- function(input, output, session) {
             relocate(total_energy_costs_baseline_yr, .after = all_products_energy_consumption_mmbtu_yr) %>%
             relocate(revenue_weight_proportion, .before = revenue_based_energy_consumption_mmbtu_yr) %>%
             relocate(revenue_based_energy_intensity_mmbtu_per_mt_qty,
-                     .after = revenue_based_energy_consumption_mmbtu_yr
+              .after = revenue_based_energy_consumption_mmbtu_yr
             ) %>%
             relocate(revenue_based_energy_costs_intensity_qty, .after = revenue_based_energy_costs)
-          
+
           colnames(download_excel_file) <- c(
             "Product",
             "Product Name",
@@ -4865,7 +4778,7 @@ server <- function(input, output, session) {
               revenue_based_emission_intensity_mtco2e_dollar = sum(revenue_based_em_intensity_dollar, na.rm = T),
               revenue_based_emission_intensity_mtco2e_qty = sum(revenue_based_em_intensity_qty, na.rm = T)
             )
-          
+
           # Summarize all_products_breakdown by energy costs of each energy source types for dollar, and make the dataframe wider to be able to index in the
           # calculated_sentences dataframe below
           energy_costs_summarized <- all_products_breakdown %>%
@@ -4875,7 +4788,7 @@ server <- function(input, output, session) {
               by_source_energy_costs_intensity_dollar = sum(revenue_based_energy_costs_intensity_dollar)
             ) %>%
             pivot_wider(names_from = "energy_source", values_from = "by_source_energy_costs_intensity_dollar")
-          
+
           energy_summarized <- all_products_breakdown %>%
             mutate(product_name = factor(product_name, levels = unique(product_name))) %>%
             group_by(product_name, energy_source) %>%
@@ -4884,24 +4797,24 @@ server <- function(input, output, session) {
               .groups = "drop"
             ) %>%
             pivot_wider(names_from = "energy_source", values_from = "by_source_energy_intensity")
-          
+
           calculated_sentences_en_0 <- vector("list", num)
-          
+
           for (i in 1:num) {
             product_name <- all_products_summarized$product_name[i]
             unit_name <- input[[paste0("units_name_", i)]]
             energy_sources <- colnames(energy_summarized)[2:ncol(energy_summarized)]
             energy_values <- as.numeric(energy_summarized[i, 2:ncol(energy_summarized)])
-            
+
             product_value_dollar <- all_products_summarized$revenue_based_energy_intensity_mmbtu_dollar[i]
             product_value_qty <- all_products_summarized$revenue_based_energy_intensity_mmbtu_qty[i]
-            
+
             product_part <- paste0(
               strong(product_name), ": ",
               tags$u(paste0(scales::comma(product_value_dollar, accuracy = 0.01), " ", input$energy_units_int, " energy")),
               " is required to produce a ", tags$u("dollar revenue"), ". "
             )
-            
+
             # Dollar-based disaggregation for gross revenue
             energy_phrases <- if_else(
               !is.na(energy_values) & !is.na(energy_sources) & energy_values != 0,
@@ -4913,9 +4826,9 @@ server <- function(input, output, session) {
               ),
               NA_character_
             )
-            
+
             clean_phrases <- na.omit(energy_phrases)
-            
+
             energy_part <- if (length(clean_phrases) > 0) {
               paste0(
                 clean_phrases[1],
@@ -4928,12 +4841,12 @@ server <- function(input, output, session) {
             } else {
               ""
             }
-            
+
             calculated_sentences_en_0[[i]] <- paste0(product_part, energy_part, ".")
           }
-          
+
           formatted_sentences_en_0 <- format_sentences_bullet(calculated_sentences_en_0)
-          
+
           calculated_sentences_en_1 <- c(
             paste0(
               "Based on the user-selected ",
@@ -4947,31 +4860,31 @@ server <- function(input, output, session) {
               " of product is shown below:<br>"
             )
           )
-          
+
           formatted_sentences_en <- HTML(
             format_sentences(calculated_sentences_en_1),
             formatted_sentences_en_0
           )
-          
+
           calculated_sentences_ec_0 <- vector("list", num)
-          
+
           for (i in 1:num) {
             # Product information part
             product_value <- all_products_summarized$revenue_based_energy_costs_intensity_dollar[i]
             unit_name <- input[[paste0("units_name_", i)]]
             product_name <- all_products_summarized$product_name[i]
-            
+
             product_part <- paste0(
               strong(product_name),
               ": ",
               tags$u(paste0("$", scales::comma(product_value, accuracy = 0.01))),
               " in energy costs is required to generate a dollar in revenue"
             )
-            
+
             # Get all energy sources and their values at once
             energy_sources <- colnames(energy_costs_summarized)[2:ncol(energy_costs_summarized)]
             energy_values <- as.numeric(energy_costs_summarized[i, 2:ncol(energy_costs_summarized)])
-            
+
             # Create all energy source phrases in one vector
             energy_phrases <-
               if_else(
@@ -4986,24 +4899,24 @@ server <- function(input, output, session) {
                 ),
                 NA_character_
               )
-            
+
             # Combine all energy phrases with commas
             energy_part <- paste(na.omit(energy_phrases), collapse = ", ")
-            
+
             # Final sentence combining product info and all energy sources
             calculated_sentences_ec_0[[i]] <- paste0(product_part, ". ", energy_part, ".")
           }
-          
+
           formatted_sentences_ec_0 <- format_sentences_bullet(calculated_sentences_ec_0)
-          
-          
+
+
           calculated_sentences_ec_1 <- c(
             if_else(
               input$en == FALSE &&
                 input$ec == TRUE &&
                 input$em == FALSE ||
                 input$en == FALSE &&
-                input$ec == TRUE && input$em == TRUE,
+                  input$ec == TRUE && input$em == TRUE,
               paste0(
                 "Based on the user-selected ",
                 strong("Revenue-based approach"),
@@ -5022,12 +4935,12 @@ server <- function(input, output, session) {
               )
             )
           )
-          
+
           formatted_sentences_ec <- HTML(
             format_sentences(calculated_sentences_ec_1),
             formatted_sentences_ec_0
           )
-          
+
           calculated_sentences_em <- c(
             if_else(
               input$en == FALSE && input$ec == FALSE && input$em == TRUE,
@@ -5058,18 +4971,18 @@ server <- function(input, output, session) {
               )
             })
           )
-          
+
           formatted_sentences_em <- format_sentences(calculated_sentences_em)
-          
+
           all_products_summarized <- all_products_summarized %>%
             ungroup() %>%
             select(-product_number)
-          
-          
+
+
           if (input$en == TRUE &&
-              input$ec == FALSE && input$em == FALSE) {
+            input$ec == FALSE && input$em == FALSE) {
             formatted_sentences <- paste0(formatted_sentences_en)
-            
+
             all_products_summarized <- all_products_summarized %>%
               select(product_name:revenue_based_energy_intensity_mmbtu_qty) %>%
               rename(
@@ -5101,9 +5014,9 @@ server <- function(input, output, session) {
                 .cols = revenue_based_energy_intensity_mmbtu_qty
               )
           } else if (input$en == FALSE &&
-                     input$ec == TRUE && input$em == FALSE) {
+            input$ec == TRUE && input$em == FALSE) {
             formatted_sentences <- paste0(formatted_sentences_ec)
-            
+
             all_products_summarized <- all_products_summarized %>%
               select(
                 product_name,
@@ -5120,9 +5033,9 @@ server <- function(input, output, session) {
                 "Energy Costs Intensity\n($/unit of Product)" = revenue_based_energy_costs_intensity_qty
               )
           } else if (input$en == FALSE &&
-                     input$ec == FALSE && input$em == TRUE) {
+            input$ec == FALSE && input$em == TRUE) {
             formatted_sentences <- paste0(formatted_sentences_em)
-            
+
             all_products_summarized <- all_products_summarized %>%
               select(
                 product_name,
@@ -5139,10 +5052,10 @@ server <- function(input, output, session) {
                 "Emissions Intensity\n(MTCO₂e/unit of Product)" = revenue_based_emission_intensity_mtco2e_qty
               )
           } else if (input$en == TRUE &&
-                     input$ec == TRUE && input$em == FALSE) {
+            input$ec == TRUE && input$em == FALSE) {
             formatted_sentences_en <- paste0(formatted_sentences_en)
             formatted_sentences_ec <- paste0(formatted_sentences_ec)
-            
+
             all_products_summarized <- all_products_summarized %>%
               select(
                 product_name:revenue_based_energy_intensity_mmbtu_qty,
@@ -5182,10 +5095,10 @@ server <- function(input, output, session) {
                 .cols = revenue_based_energy_intensity_mmbtu_qty
               )
           } else if (input$en == TRUE &&
-                     input$ec == FALSE && input$em == TRUE) {
+            input$ec == FALSE && input$em == TRUE) {
             formatted_sentences_en <- paste0(formatted_sentences_en)
             formatted_sentences_em <- paste0(formatted_sentences_em)
-            
+
             all_products_summarized <- all_products_summarized %>%
               select(
                 product_name:revenue_based_energy_intensity_mmbtu_qty,
@@ -5225,10 +5138,10 @@ server <- function(input, output, session) {
                 .cols = revenue_based_energy_intensity_mmbtu_qty
               )
           } else if (input$en == FALSE &&
-                     input$ec == TRUE && input$em == TRUE) {
+            input$ec == TRUE && input$em == TRUE) {
             formatted_sentences_ec <- paste0(formatted_sentences_ec)
             formatted_sentences_em <- paste0(formatted_sentences_em)
-            
+
             all_products_summarized <- all_products_summarized %>%
               select(
                 product_name,
@@ -5251,11 +5164,11 @@ server <- function(input, output, session) {
                 "Emissions Intensity\n(MTCO₂e/unit of Product)" = revenue_based_emission_intensity_mtco2e_qty
               )
           } else if (input$en == TRUE &&
-                     input$ec == TRUE && input$em == TRUE) {
+            input$ec == TRUE && input$em == TRUE) {
             formatted_sentences_en <- paste0(formatted_sentences_en)
             formatted_sentences_ec <- paste0(formatted_sentences_ec)
             formatted_sentences_em <- paste0(formatted_sentences_em)
-            
+
             all_products_summarized <- all_products_summarized %>%
               rename(
                 "Product Name" = product_name,
@@ -5292,7 +5205,7 @@ server <- function(input, output, session) {
                 .cols = revenue_based_energy_intensity_mmbtu_qty
               )
           }
-          
+
           download_excel_file <- all_products_breakdown %>%
             select(
               -c(
@@ -5316,19 +5229,19 @@ server <- function(input, output, session) {
             relocate(total_energy_costs_baseline_yr, .after = all_products_energy_consumption_mmbtu_yr) %>%
             relocate(revenue_weight_proportion, .before = revenue_based_energy_consumption_mmbtu_yr) %>%
             relocate(revenue_based_energy_intensity_mmbtu_per_dollar,
-                     .after = revenue_based_energy_consumption_mmbtu_yr
+              .after = revenue_based_energy_consumption_mmbtu_yr
             ) %>%
             relocate(revenue_based_energy_intensity_mmbtu_per_mt_qty,
-                     .after = revenue_based_energy_intensity_mmbtu_per_dollar
+              .after = revenue_based_energy_intensity_mmbtu_per_dollar
             ) %>%
             relocate(revenue_based_energy_costs, .after = revenue_based_energy_intensity_mmbtu_per_mt_qty) %>%
             relocate(revenue_based_energy_costs_intensity_dollar,
-                     .after = revenue_based_energy_costs
+              .after = revenue_based_energy_costs
             ) %>%
             relocate(revenue_based_energy_costs_intensity_qty, .after = revenue_based_energy_costs_intensity_dollar) %>%
             relocate(revenue_based_em_intensity_dollar, .after = revenue_based_emissions)
-          
-          
+
+
           colnames(download_excel_file) <- c(
             "Product",
             "Product Name",
@@ -5373,8 +5286,8 @@ server <- function(input, output, session) {
         }
       }
     }
-    
-    
+
+
     output$textOutput1 <- renderUI({
       plot_trigger()
       tryCatch({
@@ -5685,15 +5598,15 @@ server <- function(input, output, session) {
         )
       })
     })
-    
-    
+
+
     output$intensity_table <- renderDataTable({
       if (input$selected_method == "Quantity-based" ||
-          input$revenue_name == "Revenue %") {
+        input$revenue_name == "Revenue %") {
         if (input$en == TRUE &&
-            input$ec == FALSE &&
-            input$em == FALSE || input$en == FALSE &&
-            input$ec == FALSE && input$em == TRUE) {
+          input$ec == FALSE &&
+          input$em == FALSE || input$en == FALSE &&
+          input$ec == FALSE && input$em == TRUE) {
           all_products_summarized %>%
             DT::datatable(
               class = "cell-border stripe hover",
@@ -5713,7 +5626,7 @@ server <- function(input, output, session) {
             formatRound(columns = c(3), digits = 0) %>%
             formatRound(columns = c(4), digits = 3)
         } else if (input$en == FALSE &&
-                   input$ec == TRUE && input$em == FALSE) {
+          input$ec == TRUE && input$em == FALSE) {
           all_products_summarized %>%
             DT::datatable(
               class = "cell-border stripe hover",
@@ -5737,7 +5650,7 @@ server <- function(input, output, session) {
             ) %>%
             formatRound(columns = c(4), digits = 3)
         } else if (input$en == TRUE &&
-                   input$ec == TRUE && input$em == FALSE) {
+          input$ec == TRUE && input$em == FALSE) {
           all_products_summarized %>%
             DT::datatable(
               class = "cell-border stripe hover",
@@ -5762,7 +5675,7 @@ server <- function(input, output, session) {
               digits = 0
             )
         } else if (input$en == TRUE &&
-                   input$ec == FALSE && input$em == TRUE) {
+          input$ec == FALSE && input$em == TRUE) {
           all_products_summarized %>%
             DT::datatable(
               class = "cell-border stripe hover",
@@ -5782,7 +5695,7 @@ server <- function(input, output, session) {
             formatRound(columns = c(3, 5), digits = 0) %>%
             formatRound(columns = c(4, 6), digits = 3)
         } else if (input$en == FALSE &&
-                   input$ec == TRUE && input$em == TRUE) {
+          input$ec == TRUE && input$em == TRUE) {
           all_products_summarized %>%
             DT::datatable(
               class = "cell-border stripe hover",
@@ -5807,7 +5720,7 @@ server <- function(input, output, session) {
               digits = 0
             )
         } else if (input$en == TRUE &&
-                   input$ec == TRUE && input$em == TRUE) {
+          input$ec == TRUE && input$em == TRUE) {
           all_products_summarized %>%
             DT::datatable(
               class = "cell-border stripe hover",
@@ -5834,9 +5747,9 @@ server <- function(input, output, session) {
         }
       } else {
         if (input$en == TRUE &&
-            input$ec == FALSE &&
-            input$em == FALSE || input$en == FALSE &&
-            input$ec == FALSE && input$em == TRUE) {
+          input$ec == FALSE &&
+          input$em == FALSE || input$en == FALSE &&
+          input$ec == FALSE && input$em == TRUE) {
           all_products_summarized %>%
             DT::datatable(
               class = "cell-border stripe hover",
@@ -5856,7 +5769,7 @@ server <- function(input, output, session) {
             formatRound(columns = c(3), digits = 0) %>%
             formatRound(columns = c(4, 5), digits = 3)
         } else if (input$en == FALSE &&
-                   input$ec == TRUE && input$em == FALSE) {
+          input$ec == TRUE && input$em == FALSE) {
           all_products_summarized %>%
             DT::datatable(
               class = "cell-border stripe hover",
@@ -5880,7 +5793,7 @@ server <- function(input, output, session) {
             ) %>%
             formatRound(columns = c(4, 5), digits = 3)
         } else if (input$en == TRUE &&
-                   input$ec == TRUE && input$em == FALSE) {
+          input$ec == TRUE && input$em == FALSE) {
           all_products_summarized %>%
             DT::datatable(
               class = "cell-border stripe hover",
@@ -5905,7 +5818,7 @@ server <- function(input, output, session) {
               digits = 0
             )
         } else if (input$en == TRUE &&
-                   input$ec == FALSE && input$em == TRUE) {
+          input$ec == FALSE && input$em == TRUE) {
           all_products_summarized %>%
             DT::datatable(
               class = "cell-border stripe hover",
@@ -5925,7 +5838,7 @@ server <- function(input, output, session) {
             formatRound(columns = c(3, 6), digits = 0) %>%
             formatRound(columns = c(4, 5, 7, 8), digits = 3)
         } else if (input$en == FALSE &&
-                   input$ec == TRUE && input$em == TRUE) {
+          input$ec == TRUE && input$em == TRUE) {
           all_products_summarized %>%
             DT::datatable(
               class = "cell-border stripe hover",
@@ -5950,7 +5863,7 @@ server <- function(input, output, session) {
               digits = 0
             )
         } else if (input$en == TRUE &&
-                   input$ec == TRUE && input$em == TRUE) {
+          input$ec == TRUE && input$em == TRUE) {
           all_products_summarized %>%
             DT::datatable(
               class = "cell-border stripe hover",
@@ -5980,15 +5893,15 @@ server <- function(input, output, session) {
         }
       }
     })
-    
+
     output$show_dl_link <- renderUI({
       downloadLink("download_all_data",
-                   "Download Underlying Data (.xlsx)",
-                   style = "font-size: 14px; text-decoration: underline;"
+        "Download Underlying Data (.xlsx)",
+        style = "font-size: 14px; text-decoration: underline;"
       )
     })
-    
-    
+
+
     output$download_all_data <- downloadHandler(
       filename = function() {
         "all_data.xlsx"
@@ -6005,31 +5918,31 @@ server <- function(input, output, session) {
           wrapText = TRUE,
           fontSize = 12
         )
-        
+
         # Create a workbook and add a worksheet
         wb <- createWorkbook()
         addWorksheet(wb, "Sheet1")
-        
+
         # Write data to the worksheet
         writeData(wb, "Sheet1", download_excel_file, headerStyle = hs1)
-        
+
         # Set column widths to auto
         setColWidths(wb,
-                     "Sheet1",
-                     cols = 1:ncol(download_excel_file),
-                     widths = "auto"
+          "Sheet1",
+          cols = 1:ncol(download_excel_file),
+          widths = "auto"
         )
-        
+
         # Create styles for different decimal places
         no_decimal_style <- createStyle(numFmt = "0")
         two_decimal_style <- createStyle(numFmt = "0.00")
         three_decimal_style <- createStyle(numFmt = "0.000")
-        
+
         # Define which columns should have which decimal places
         no_decimal_cols <- c(3, 8, 9, 10, 12)
         two_decimal_cols <- c(11)
-        
-        
+
+
         # Apply styles to specific columns
         addStyle(
           wb,
@@ -6039,7 +5952,7 @@ server <- function(input, output, session) {
           cols = no_decimal_cols,
           gridExpand = TRUE
         )
-        
+
         addStyle(
           wb,
           "Sheet1",
@@ -6048,11 +5961,11 @@ server <- function(input, output, session) {
           cols = two_decimal_cols,
           gridExpand = TRUE
         )
-        
+
         if (input$selected_method == "Quantity-based" ||
-            input$revenue_name == "Revenue %") {
+          input$revenue_name == "Revenue %") {
           three_decimal_cols <- c(13, 15, 17)
-          
+
           addStyle(
             wb,
             "Sheet1",
@@ -6063,7 +5976,7 @@ server <- function(input, output, session) {
           )
         } else {
           three_decimal_cols <- c(13, 14, 16, 17, 19, 20)
-          
+
           addStyle(
             wb,
             "Sheet1",
@@ -6073,12 +5986,12 @@ server <- function(input, output, session) {
             gridExpand = TRUE
           )
         }
-        
+
         column_border_style <- createStyle(
           border = c("left", "right"),
           borderStyle = "thin"
         )
-        
+
         # Apply the style to each column individually
         for (col in 1:ncol(download_excel_file)) {
           addStyle(
@@ -6092,11 +6005,11 @@ server <- function(input, output, session) {
             stack = TRUE
           )
         }
-        
+
         product_changes <- which(diff(download_excel_file$Product) != 0) + 1
-        
+
         bottom_border_style <- createStyle(border = "bottom", borderStyle = "thin")
-        
+
         # Apply the bottom border style to the identified rows
         for (row in product_changes) {
           addStyle(
@@ -6110,7 +6023,7 @@ server <- function(input, output, session) {
             stack = TRUE
           )
         }
-        
+
         addStyle(
           wb,
           "Sheet1",
@@ -6120,9 +6033,9 @@ server <- function(input, output, session) {
           gridExpand = TRUE,
           stack = TRUE
         )
-        
+
         centered_style <- createStyle(halign = "center", valign = "center")
-        
+
         # Apply the centered style to all cells
         addStyle(
           wb,
@@ -6135,38 +6048,38 @@ server <- function(input, output, session) {
           gridExpand = TRUE,
           stack = TRUE
         )
-        
-        
+
+
         # Save the workbook
         saveWorkbook(wb, file, overwrite = TRUE)
       }
     )
     assign("all_products_summarized",
-           all_products_summarized,
-           envir = .GlobalEnv
+      all_products_summarized,
+      envir = .GlobalEnv
     )
-    
+
     plot_trigger(plot_trigger() + 1) # Incrementing trigger to force plot updates
   })
-  
+
   #############################################################################
   ############ Calc_new_int starts from here#####################################
   #############################################################################
   observeEvent(input$calc_new_int, {
     show_results(TRUE)
-    
+
     print("calc_new_int triggered!")
-    
+
     num <- num_products()
     print(paste("num value:", num))
-    
+
     if (is.null(num) || is.na(num) || num < 1) {
       showNotification("Please run 'Calculate Product Intensity' first", type = "error")
       return()
     }
-    
+
     print("Starting baseline calculation...")
-    
+
     aa <- read_excel(input$file$datapath, sheet = "Results", range = "a6:aa189")
     aa <- clean_names(aa)
     aa <- aa %>%
@@ -6178,67 +6091,67 @@ server <- function(input, output, session) {
         total_energy_costs_baseline_yr,
         energy_source
       )
-    
+
     if (input$energy_units_int == "MWh") {
       aa <- aa %>%
         mutate(total_energy_baseline_mm_btu_yr = total_energy_baseline_mm_btu_yr * 0.293071)
     }
-    
+
     product_dataframe <- function(i) {
       product_data <- aa %>%
         filter(source %in% input[[paste0("process_", i)]])
       return(product_data)
     }
-    
+
     # ==================== QUANTITY-BASED METHOD ====================
     if (input$selected_method == "Quantity-based") {
       print("Quantity-based method - baseline")
-      
+
       # BASELINE CALCULATION
       all_product_dfs <- list()
-      
+
       for (i in 1:num) {
         df_name <- paste0("product_data_", i, "_df")
         df <- product_dataframe(i)
         assign(df_name, df, envir = .GlobalEnv)
         all_product_dfs[[df_name]] <- df
-        
+
         df_qty <- paste0("product_", i, "_qty")
         qty_value <- input[[paste0("qty_", i)]]
         assign(df_qty, qty_value, envir = .GlobalEnv)
       }
-      
+
       assign("dataframes", all_product_dfs, envir = .GlobalEnv)
-      
+
       qty_vector <- numeric(num)
-      
+
       for (i in 1:num) {
         df_name <- paste0("product_data_", i, "_df")
         df <- product_dataframe(i)
         assign(df_name, df, envir = .GlobalEnv)
         all_product_dfs[[df_name]] <- df
-        
+
         df_qty <- paste0("product_", i, "_qty")
         qty_value <- input[[paste0("qty_", i)]]
         assign(df_qty, qty_value, envir = .GlobalEnv)
         qty_vector[i] <- qty_value
       }
-      
+
       names(qty_vector) <- paste0("product_", 1:num, "_qty")
       assign("product_qties", qty_vector, envir = .GlobalEnv)
-      
+
       product_breakdowns <- list()
-      
+
       for (i in seq_along(dataframes)) {
         df <- dataframes[[i]]
-        
+
         results <- sapply(
           df$source,
           check_presence,
           dataframes = dataframes,
           current_index = i
         )
-        
+
         product_df <- data.frame(
           product_number = i,
           source = df$source,
@@ -6249,46 +6162,46 @@ server <- function(input, output, session) {
           total_energy_costs_baseline_yr = df$total_energy_costs_baseline_yr,
           stringsAsFactors = FALSE
         )
-        
+
         product_df$qty_based_energy <- mapply(
           apply_proportions,
           product_df$presence,
           product_df$total_energy_baseline_mm_btu_yr,
           MoreArgs = list(values = product_qties)
         )
-        
+
         product_df$qty_based_emissions <- mapply(
           apply_proportions,
           product_df$presence,
           product_df$co2e_emissions_baseline_mt_co2e_yr,
           MoreArgs = list(values = product_qties)
         )
-        
+
         product_df$product_qty <- product_qties[i]
         product_df$product_name <- input[[paste0("products_name_", i)]]
         product_df$product_unit <- input[[paste0("units_name_", i)]]
-        
+
         product_df$qty_based_en_intensity <- product_df$qty_based_energy / product_qties[i]
         product_df$qty_based_em_intensity <- product_df$qty_based_emissions / product_qties[i]
-        
+
         product_breakdowns[[i]] <- product_df
       }
-      
+
       all_products_breakdown_baseline <- do.call(rbind, product_breakdowns)
-      
+
       all_products_breakdown_baseline <- all_products_breakdown_baseline %>%
         mutate(
           qty_based_energy_costs = (qty_based_energy / total_energy_baseline_mm_btu_yr) * total_energy_costs_baseline_yr,
           energy_cost_based_intensity = qty_based_energy_costs / product_qty
         ) %>%
         relocate(qty_based_energy_costs, .after = qty_based_energy)
-      
+
       all_products_breakdown_baseline <- `rownames<-`(all_products_breakdown_baseline, NULL)
       all_products_breakdown_baseline <- all_products_breakdown_baseline %>%
         relocate(product_qty, .after = product_number) %>%
         relocate(product_unit, .after = product_qty) %>%
         relocate(product_name, .before = product_qty)
-      
+
       all_products_summarized_baseline <- all_products_breakdown_baseline %>%
         mutate(product_name = factor(product_name, levels = unique(product_name))) %>%
         group_by(product_name, product_unit) %>%
@@ -6301,17 +6214,17 @@ server <- function(input, output, session) {
           qty_based_emission_intensity_mtco2e_ton = sum(qty_based_em_intensity, na.rm = TRUE),
           .groups = "drop"
         )
-      
+
       print("Baseline calculation complete - assigning to global env")
-      
+
       results_data$all_products_breakdown_baseline <- all_products_breakdown_baseline
       results_data$all_products_summarized_baseline <- all_products_summarized_baseline
-      
+
       print(paste("Baseline assigned - nrow:", nrow(all_products_summarized_baseline)))
-      
+
       # NEW CALCULATION
       print("Starting NEW calculation...")
-      
+
       aa_new <- read_excel(input$file$datapath, sheet = "Results", range = "a6:aa189")
       aa_new <- clean_names(aa_new)
       aa_new <- aa_new %>%
@@ -6328,41 +6241,41 @@ server <- function(input, output, session) {
           co2e_emissions_baseline_mt_co2e_yr = co2e_emissions_new_mt_co2e_yr,
           total_energy_costs_baseline_yr = total_energy_costs_new_yr
         )
-      
+
       if (input$energy_units_int == "MWh") {
         aa_new <- aa_new %>%
           mutate(total_energy_baseline_mm_btu_yr = total_energy_baseline_mm_btu_yr * 0.293071)
       }
-      
+
       product_dataframe_new <- function(i) {
         product_data <- aa_new %>%
           filter(source %in% input[[paste0("process_", i)]])
         return(product_data)
       }
-      
+
       all_product_dfs_new <- list()
-      
+
       for (i in 1:num) {
         df_name <- paste0("product_data_", i, "_df_new")
         df <- product_dataframe_new(i)
         assign(df_name, df, envir = .GlobalEnv)
         all_product_dfs_new[[df_name]] <- df
       }
-      
+
       assign("dataframes_new", all_product_dfs_new, envir = .GlobalEnv)
-      
+
       product_breakdowns_new <- list()
-      
+
       for (i in seq_along(dataframes_new)) {
         df <- dataframes_new[[i]]
-        
+
         results <- sapply(
           df$source,
           check_presence,
           dataframes = dataframes_new,
           current_index = i
         )
-        
+
         product_df <- data.frame(
           product_number = i,
           source = df$source,
@@ -6373,46 +6286,46 @@ server <- function(input, output, session) {
           total_energy_costs_baseline_yr = df$total_energy_costs_baseline_yr,
           stringsAsFactors = FALSE
         )
-        
+
         product_df$qty_based_energy <- mapply(
           apply_proportions,
           product_df$presence,
           product_df$total_energy_baseline_mm_btu_yr,
           MoreArgs = list(values = product_qties)
         )
-        
+
         product_df$qty_based_emissions <- mapply(
           apply_proportions,
           product_df$presence,
           product_df$co2e_emissions_baseline_mt_co2e_yr,
           MoreArgs = list(values = product_qties)
         )
-        
+
         product_df$product_qty <- product_qties[i]
         product_df$product_name <- input[[paste0("products_name_", i)]]
         product_df$product_unit <- input[[paste0("units_name_", i)]]
-        
+
         product_df$qty_based_en_intensity <- product_df$qty_based_energy / product_qties[i]
         product_df$qty_based_em_intensity <- product_df$qty_based_emissions / product_qties[i]
-        
+
         product_breakdowns_new[[i]] <- product_df
       }
-      
+
       all_products_breakdown_new <- do.call(rbind, product_breakdowns_new)
-      
+
       all_products_breakdown_new <- all_products_breakdown_new %>%
         mutate(
           qty_based_energy_costs = (qty_based_energy / total_energy_baseline_mm_btu_yr) * total_energy_costs_baseline_yr,
           energy_cost_based_intensity = qty_based_energy_costs / product_qty
         ) %>%
         relocate(qty_based_energy_costs, .after = qty_based_energy)
-      
+
       all_products_breakdown_new <- `rownames<-`(all_products_breakdown_new, NULL)
       all_products_breakdown_new <- all_products_breakdown_new %>%
         relocate(product_qty, .after = product_number) %>%
         relocate(product_unit, .after = product_qty) %>%
         relocate(product_name, .before = product_qty)
-      
+
       all_products_summarized_new <- all_products_breakdown_new %>%
         mutate(product_name = factor(product_name, levels = unique(product_name))) %>%
         group_by(product_name, product_unit) %>%
@@ -6425,52 +6338,52 @@ server <- function(input, output, session) {
           qty_based_emission_intensity_mtco2e_ton = sum(qty_based_em_intensity, na.rm = TRUE),
           .groups = "drop"
         )
-      
-      
+
+
       assign("all_products_breakdown_baseline", all_products_breakdown_baseline, envir = .GlobalEnv)
       assign("all_products_summarized_baseline", all_products_summarized_baseline, envir = .GlobalEnv)
       assign("all_products_summarized_new", all_products_summarized_new, envir = .GlobalEnv)
       assign("all_products_breakdown_new", all_products_breakdown_new, envir = .GlobalEnv)
       results_data$all_products_breakdown_new <- all_products_breakdown_new
       results_data$all_products_summarized_new <- all_products_summarized_new
-      
+
       print(paste("NEW assigned - nrow:", nrow(all_products_summarized_new)))
-      
+
       # For tables and sentences, use baseline
       results_data$all_products_breakdown <- all_products_breakdown_baseline
       results_data$all_products_summarized <- all_products_summarized_baseline
-      
+
       print("All assignments complete!")
-      
+
       calc_type("comparison")
       print("calc_type set to comparison")
-      
+
       print("Products Assigned")
     }
-    
+
     # ==================== REVENUE-BASED METHOD ====================
     else {
       print("Revenue-based method - baseline")
-      
+
       # BASELINE CALCULATION
       all_product_dfs <- list()
-      
+
       for (i in 1:num) {
         df_name <- paste0("product_data_", i, "_df")
         df <- product_dataframe(i)
         assign(df_name, df, envir = .GlobalEnv)
         all_product_dfs[[df_name]] <- df
       }
-      
+
       assign("dataframes", all_product_dfs, envir = .GlobalEnv)
-      
+
       qty_vector <- numeric(num)
       revenue_vector <- numeric(num)
-      
+
       for (i in 1:num) {
         qty_value <- input[[paste0("qty_", i)]]
         qty_vector[i] <- qty_value
-        
+
         rev_value <- if_else(
           input$revenue_name == "Revenue %",
           input[[paste0("revenue_", i)]] / 100,
@@ -6482,25 +6395,25 @@ server <- function(input, output, session) {
         )
         revenue_vector[i] <- rev_value
       }
-      
+
       names(qty_vector) <- paste0("product_", 1:num, "_qty")
       names(revenue_vector) <- paste0("product_", 1:num, "_revenue")
-      
+
       assign("product_qties", qty_vector, envir = .GlobalEnv)
       assign("product_revenues", revenue_vector, envir = .GlobalEnv)
-      
+
       product_breakdowns <- list()
-      
+
       for (i in seq_along(dataframes)) {
         df <- dataframes[[i]]
-        
+
         results <- sapply(
           df$source,
           check_presence,
           dataframes = dataframes,
           current_index = i
         )
-        
+
         product_df <- data.frame(
           product_number = i,
           source = df$source,
@@ -6511,44 +6424,44 @@ server <- function(input, output, session) {
           total_energy_costs_baseline_yr = df$total_energy_costs_baseline_yr,
           stringsAsFactors = FALSE
         )
-        
+
         product_df$qty_based_energy <- mapply(
           apply_proportions,
           product_df$presence,
           product_df$total_energy_baseline_mm_btu_yr,
           MoreArgs = list(values = product_qties)
         )
-        
+
         product_df$qty_based_emissions <- mapply(
           apply_proportions,
           product_df$presence,
           product_df$co2e_emissions_baseline_mt_co2e_yr,
           MoreArgs = list(values = product_qties)
         )
-        
+
         product_df$revenue_based_energy <- mapply(
           apply_proportions,
           product_df$presence,
           product_df$total_energy_baseline_mm_btu_yr,
           MoreArgs = list(values = product_revenues)
         )
-        
+
         product_df$revenue_based_emissions <- mapply(
           apply_proportions,
           product_df$presence,
           product_df$co2e_emissions_baseline_mt_co2e_yr,
           MoreArgs = list(values = product_revenues)
         )
-        
+
         product_df$product_qty <- product_qties[i]
         product_df$product_name <- input[[paste0("products_name_", i)]]
         product_df$product_unit <- input[[paste0("units_name_", i)]]
-        
+
         product_df$qty_based_energy_intensity <- product_df$qty_based_energy / product_qties[i]
         product_df$revenue_based_energy_intensity_qty <- product_df$revenue_based_energy / product_qties[i]
         product_df$qty_based_em_intensity <- product_df$qty_based_emissions / product_qties[i]
         product_df$revenue_based_em_intensity_qty <- product_df$revenue_based_emissions / product_qties[i]
-        
+
         if (input$revenue_name != "Revenue %") {
           product_df$revenue_based_energy_intensity_dollar <- product_df$revenue_based_energy / product_revenues[i]
           product_df$revenue_based_em_intensity_dollar <- product_df$revenue_based_emissions / product_revenues[i]
@@ -6557,12 +6470,12 @@ server <- function(input, output, session) {
           ) * product_df$total_energy_costs_baseline_yr
           ) / product_revenues[i]
         }
-        
+
         product_breakdowns[[i]] <- product_df
       }
-      
+
       all_products_breakdown_baseline <- do.call(rbind, product_breakdowns)
-      
+
       all_products_breakdown_baseline <- all_products_breakdown_baseline %>%
         mutate(
           qty_based_energy_costs = (qty_based_energy / total_energy_baseline_mm_btu_yr) * total_energy_costs_baseline_yr,
@@ -6572,13 +6485,13 @@ server <- function(input, output, session) {
         ) %>%
         relocate(qty_based_energy_costs, .after = revenue_based_energy) %>%
         relocate(revenue_based_energy_costs, .after = qty_based_energy_costs)
-      
+
       all_products_breakdown_baseline <- `rownames<-`(all_products_breakdown_baseline, NULL)
       all_products_breakdown_baseline <- all_products_breakdown_baseline %>%
         relocate(product_qty, .after = product_number) %>%
         relocate(product_unit, .after = product_qty) %>%
         relocate(product_name, .after = product_number)
-      
+
       if (input$revenue_name == "Revenue %") {
         all_products_summarized_baseline <- all_products_breakdown_baseline %>%
           mutate(product_name = factor(product_name, levels = unique(product_name))) %>%
@@ -6613,19 +6526,19 @@ server <- function(input, output, session) {
           ungroup() %>%
           select(-product_number)
       }
-      
+
       print("Baseline calculation complete - assigning to global env")
-      
+
       assign("all_products_breakdown_baseline", all_products_breakdown_baseline, envir = .GlobalEnv)
       assign("all_products_summarized_baseline", all_products_summarized_baseline, envir = .GlobalEnv)
       results_data$all_products_breakdown_baseline <- all_products_breakdown_baseline
       results_data$all_products_summarized_baseline <- all_products_summarized_baseline
-      
+
       print(paste("Baseline assigned - nrow:", nrow(all_products_summarized_baseline)))
-      
+
       # NEW CALCULATION
       print("Starting NEW calculation...")
-      
+
       aa_new <- read_excel(input$file$datapath, sheet = "Results", range = "a6:aa189")
       aa_new <- clean_names(aa_new)
       aa_new <- aa_new %>%
@@ -6642,41 +6555,41 @@ server <- function(input, output, session) {
           co2e_emissions_baseline_mt_co2e_yr = co2e_emissions_new_mt_co2e_yr,
           total_energy_costs_baseline_yr = total_energy_costs_new_yr
         )
-      
+
       if (input$energy_units_int == "MWh") {
         aa_new <- aa_new %>%
           mutate(total_energy_baseline_mm_btu_yr = total_energy_baseline_mm_btu_yr * 0.293071)
       }
-      
+
       product_dataframe_new <- function(i) {
         product_data <- aa_new %>%
           filter(source %in% input[[paste0("process_", i)]])
         return(product_data)
       }
-      
+
       all_product_dfs_new <- list()
-      
+
       for (i in 1:num) {
         df_name <- paste0("product_data_", i, "_df_new")
         df <- product_dataframe_new(i)
         assign(df_name, df, envir = .GlobalEnv)
         all_product_dfs_new[[df_name]] <- df
       }
-      
+
       assign("dataframes_new", all_product_dfs_new, envir = .GlobalEnv)
-      
+
       product_breakdowns_new <- list()
-      
+
       for (i in seq_along(dataframes_new)) {
         df <- dataframes_new[[i]]
-        
+
         results <- sapply(
           df$source,
           check_presence,
           dataframes = dataframes_new,
           current_index = i
         )
-        
+
         product_df <- data.frame(
           product_number = i,
           source = df$source,
@@ -6687,44 +6600,44 @@ server <- function(input, output, session) {
           total_energy_costs_baseline_yr = df$total_energy_costs_baseline_yr,
           stringsAsFactors = FALSE
         )
-        
+
         product_df$qty_based_energy <- mapply(
           apply_proportions,
           product_df$presence,
           product_df$total_energy_baseline_mm_btu_yr,
           MoreArgs = list(values = product_qties)
         )
-        
+
         product_df$qty_based_emissions <- mapply(
           apply_proportions,
           product_df$presence,
           product_df$co2e_emissions_baseline_mt_co2e_yr,
           MoreArgs = list(values = product_qties)
         )
-        
+
         product_df$revenue_based_energy <- mapply(
           apply_proportions,
           product_df$presence,
           product_df$total_energy_baseline_mm_btu_yr,
           MoreArgs = list(values = product_revenues)
         )
-        
+
         product_df$revenue_based_emissions <- mapply(
           apply_proportions,
           product_df$presence,
           product_df$co2e_emissions_baseline_mt_co2e_yr,
           MoreArgs = list(values = product_revenues)
         )
-        
+
         product_df$product_qty <- product_qties[i]
         product_df$product_name <- input[[paste0("products_name_", i)]]
         product_df$product_unit <- input[[paste0("units_name_", i)]]
-        
+
         product_df$qty_based_energy_intensity <- product_df$qty_based_energy / product_qties[i]
         product_df$revenue_based_energy_intensity_qty <- product_df$revenue_based_energy / product_qties[i]
         product_df$qty_based_em_intensity <- product_df$qty_based_emissions / product_qties[i]
         product_df$revenue_based_em_intensity_qty <- product_df$revenue_based_emissions / product_qties[i]
-        
+
         if (input$revenue_name != "Revenue %") {
           product_df$revenue_based_energy_intensity_dollar <- product_df$revenue_based_energy / product_revenues[i]
           product_df$revenue_based_em_intensity_dollar <- product_df$revenue_based_emissions / product_revenues[i]
@@ -6733,12 +6646,12 @@ server <- function(input, output, session) {
           ) * product_df$total_energy_costs_baseline_yr
           ) / product_revenues[i]
         }
-        
+
         product_breakdowns_new[[i]] <- product_df
       }
-      
+
       all_products_breakdown_new <- do.call(rbind, product_breakdowns_new)
-      
+
       all_products_breakdown_new <- all_products_breakdown_new %>%
         mutate(
           qty_based_energy_costs = (qty_based_energy / total_energy_baseline_mm_btu_yr) * total_energy_costs_baseline_yr,
@@ -6748,13 +6661,13 @@ server <- function(input, output, session) {
         ) %>%
         relocate(qty_based_energy_costs, .after = revenue_based_energy) %>%
         relocate(revenue_based_energy_costs, .after = qty_based_energy_costs)
-      
+
       all_products_breakdown_new <- `rownames<-`(all_products_breakdown_new, NULL)
       all_products_breakdown_new <- all_products_breakdown_new %>%
         relocate(product_qty, .after = product_number) %>%
         relocate(product_unit, .after = product_qty) %>%
         relocate(product_name, .after = product_number)
-      
+
       if (input$revenue_name == "Revenue %") {
         all_products_summarized_new <- all_products_breakdown_new %>%
           mutate(product_name = factor(product_name, levels = unique(product_name))) %>%
@@ -6789,24 +6702,24 @@ server <- function(input, output, session) {
           ungroup() %>%
           select(-product_number)
       }
-      
+
       print("NEW calculation complete - assigning to global env")
-      
+
       print("All assignments complete!")
-      
+
       calc_type("comparison")
       print("calc_type set to comparison")
-      
-      
+
+
       assign("all_products_breakdown_baseline", all_products_breakdown_baseline, envir = .GlobalEnv)
       assign("all_products_summarized_baseline", all_products_summarized_baseline, envir = .GlobalEnv)
       assign("all_products_summarized_new", all_products_summarized_new, envir = .GlobalEnv)
       assign("all_products_breakdown_new", all_products_breakdown_new, envir = .GlobalEnv)
       results_data$all_products_breakdown_new <- all_products_breakdown_new
       results_data$all_products_summarized_new <- all_products_summarized_new
-      
+
       print(paste("NEW assigned - nrow:", nrow(all_products_summarized_new)))
-      
+
       # For tables and sentences, use baseline
       assign("all_products_breakdown", all_products_breakdown_baseline, envir = .GlobalEnv)
       assign("all_products_summarized", all_products_summarized_baseline, envir = .GlobalEnv)
@@ -6815,8 +6728,8 @@ server <- function(input, output, session) {
     }
     plot_trigger(plot_trigger() + 1) # Incrementing trigger to force plot updates
   })
-  
-  
+
+
   output$enPlot <- renderPlotly({
     plot_trigger()
     
@@ -6928,8 +6841,9 @@ server <- function(input, output, session) {
       p2 <- p2 %>%
         config(
           displayModeBar = TRUE,
+          modeBarButtonsToAdd = list(fst_png_modebar("Energy_Intensity")),
           modeBarButtonsToRemove = list(
-            "zoom2d", "zoomIn2d", "zoomOut2d", "autoScale2d", "resetScale2d",
+            "toImage", "zoom2d", "zoomIn2d", "zoomOut2d", "autoScale2d", "resetScale2d",
             "hoverClosestCartesian", "hoverCompareCartesian", "lasso2d", "select2d",
             "zoom3d", "pan3d", "orbitRotation", "tableRotation", "handleDrag3d",
             "resetCameraDefault3d", "resetCameraLastSave3d", "hoverClosest3d",
@@ -6950,295 +6864,297 @@ server <- function(input, output, session) {
         )
     })
   })
-  
-  
+
+
   # ─────────────────────────────────────────────
   # EC PLOT
   # ─────────────────────────────────────────────
   output$ecPlot <- renderPlotly({
     plot_trigger()
     
-    tryCatch({
-      ec_col <- if (input$selected_method == "Quantity-based") {
-        "energy_cost_based_intensity"
-      } else if (input$revenue_name == "Revenue %") {
-        "revenue_based_energy_costs_intensity_qty"
-      } else {
-        "revenue_based_energy_costs_intensity_dollar"
-      }
-      
-      ec_label <- if (input$selected_method == "Quantity-based") {
-        "Energy Costs Intensity\n($/unit of Product)"
-      } else if (input$revenue_name == "Revenue %") {
-        "Energy Costs Intensity\n($/unit of Product)"
-      } else {
-        "Energy Costs Intensity\n($/$ Revenue)"
-      }
-      
-      
-      if (calc_type() == "baseline") {
-        plot_data <- all_products_breakdown %>%
-          group_by(product_name, energy_source) %>%
-          summarise(value = sum(.data[[ec_col]], na.rm = TRUE), .groups = "drop") %>%
-          mutate(intensity_name = ec_label) %>%
-          na.omit()
-        
-        p <- ggplot(
-          data = plot_data,
-          aes(
-            x    = product_name,
-            y    = value,
-            fill = energy_source,
-            text = paste0(energy_source, ": $", scales::comma(value, accuracy = 0.01))
-          )
-        ) +
-          geom_bar(stat = "identity", position = "stack", alpha = 0.9, width = 0.6, color = "white") +
-          facet_wrap(~intensity_name, scales = "free_x") +
-          scale_fill_viridis_d(option = "plasma", begin = 0.1, end = 0.9, direction = -1, name = "Fuel Source") +
-          labs(x = "Product", y = "") +
-          theme_minimal(base_size = 14) +
-          theme(
-            text               = element_text(family = "sans"),
-            axis.text.x        = element_text(color = "#2d3436"),
-            axis.title         = element_text(face = "bold", color = "#2d3436"),
-            panel.grid.major.x = element_blank(),
-            panel.grid.minor.y = element_blank(),
-            panel.grid.major.y = element_line(color = "#dfe6e9"),
-            strip.background   = element_rect(fill = "#f5f6fa", color = NA),
-            strip.text         = element_text(face = "bold", color = "#2d3436"),
-            plot.margin        = unit(c(1, 2, 1, 1), "cm")
-          ) +
-          scale_y_continuous(labels = comma) +
-          coord_cartesian(clip = "off")
-      } else {
-        baseline_stack <- all_products_breakdown_baseline %>%
-          group_by(product_name, energy_source) %>%
-          summarise(value = sum(.data[[ec_col]], na.rm = TRUE), .groups = "drop") %>%
-          mutate(
-            type           = "Baseline",
-            intensity_name = ec_label
-          ) %>%
-          na.omit()
-        
-        new_stack <- all_products_breakdown_new %>%
-          group_by(product_name, energy_source) %>%
-          summarise(value = sum(.data[[ec_col]], na.rm = TRUE), .groups = "drop") %>%
-          mutate(
-            type           = "Modified",
-            intensity_name = ec_label
-          ) %>%
-          na.omit()
-        
-        plot_data <- bind_rows(baseline_stack, new_stack) %>%
-          mutate(type = factor(type, levels = c("Baseline", "Modified")))
-        
-        p <- ggplot(
-          data = plot_data,
-          aes(
-            x    = product_name,
-            y    = value,
-            fill = energy_source,
-            text = paste0(energy_source, ": $", scales::comma(value, accuracy = 0.01))
-          )
-        ) +
-          geom_bar(stat = "identity", position = "stack", alpha = 0.9, width = 0.6, color = "white") +
-          facet_wrap(type ~ intensity_name, scales = "free_x") +
-          scale_fill_viridis_d(option = "plasma", begin = 0.1, end = 0.9, direction = -1, name = "Fuel Source") +
-          labs(x = "Product", y = "") +
-          theme_minimal(base_size = 14) +
-          theme(
-            text               = element_text(family = "sans"),
-            axis.text.x        = element_text(color = "#2d3436"),
-            axis.title         = element_text(face = "bold", color = "#2d3436"),
-            panel.grid.major.x = element_blank(),
-            panel.grid.minor.y = element_blank(),
-            panel.grid.major.y = element_line(color = "#dfe6e9"),
-            strip.background   = element_rect(fill = "#f5f6fa", color = NA),
-            strip.text         = element_text(face = "bold", color = "#2d3436"),
-            plot.margin        = unit(c(1, 2, 1, 1), "cm"),
-            legend.position    = "bottom"
-          ) +
-          scale_y_continuous(labels = comma) +
-          coord_cartesian(clip = "off")
-      }
-      
-      p2 <- ggplotly(p, tooltip = "text")
-      
-      p2 <- p2 %>%
-        config(
-          displayModeBar = TRUE,
-          modeBarButtonsToRemove = list(
-            "zoom2d", "zoomIn2d", "zoomOut2d", "autoScale2d", "resetScale2d",
-            "hoverClosestCartesian", "hoverCompareCartesian", "lasso2d", "select2d",
-            "zoom3d", "pan3d", "orbitRotation", "tableRotation", "handleDrag3d",
-            "resetCameraDefault3d", "resetCameraLastSave3d", "hoverClosest3d",
-            "zoomInGeo", "zoomOutGeo", "resetGeo", "hoverClosestGeo",
-            "hoverClosestGl2d", "hoverClosestPie", "toggleHover",
-            "resetViews", "toggleSpikelines"
-          )
+tryCatch({
+    ec_col <- if (input$selected_method == "Quantity-based") {
+      "energy_cost_based_intensity"
+    } else if (input$revenue_name == "Revenue %") {
+      "revenue_based_energy_costs_intensity_qty"
+    } else {
+      "revenue_based_energy_costs_intensity_dollar"
+    }
+
+    ec_label <- if (input$selected_method == "Quantity-based") {
+      "Energy Costs Intensity\n($/unit of Product)"
+    } else if (input$revenue_name == "Revenue %") {
+      "Energy Costs Intensity\n($/unit of Product)"
+    } else {
+      "Energy Costs Intensity\n($/$ Revenue)"
+    }
+
+
+    if (calc_type() == "baseline") {
+      plot_data <- all_products_breakdown %>%
+        group_by(product_name, energy_source) %>%
+        summarise(value = sum(.data[[ec_col]], na.rm = TRUE), .groups = "drop") %>%
+        mutate(intensity_name = ec_label) %>%
+        na.omit()
+
+      p <- ggplot(
+        data = plot_data,
+        aes(
+          x    = product_name,
+          y    = value,
+          fill = energy_source,
+          text = paste0(energy_source, ": $", scales::comma(value, accuracy = 0.01))
         )
-      
-      return(p2)
-    }, error = function(e) {
-      plotly_empty() %>%
-        layout(
-          title = list(
-            text = "",
-            font = list(size = 14, color = "#636e72")
-          )
+      ) +
+        geom_bar(stat = "identity", position = "stack", alpha = 0.9, width = 0.6, color = "white") +
+        facet_wrap(~intensity_name, scales = "free_x") +
+        scale_fill_viridis_d(option = "plasma", begin = 0.1, end = 0.9, direction = -1, name = "Fuel Source") +
+        labs(x = "Product", y = "") +
+        theme_minimal(base_size = 14) +
+        theme(
+          text               = element_text(family = "sans"),
+          axis.text.x        = element_text(color = "#2d3436"),
+          axis.title         = element_text(face = "bold", color = "#2d3436"),
+          panel.grid.major.x = element_blank(),
+          panel.grid.minor.y = element_blank(),
+          panel.grid.major.y = element_line(color = "#dfe6e9"),
+          strip.background   = element_rect(fill = "#f5f6fa", color = NA),
+          strip.text         = element_text(face = "bold", color = "#2d3436"),
+          plot.margin        = unit(c(1, 2, 1, 1), "cm")
+        ) +
+        scale_y_continuous(labels = comma) +
+        coord_cartesian(clip = "off")
+    } else {
+      baseline_stack <- all_products_breakdown_baseline %>%
+        group_by(product_name, energy_source) %>%
+        summarise(value = sum(.data[[ec_col]], na.rm = TRUE), .groups = "drop") %>%
+        mutate(
+          type           = "Baseline",
+          intensity_name = ec_label
+        ) %>%
+        na.omit()
+
+      new_stack <- all_products_breakdown_new %>%
+        group_by(product_name, energy_source) %>%
+        summarise(value = sum(.data[[ec_col]], na.rm = TRUE), .groups = "drop") %>%
+        mutate(
+          type           = "Modified",
+          intensity_name = ec_label
+        ) %>%
+        na.omit()
+
+      plot_data <- bind_rows(baseline_stack, new_stack) %>%
+        mutate(type = factor(type, levels = c("Baseline", "Modified")))
+
+      p <- ggplot(
+        data = plot_data,
+        aes(
+          x    = product_name,
+          y    = value,
+          fill = energy_source,
+          text = paste0(energy_source, ": $", scales::comma(value, accuracy = 0.01))
         )
-    })
+      ) +
+        geom_bar(stat = "identity", position = "stack", alpha = 0.9, width = 0.6, color = "white") +
+        facet_wrap(type ~ intensity_name, scales = "free_x") +
+        scale_fill_viridis_d(option = "plasma", begin = 0.1, end = 0.9, direction = -1, name = "Fuel Source") +
+        labs(x = "Product", y = "") +
+        theme_minimal(base_size = 14) +
+        theme(
+          text               = element_text(family = "sans"),
+          axis.text.x        = element_text(color = "#2d3436"),
+          axis.title         = element_text(face = "bold", color = "#2d3436"),
+          panel.grid.major.x = element_blank(),
+          panel.grid.minor.y = element_blank(),
+          panel.grid.major.y = element_line(color = "#dfe6e9"),
+          strip.background   = element_rect(fill = "#f5f6fa", color = NA),
+          strip.text         = element_text(face = "bold", color = "#2d3436"),
+          plot.margin        = unit(c(1, 2, 1, 1), "cm"),
+          legend.position    = "bottom"
+        ) +
+        scale_y_continuous(labels = comma) +
+        coord_cartesian(clip = "off")
+    }
+
+    p2 <- ggplotly(p, tooltip = "text")
+
+    p2 <- p2 %>%
+      config(
+        displayModeBar = TRUE,
+        modeBarButtonsToAdd = list(fst_png_modebar("Energy_Cost_Intensity")),
+        modeBarButtonsToRemove = list(
+          "toImage", "zoom2d", "zoomIn2d", "zoomOut2d", "autoScale2d", "resetScale2d",
+          "hoverClosestCartesian", "hoverCompareCartesian", "lasso2d", "select2d",
+          "zoom3d", "pan3d", "orbitRotation", "tableRotation", "handleDrag3d",
+          "resetCameraDefault3d", "resetCameraLastSave3d", "hoverClosest3d",
+          "zoomInGeo", "zoomOutGeo", "resetGeo", "hoverClosestGeo",
+          "hoverClosestGl2d", "hoverClosestPie", "toggleHover",
+          "resetViews", "toggleSpikelines"
+        )
+      )
+
+    return(p2)
+}, error = function(e) {
+  plotly_empty() %>%
+    layout(
+      title = list(
+        text = "",
+        font = list(size = 14, color = "#636e72")
+      )
+    )
+})
   })
-  
-  
+
+
   # ─────────────────────────────────────────────
   # EM PLOT
   # ─────────────────────────────────────────────
   output$emPlot <- renderPlotly({
     plot_trigger()
     
-    tryCatch({
-      em_col <- if (input$selected_method == "Quantity-based") {
-        "qty_based_em_intensity"
-      } else if (input$revenue_name == "Revenue %") {
-        "revenue_based_em_intensity_qty"
-      } else {
-        "revenue_based_em_intensity_dollar"
-      }
+tryCatch({
+    em_col <- if (input$selected_method == "Quantity-based") {
+      "qty_based_em_intensity"
+    } else if (input$revenue_name == "Revenue %") {
+      "revenue_based_em_intensity_qty"
+    } else {
+      "revenue_based_em_intensity_dollar"
+    }
+
+    em_label <- if (input$selected_method == "Quantity-based") {
+      "Emissions Intensity\n(MTCO₂e/unit of Product)"
+    } else if (input$revenue_name == "Revenue %") {
+      "Emissions Intensity\n(MTCO₂e/unit of Product)"
+    } else {
+      "Emissions Intensity\n(MTCO₂e/$ Revenue)"
+    }
+
+    if (calc_type() == "baseline") {
       
-      em_label <- if (input$selected_method == "Quantity-based") {
-        "Emissions Intensity\n(MTCO₂e/unit of Product)"
-      } else if (input$revenue_name == "Revenue %") {
-        "Emissions Intensity\n(MTCO₂e/unit of Product)"
-      } else {
-        "Emissions Intensity\n(MTCO₂e/$ Revenue)"
-      }
-      
-      if (calc_type() == "baseline") {
-        
-        plot_data <- all_products_breakdown %>%
-          group_by(product_name, energy_source) %>%
-          summarise(value = sum(.data[[em_col]], na.rm = TRUE), .groups = "drop") %>%
-          mutate(intensity_name = "Emissions Intensity\n(MTCO₂e/unit of Product)") %>%
-          na.omit()
-        
-        p <- ggplot(
-          data = plot_data,
-          aes(
-            x    = product_name,
-            y    = value,
-            fill = energy_source,
-            text = paste0(energy_source, ": ", scales::comma(value, accuracy = 0.001), " MTCO₂e")
-          )
-        ) +
-          geom_bar(stat = "identity", position = "stack", alpha = 0.9, width = 0.6, color = "white") +
-          facet_wrap(~intensity_name, scales = "free_x") +
-          scale_fill_viridis_d(option = "plasma", begin = 0.1, end = 0.9, direction = -1, name = "Fuel Source") +
-          labs(x = "Product", y = "") +
-          theme_minimal(base_size = 14) +
-          theme(
-            text               = element_text(family = "sans"),
-            axis.text.x        = element_text(color = "#2d3436"),
-            axis.title         = element_text(face = "bold", color = "#2d3436"),
-            panel.grid.major.x = element_blank(),
-            panel.grid.minor.y = element_blank(),
-            panel.grid.major.y = element_line(color = "#dfe6e9"),
-            strip.background   = element_rect(fill = "#f5f6fa", color = NA),
-            strip.text         = element_text(face = "bold", color = "#2d3436"),
-            plot.margin        = unit(c(1, 2, 1, 1), "cm")
-          ) +
-          scale_y_continuous(labels = comma) +
-          coord_cartesian(clip = "off")
-      } else {
-        baseline_stack <- all_products_breakdown_baseline %>%
-          group_by(product_name, energy_source) %>%
-          summarise(value = sum(.data[[em_col]], na.rm = TRUE), .groups = "drop") %>%
-          mutate(
-            type           = "Baseline",
-            intensity_name = em_label
-          ) %>%
-          na.omit()
-        
-        new_stack <- all_products_breakdown_new %>%
-          group_by(product_name, energy_source) %>%
-          summarise(value = sum(.data[[em_col]], na.rm = TRUE), .groups = "drop") %>%
-          mutate(
-            type           = "Modified",
-            intensity_name = em_label
-          ) %>%
-          na.omit()
-        
-        plot_data <- bind_rows(baseline_stack, new_stack) %>%
-          mutate(type = factor(type, levels = c("Baseline", "Modified")))
-        
-        p <- ggplot(
-          data = plot_data,
-          aes(
-            x    = product_name,
-            y    = value,
-            fill = energy_source,
-            text = paste0(energy_source, ": ", scales::comma(value, accuracy = 0.001), " MTCO₂e")
-          )
-        ) +
-          geom_bar(stat = "identity", position = "stack", alpha = 0.9, width = 0.6, color = "white") +
-          facet_wrap(type ~ intensity_name, scales = "free_x") +
-          scale_fill_viridis_d(option = "plasma", begin = 0.1, end = 0.9, direction = -1, name = "Fuel Source") +
-          labs(x = "Product", y = "") +
-          theme_minimal(base_size = 14) +
-          theme(
-            text               = element_text(family = "sans"),
-            axis.text.x        = element_text(color = "#2d3436"),
-            axis.title         = element_text(face = "bold", color = "#2d3436"),
-            panel.grid.major.x = element_blank(),
-            panel.grid.minor.y = element_blank(),
-            panel.grid.major.y = element_line(color = "#dfe6e9"),
-            strip.background   = element_rect(fill = "#f5f6fa", color = NA),
-            strip.text         = element_text(face = "bold", color = "#2d3436"),
-            plot.margin        = unit(c(1, 2, 1, 1), "cm"),
-            legend.position    = "bottom"
-          ) +
-          scale_y_continuous(labels = comma) +
-          coord_cartesian(clip = "off")
-      }
-      
-      p2 <- ggplotly(p, tooltip = "text")
-      
-      p2 <- p2 %>%
-        config(
-          displayModeBar = TRUE,
-          modeBarButtonsToRemove = list(
-            "zoom2d", "zoomIn2d", "zoomOut2d", "autoScale2d", "resetScale2d",
-            "hoverClosestCartesian", "hoverCompareCartesian", "lasso2d", "select2d",
-            "zoom3d", "pan3d", "orbitRotation", "tableRotation", "handleDrag3d",
-            "resetCameraDefault3d", "resetCameraLastSave3d", "hoverClosest3d",
-            "zoomInGeo", "zoomOutGeo", "resetGeo", "hoverClosestGeo",
-            "hoverClosestGl2d", "hoverClosestPie", "toggleHover",
-            "resetViews", "toggleSpikelines"
-          )
+      plot_data <- all_products_breakdown %>%
+        group_by(product_name, energy_source) %>%
+        summarise(value = sum(.data[[em_col]], na.rm = TRUE), .groups = "drop") %>%
+        mutate(intensity_name = "Emissions Intensity\n(MTCO₂e/unit of Product)") %>%
+        na.omit()
+
+      p <- ggplot(
+        data = plot_data,
+        aes(
+          x    = product_name,
+          y    = value,
+          fill = energy_source,
+          text = paste0(energy_source, ": ", scales::comma(value, accuracy = 0.001), " MTCO₂e")
         )
-      
-      return(p2)
-    }, error = function(e) {
-      plotly_empty() %>%
-        layout(
-          title = list(
-            text = "",
-            font = list(size = 14, color = "#636e72")
-          )
+      ) +
+        geom_bar(stat = "identity", position = "stack", alpha = 0.9, width = 0.6, color = "white") +
+        facet_wrap(~intensity_name, scales = "free_x") +
+        scale_fill_viridis_d(option = "plasma", begin = 0.1, end = 0.9, direction = -1, name = "Fuel Source") +
+        labs(x = "Product", y = "") +
+        theme_minimal(base_size = 14) +
+        theme(
+          text               = element_text(family = "sans"),
+          axis.text.x        = element_text(color = "#2d3436"),
+          axis.title         = element_text(face = "bold", color = "#2d3436"),
+          panel.grid.major.x = element_blank(),
+          panel.grid.minor.y = element_blank(),
+          panel.grid.major.y = element_line(color = "#dfe6e9"),
+          strip.background   = element_rect(fill = "#f5f6fa", color = NA),
+          strip.text         = element_text(face = "bold", color = "#2d3436"),
+          plot.margin        = unit(c(1, 2, 1, 1), "cm")
+        ) +
+        scale_y_continuous(labels = comma) +
+        coord_cartesian(clip = "off")
+    } else {
+      baseline_stack <- all_products_breakdown_baseline %>%
+        group_by(product_name, energy_source) %>%
+        summarise(value = sum(.data[[em_col]], na.rm = TRUE), .groups = "drop") %>%
+        mutate(
+          type           = "Baseline",
+          intensity_name = em_label
+        ) %>%
+        na.omit()
+
+      new_stack <- all_products_breakdown_new %>%
+        group_by(product_name, energy_source) %>%
+        summarise(value = sum(.data[[em_col]], na.rm = TRUE), .groups = "drop") %>%
+        mutate(
+          type           = "Modified",
+          intensity_name = em_label
+        ) %>%
+        na.omit()
+
+      plot_data <- bind_rows(baseline_stack, new_stack) %>%
+        mutate(type = factor(type, levels = c("Baseline", "Modified")))
+
+      p <- ggplot(
+        data = plot_data,
+        aes(
+          x    = product_name,
+          y    = value,
+          fill = energy_source,
+          text = paste0(energy_source, ": ", scales::comma(value, accuracy = 0.001), " MTCO₂e")
         )
-    })
+      ) +
+        geom_bar(stat = "identity", position = "stack", alpha = 0.9, width = 0.6, color = "white") +
+        facet_wrap(type ~ intensity_name, scales = "free_x") +
+        scale_fill_viridis_d(option = "plasma", begin = 0.1, end = 0.9, direction = -1, name = "Fuel Source") +
+        labs(x = "Product", y = "") +
+        theme_minimal(base_size = 14) +
+        theme(
+          text               = element_text(family = "sans"),
+          axis.text.x        = element_text(color = "#2d3436"),
+          axis.title         = element_text(face = "bold", color = "#2d3436"),
+          panel.grid.major.x = element_blank(),
+          panel.grid.minor.y = element_blank(),
+          panel.grid.major.y = element_line(color = "#dfe6e9"),
+          strip.background   = element_rect(fill = "#f5f6fa", color = NA),
+          strip.text         = element_text(face = "bold", color = "#2d3436"),
+          plot.margin        = unit(c(1, 2, 1, 1), "cm"),
+          legend.position    = "bottom"
+        ) +
+        scale_y_continuous(labels = comma) +
+        coord_cartesian(clip = "off")
+    }
+
+    p2 <- ggplotly(p, tooltip = "text")
+
+    p2 <- p2 %>%
+      config(
+        displayModeBar = TRUE,
+        modeBarButtonsToAdd = list(fst_png_modebar("Emissions_Intensity")),
+        modeBarButtonsToRemove = list(
+          "toImage", "zoom2d", "zoomIn2d", "zoomOut2d", "autoScale2d", "resetScale2d",
+          "hoverClosestCartesian", "hoverCompareCartesian", "lasso2d", "select2d",
+          "zoom3d", "pan3d", "orbitRotation", "tableRotation", "handleDrag3d",
+          "resetCameraDefault3d", "resetCameraLastSave3d", "hoverClosest3d",
+          "zoomInGeo", "zoomOutGeo", "resetGeo", "hoverClosestGeo",
+          "hoverClosestGl2d", "hoverClosestPie", "toggleHover",
+          "resetViews", "toggleSpikelines"
+        )
+      )
+
+    return(p2)
+}, error = function(e) {
+  plotly_empty() %>%
+    layout(
+      title = list(
+        text = "",
+        font = list(size = 14, color = "#636e72")
+      )
+    )
+})
   })
-  
+
   # Function for Rendering buttons dynamically
   output$dynamic_buttons <- renderUI({
     energy_savings_input <- read_excel(input$file$datapath, sheet = "Energy Inputs", range = "a6:g189") %>% clean_names()
-    
+
     # Check if button was clicked and if dataframe column has data
     show_second_button <- button_clicked() &&
       !is.null(energy_savings_input) &&
       nrow(energy_savings_input > 0) &&
       sum(!is.na(energy_savings_input$energy_savings)) > 0
-    
+
     if (show_second_button) {
       # Show both buttons side by side
       tagList(
@@ -7256,28 +7172,28 @@ server <- function(input, output, session) {
       actionButton("calc_int", "Calculate Product Intensity", width = "95%")
     }
   })
-  
+
   output$showResults <- reactive({ # Logic to show results the first time "Calcuate product intensity" button is clicked
     show_results()
   })
   outputOptions(output, "showResults", suspendWhenHidden = FALSE)
-  
+
   # New logic for the new product intensity button
   observeEvent(input$calc_new_int, {
     show_results(TRUE)
     # Your logic for the new button here
   })
-  
+
   # Function for Rendering buttons dynamically
   output$dynamic_buttons <- renderUI({
     energy_savings_input <- read_excel(input$file$datapath, sheet = "Energy Inputs", range = "a6:g189") %>% clean_names()
-    
+
     # Check if button was clicked and if dataframe column has data
     show_second_button <- button_clicked() &&
       !is.null(energy_savings_input) &&
       nrow(energy_savings_input > 0) &&
       sum(!is.na(energy_savings_input$energy_savings)) > 0
-    
+
     if (show_second_button) {
       # Show both buttons side by side
       tagList(
@@ -7295,7 +7211,7 @@ server <- function(input, output, session) {
       actionButton("calc_int", "Calculate Product Intensity", width = "95%")
     }
   })
-  
+
   output$showResults <- reactive({ # Logic to show results the first time "Calcuate product intensity" button is clicked
     show_results()
   })

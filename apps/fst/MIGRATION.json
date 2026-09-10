@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "source_repository": "https://github.com/IACDecarb/IAC-Decarb-Tools-Dev.git",
+  "source_commit": "a408fb015d209618d5580a454304a0680e7fdd71",
+  "official_base_commit": "b207845f26563132591fa364478a3bb2823b75b9",
+  "prepared_at_utc": "2026-09-10T21:24:52.968010+00:00",
+  "files": {
+    "apps/fst/Facility Sankey Tool - Input Sheet.xlsx": {
+      "mode": "100644",
+      "blob": "d2b721745b1136eaffb65ba5c051115701946cf4"
+    },
+    "apps/fst/LEGAL.txt": {
+      "mode": "100644",
+      "blob": "09150b5089bd227c282d23d3c3276b09f61b4055"
+    },
+    "apps/fst/LICENSE.txt": {
+      "mode": "100644",
+      "blob": "2e60cd2460d2c565f44c1643cea4d72574664e7c"
+    },
+    "apps/fst/MIGRATION.md": {
+      "mode": "100644",
+      "blob": "4bee7bacbb25f621f172104f06b5370d1458e380"
+    },
+    "apps/fst/Migrate-FST.ps1": {
+      "mode": "100644",
+      "blob": "5bac4bd3d1eda677453971b77f26a3c0f1eaa444"
+    },
+    "apps/fst/User Guide for Facility Sankey Tool.pdf": {
+      "mode": "100644",
+      "blob": "8df549642858ded38e01ff96e55b9954a606658a"
+    },
+    "apps/fst/app.R": {
+      "mode": "100644",
+      "blob": "a30aeb92265b90826366ca1d0fcc61a91f8ca274"
+    },
+    "apps/fst/citations.bib": {
+      "mode": "100644",
+      "blob": "423111d497065681895952804d71ac06a3684411"
+    },
+    "apps/fst/citations_html.html": {
+      "mode": "100644",
+      "blob": "b147028ff8c970f6901c2f90481884f101026847"
+    },
+    "apps/fst/image_export.R": {
+      "mode": "100644",
+      "blob": "ae829b646dd0afbf12058bbfbfe79af70c1e0b43"
+    },
+    "apps/fst/migrate_fst.py": {
+      "mode": "100644",
+      "blob": "95ddfeb0fa74b4f5595822f24bd3a49a2f8b70f2"
+    },
+    "apps/fst/tests/EXPORT_CHECKS.md": {
+      "mode": "100644",
+      "blob": "6d0632001e876e84ff96d688ecf494b601f33119"
+    },
+    "apps/fst/tests/dense_sankey_fixture.R": {
+      "mode": "100644",
+      "blob": "003e015b85f97b7c0fc454b7cef624b68a588310"
+    },
+    "apps/fst/tests/preview_exports.R": {
+      "mode": "100644",
+      "blob": "b8dd90deeb0e3185645204d88b05df7ab84f1bb4"
+    },
+    "apps/fst/tests/test_export_wiring.R": {
+      "mode": "100644",
+      "blob": "5e6df5fcb62ca65ae67d6e26c10d74799182e220"
+    },
+    "apps/fst/tests/test_migrate_fst.py": {
+      "mode": "100644",
+      "blob": "9c3f471b4d2d46a00635a4fe0c4c04f721748b9d"
+    },
+    "apps/fst/tests/test_sankey_layout.cjs": {
+      "mode": "100644",
+      "blob": "d0becc81a7889b01b1632d498257c288abfca233"
+    },
+    "apps/fst/www/fst-export.js": {
+      "mode": "100644",
+      "blob": "2997b7f9763cd0a14ee550fbea76c1c8a19a2e1e"
+    },
+    "apps/fst/www/fst-sankey-layout.js": {
+      "mode": "100644",
+      "blob": "3383fca70f503f09a7d272a4a6d41f4a41a83b48"
+    },
+    "apps/fst/www/lbnl.png": {
+      "mode": "100644",
+      "blob": "03e609854c55acfb86c80fda09babf1a9e3e004b"
+    },
+    "apps/fst/www/ucdavis_logo_gold.png": {
+      "mode": "100644",
+      "blob": "17d40be2a15f5c49aac868276b75ea8adf989fcd"
+    }
+  }
+}
