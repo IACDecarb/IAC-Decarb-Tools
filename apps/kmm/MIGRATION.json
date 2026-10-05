@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "source_repository": "https://github.com/IACDecarb/IAC-Decarb-Tools-Dev.git",
+  "source_commit": "e3eda50d5f089fb702342a25bbf756345e42f88d",
+  "official_base_commit": "0ff0f84eac7ec12a28c2933f8b621e5b20775049",
+  "prepared_at_utc": "2026-10-05T18:57:50.855672+00:00",
+  "files": {
+    "apps/kmm/AllUploadFiles_ToolTesting/Custom_Hourly_LoadProfileTemplate_PGE.xlsx": {
+      "mode": "100644",
+      "blob": "f7eeb37926754f94f5722899b5cc0647bcd4b7b6"
+    },
+    "apps/kmm/LEGAL.txt": {
+      "mode": "100644",
+      "blob": "62f90f53726ee2dffb1ba707f2466ee4177cdf06"
+    },
+    "apps/kmm/LICENSE.txt": {
+      "mode": "100644",
+      "blob": "360ea9a6dfc2083d31298e8e93f194bae18c601b"
+    },
+    "apps/kmm/MIGRATION.md": {
+      "mode": "100644",
+      "blob": "3df0229a77568e2218caf8206b899c79c944561e"
+    },
+    "apps/kmm/Migrate-KMM.ps1": {
+      "mode": "100644",
+      "blob": "9d2afdac1d6df3e8ede28493be18e140beba2b61"
+    },
+    "apps/kmm/User Guide for KMM Tool.pdf": {
+      "mode": "100644",
+      "blob": "52b32a3897192475fa162847eef08752a6237168"
+    },
+    "apps/kmm/app.R": {
+      "mode": "100644",
+      "blob": "26d6a906cdc646b153e3947d39c554519044a47e"
+    },
+    "apps/kmm/migrate_kmm.py": {
+      "mode": "100644",
+      "blob": "abd6fd00ea4c330283b9773cce5ad1e98bb78e8d"
+    },
+    "apps/kmm/profile_summary.R": {
+      "mode": "100644",
+      "blob": "cff3dfe317f5f66ebe4e2c165f25abcd95ba9245"
+    },
+    "apps/kmm/tests/test_migrate_kmm.py": {
+      "mode": "100644",
+      "blob": "ed52a6d8893208a507aa66e75883badc9de6f38a"
+    },
+    "apps/kmm/www/lbnl.png": {
+      "mode": "100644",
+      "blob": "03e609854c55acfb86c80fda09babf1a9e3e004b"
+    },
+    "apps/kmm/www/ucdavis_logo_gold.png": {
+      "mode": "100644",
+      "blob": "17d40be2a15f5c49aac868276b75ea8adf989fcd"
+    }
+  }
+}
