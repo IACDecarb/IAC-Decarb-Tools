@@ -33,8 +33,63 @@ library(zoo)
 source("profile_summary.R", local = TRUE)
 
 # Define a high-contrast, colorblind-friendly palette
-hc_colors <- c("#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", 
+hc_colors <- c("#E69F00", "#56B4E9", "#009E73", "#B8860B", "#0072B2", 
                "#D55E00", "#CC79A7", "#999999", "#1F78B4", "#33A02C")
+
+# =====================================================================
+# DATA HELPERS
+# =====================================================================
+
+# Reads .xlsx / .xls / .csv in the hourly template layout (col 1 = datetime, col 2 = value)
+read_tabular <- function(path, ext) {
+  df <- if (ext == "csv") readr::read_csv(path, show_col_types = FALSE) else readxl::read_excel(path)
+  if (ncol(df) < 2) stop("The file needs at least two columns: a date/time column and a value column.")
+  
+  df <- df[, 1:2]
+  names(df) <- c("Datetime", "Load")
+  
+  if (!inherits(df$Datetime, "POSIXct")) {
+    df$Datetime <- suppressWarnings(lubridate::parse_date_time(
+      as.character(df$Datetime),
+      orders = c("ymd HMS", "ymd HM", "ymd H", "mdy HMS", "mdy HM", "mdy H", "dmy HMS", "dmy HM")
+    ))
+  }
+  df$Load <- suppressWarnings(as.numeric(df$Load))
+  
+  if (all(is.na(df$Datetime))) stop("The date/time column couldn't be read. Please use a format like 2026-01-01 13:00:00.")
+  if (all(is.na(df$Load)))     stop("The second column doesn't contain numeric values.")
+  df
+}
+
+# Reads Green Button (ESPI) XML usage files
+read_green_button <- function(path) {
+  doc <- tryCatch(xml2::read_xml(path),
+                  error = function(e) stop("This XML file couldn't be read. Please check that it is a valid Green Button export."))
+  ns <- c(espi = "http://naesb.org/espi")
+  readings <- xml_find_all(doc, ".//espi:IntervalReading", ns)
+  if (length(readings) == 0) stop("No interval readings were found. Please check that this is a Green Button usage file.")
+  
+  # xml_find_first per reading keeps starts and values aligned even if a reading is malformed
+  starts <- as.numeric(xml_text(xml_find_first(readings, ".//espi:timePeriod/espi:start", ns)))
+  values <- as.numeric(xml_text(xml_find_first(readings, ".//espi:value", ns)))
+  
+  data.frame(
+    Datetime = as.POSIXct(starts, origin = "1970-01-01"),
+    Load = values / 1000
+  ) %>% distinct(Datetime, .keep_all = TRUE)
+}
+
+# One row per COMPLETE day (all 24 hours present after hourly aggregation), one column per hour
+build_daily_matrix <- function(df) {
+  df %>%
+    group_by(Date, Hour) %>%
+    summarise(Load = mean(Load, na.rm = TRUE), .groups = "drop") %>%
+    group_by(Date) %>%
+    filter(n() == 24) %>%
+    ungroup() %>%
+    arrange(Date, Hour) %>%
+    pivot_wider(names_from = Hour, values_from = Load)
+}
 
 # =====================================================================
 # USER INTERFACE (UI)
@@ -46,7 +101,6 @@ ui <- fluidPage(
   # Custom CSS for Tooltips, Unified Action Controls, and Flexible Layout Rules
   tags$head(
     tags$style(HTML("
-      body { padding-bottom: 140px; }
 
       .cluster-profile-view {
         width: 100%;
@@ -114,6 +168,119 @@ ui <- fluidPage(
         visibility: visible;
         opacity: 1;
       }
+      /* ---- Chart layout: 55% profiles | 45% heatmap ---- */
+      .chart-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 20px;
+        margin-bottom: 20px;
+      }
+      .profile-col { flex: 0 0 calc(55% - 10px); min-width: 0; }
+      .heatmap-col { flex: 0 0 calc(45% - 10px); min-width: 0; }
+
+      /* ---- Card styling for each chart ---- */
+      .plot-card {
+        background: #ffffff;
+        border: 1px solid #e3e6ea;
+        border-radius: 8px;
+        padding: 14px 16px 10px 16px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+      }
+      .plot-card-header {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+      }
+      .plot-card-header h3 {
+        margin: 0;
+        font-size: 20px;
+        font-weight: bold;
+        color: #000;
+      }
+      .plot-card-subtitle {
+        text-align: center;
+        font-size: 13px;
+        color: #555;
+        margin: 4px 0 6px 0;
+        min-height: 18px;
+      }
+      .plot-card-actions {
+        text-align: right;
+        margin-top: 6px;
+      }
+
+      /* Heatmap stays in view while scrolling through tall profile stacks */
+      .sticky-card { position: sticky; top: 15px; }
+
+      /* Stack vertically on narrow screens */
+      @media (max-width: 991px) {
+        .profile-col, .heatmap-col { flex: 0 0 100%; }
+        .sticky-card { position: static; }
+      }
+      /* Compact download buttons */
+      .custom-dl-btn {
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: 5px;
+        vertical-align: middle !important;
+        height: 26px !important;
+        padding: 2px 8px !important;
+        font-weight: 500 !important;
+        font-size: 13px !important;
+        line-height: 1 !important;
+        box-sizing: border-box !important;
+        margin-left: 6px;
+        border-radius: 3px !important;
+      }
+      /* Tighter sidebar spacing */
+      #side-panel hr {
+        margin-top: 10px !important;
+        margin-bottom: 10px !important;
+      }
+      #side-panel .form-group,
+      #side-panel .shiny-input-radiogroup {
+        margin-bottom: 4px !important;
+      }
+      #side-panel .shiny-input-container:not(.shiny-input-container-inline) {
+        margin-bottom: 4px !important;
+      }
+      #side-panel .radio {
+        margin-top: 2px !important;
+        margin-bottom: 2px !important;
+      }
+      #side-panel .progress {
+        margin-bottom: 4px !important;
+      }
+      /* Excluded-days notice */
+      .excluded-note {
+        font-size: 13px;
+        color: #8a6d3b;
+        background: #fcf8e3;
+        border: 1px solid #faebcc;
+        border-radius: 4px;
+        padding: 6px 10px;
+        margin-bottom: 12px;
+      }
+
+      /* Click-to-highlight banner and hint */
+      .selection-banner {
+        display: table;
+        margin: 0 auto 6px auto;
+        font-size: 13px;
+        background: #f4f6f8;
+        border: 1px solid #e3e6ea;
+        border-radius: 14px;
+        padding: 3px 12px;
+      }
+      .selection-hint {
+        text-align: center;
+        font-size: 12px;
+        color: #888;
+        margin: 0 0 6px 0;
+      }
+      #heatmapPlot .nsewdrag { cursor: pointer !important; }
     "))
   ),
   
@@ -128,7 +295,7 @@ ui <- fluidPage(
                  tags$p(tags$strong("1. Unit & Format Configuration")),
                  
                  # Dynamic Unit Input
-                 div(style = "margin-bottom: 15px;",
+                 div(style = "margin-bottom: 6px;",
                      div(style = "display: flex; align-items: center; justify-content: space-between;",
                          tags$label("Unit of Analysis (e.g. kW, MMBtu, tons, or gallons):", `for` = "unit_analysis", style = "font-weight: bold; margin-bottom: 5px;"),
                          div(class = "tooltip-container",
@@ -139,62 +306,40 @@ ui <- fluidPage(
                      textInput("unit_analysis", NULL, value = "kW")
                  ),
                  
-                 # Data Format Radio Input
-                 div(style = "margin-bottom: 15px;",
+                 # Template generator (not needed for Green Button files)
+                 div(style = "margin-bottom: 6px;",
                      div(style = "display: flex; align-items: center; justify-content: space-between;",
-                         tags$label("Select Data Format:", `for` = "data_type", style = "font-weight: bold; margin-bottom: 5px;"),
+                         tags$label("Input Template Date Range:", `for` = "date_range", style = "font-weight: bold; margin-bottom: 5px;"),
                          div(class = "tooltip-container",
                              span(class = "info-icon", "?"),
-                             div(class = "tooltip-text", "Choose between the Custom Hourly Input Template workbook (.xlsx) or standard Green Button energy meter data (.XML).")
+                             div(class = "tooltip-text", "Select the start and end dates to generate an hourly input template. Skip this step if you are uploading a Green Button (.xml) file.")
                          )
                      ),
-                     radioButtons("data_type", NULL,
-                                  choices = c(
-                                    "Custom Hourly Input Template",
-                                    "Green Button Data (.XML)"
-                                  ),
-                                  selected = "Custom Hourly Input Template"
-                     )
+                     dateRangeInput("date_range", NULL,
+                                    start = "2026-01-01", end = "2026-12-31", format = "yyyy-mm-dd", separator = " to ")
                  ),
-                 
-                 # Conditional bounds logic for custom hourly generator
-                 conditionalPanel(
-                   condition = "input.data_type == 'Custom Hourly Input Template'",
-                   hr(),
-                   div(style = "margin-bottom: 15px;",
-                       div(style = "display: flex; align-items: center; justify-content: space-between;",
-                           tags$label("Select Template Boundaries:", `for` = "date_range", style = "font-weight: bold; margin-bottom: 5px;"),
-                           div(class = "tooltip-container",
-                               span(class = "info-icon", "?"),
-                               div(class = "tooltip-text", "Select the start and end dates to generate a customized hourly data input template.")
-                           )
-                       ),
-                       dateRangeInput("date_range", NULL,
-                                      start = "2026-01-01", end = "2026-12-31", format = "yyyy-mm-dd", separator = " to "
-                       )
-                   ),
-                   div(style = "display: flex; align-items: center;",
-                       downloadLink("downloadTemplate", "Download Custom Hourly Input Sheet", style = "font-weight: bold; font-size: 14px;"),
-                       div(class = "tooltip-container", style = "margin-left: 6px;",
-                           span(class = "info-icon", "?"),
-                           div(class = "tooltip-text", "Download an Excel template pre-populated with baseline hourly profile data for your selected date range.")
-                       )
-                   ),
-                   br()
+                 div(style = "display: flex; align-items: center;",
+                     downloadLink("downloadTemplate", "Download Custom Hourly Input Sheet", style = "font-weight: bold; font-size: 14px;"),
+                     div(class = "tooltip-container", style = "margin-left: 6px;",
+                         span(class = "info-icon", "?"),
+                         div(class = "tooltip-text", "Download an Excel template pre-populated with baseline hourly profile data for your selected date range.")
+                     )
                  ),
                  
                  hr(),
                  tags$p(tags$strong("2. Upload Dataset")),
-                 div(style = "margin-bottom: 15px;",
+                 div(style = "margin-bottom: 6px;",
                      div(style = "display: flex; align-items: center; justify-content: space-between;",
                          tags$label("Choose File:", `for` = "file1", style = "font-weight: bold; margin-bottom: 5px;"),
                          div(class = "tooltip-container",
                              span(class = "info-icon", "?"),
-                             div(class = "tooltip-text", "Upload your modified input sheet for cluster processing.")
+                             div(class = "tooltip-text", "Upload your completed hourly template (.xlsx, .xls, or .csv) or a Green Button file (.xml). The file type is detected automatically.")
                          )
                      ),
                      fileInput("file1", NULL, accept = c(".csv", ".xlsx", ".xls", ".xml"))
                  ),
+                 tags$p("Accepted: .xlsx, .xls, .csv (template) or .xml (Green Button).",
+                        style = "font-size: 12px; color: #777; margin-top: -2px;"),
                  
                  # Parameter tuning and metrics exports appear dynamically upon verification
                  uiOutput("conditionalSidebarUI"),
@@ -211,86 +356,78 @@ ui <- fluidPage(
                          br(),
                          # Conditional Instructions Card
                          conditionalPanel(
-                           condition = "!output.fileUploaded",
-                           div(style = "padding: 20px; color: #2c3e50;",
-                               h2("Hourly Profile Clustering Tool", style = "font-weight: bold;"),
-                               p("Extract representative daily profiles from long-term data for your facility (For example: interval meter logs, thermal profiles, water usage, or production outputs etc.) using K-Means clustering.", style = "font-size: 16px;"),
-                               br(),
-                               h4("Getting Started:"),
-                               tags$ul(style = "font-size: 15px; line-height: 1.6;",
-                                       tags$li("Specify your custom unit of analysis in the sidebar panel (e.g. kW, MMBtu, tons, or gallons)."),
-                                       tags$li("Specify start and end date of your dataset to export an input sheet template or upload Green Button XML data as your input."),
-                                       tags$li("Upload your file using the Browse button in the sidebar panel."),
-                                       tags$li("The tool will auto-compute the optimal number of clusters for the uploaded profile based on the Silhouette method to establish the baseline cluster profile count."),
-                                       tags$li("Modify the number of clusters if the optimum Silhouette clusters do not fully capture the variability in your uploaded profile (optional).")
-                               )
-                           )
-                         ),
-                         
-                         # Force charts into an absolute vertical column layout (Profiles -> Heatmap -> Boxplots)
-                         conditionalPanel(
                            condition = "output.fileUploaded",
-
-                           column(12, tags$p(textOutput("resultsSummary", inline = TRUE))),
                            
-                           # 1. TOP MODULE: Cluster Profiles Chart
-                           column(12,
-                                div(class = "cluster-profile-view",
-                                  div(style = "width:100%; text-align:center;",
-                                      div(class = "tooltip-container",
-                                          h3("Cluster Profiles", style = "display:inline-block; font-weight:bold; color:black;"),
-                                          span(class = "info-icon", "?"),
-                                          div(class = "tooltip-text", "Centroid plots show the diurnal variability within each cluster. The bold colored trace shows the hourly mean value for each cluster across 24 hours and how it varies whereas the grey lines represent the actual hourly data.")
-                                      )
-                                  ),
-                                  p("Each cluster uses its own vertical scale. Compare axis values when comparing clusters.",
-                                    style = "text-align:center; font-size:13px; color:#555555;"),
-                                  shinycssloaders::withSpinner(plotlyOutput("centroidPlot", height = "auto"), type = 8),
-                                  div(style = "text-align: right; margin-top: 15px; margin-bottom: 25px; padding-right: 10px;",
-                                      downloadButton("downloadCentroid", "Download View (PNG)", class = "btn-default custom-dl-btn"),
-                                      downloadButton("downloadCentroidTable", "Download Chart Data (CSV)", class = "btn-default custom-dl-btn"))
-                                ),
-                                  hr()
+                           tags$p(textOutput("resultsSummary", inline = TRUE),
+                                  style = "margin-bottom: 8px;"),
+                           uiOutput("excludedDaysNote"),
+                           
+                           # ---- Row 1: Profiles (55%) | Heatmap (45%) ----
+                           div(class = "chart-row",
+                               
+                               # LEFT: Cluster Profiles
+                               div(class = "profile-col",
+                                   div(class = "plot-card",
+                                       div(class = "plot-card-header",
+                                           h3("Cluster Profiles"),
+                                           div(class = "tooltip-container",
+                                               span(class = "info-icon", "?"),
+                                               div(class = "tooltip-text", "Centroid plots show the diurnal variability within each cluster. The bold colored trace shows the hourly mean value for each cluster across 24 hours and how it varies whereas the grey lines represent the actual hourly data.")
+                                           )
+                                       ),
+                                       p(class = "plot-card-subtitle",
+                                         "Each cluster uses its own vertical scale. Compare axis values when comparing clusters."),
+                                       uiOutput("selectedDayUI"),
+                                       shinycssloaders::withSpinner(plotlyOutput("centroidPlot", height = "auto"), type = 8),
+                                       div(class = "plot-card-actions",
+                                           downloadButton("downloadCentroid", "Download View (PNG)", class = "btn-default custom-dl-btn"),
+                                           downloadButton("downloadCentroidTable", "Download Chart Data (CSV)", class = "btn-default custom-dl-btn"))
+                                   )
+                               ),
+                               
+                               # RIGHT: Heatmap
+                               div(class = "heatmap-col",
+                                   div(class = "plot-card sticky-card",
+                                       div(class = "plot-card-header",
+                                           h3("Cluster Occurrences Heatmap"),
+                                           div(class = "tooltip-container",
+                                               span(class = "info-icon", "?"),
+                                               div(class = "tooltip-text", "Each cell on this chart represents a day assigned to a cluster based on the uploaded hourly profile. It helps you visually identify seasonal patterns, operational peaks, and baseline anomalies for each day of the year.")
+                                           )
+                                       ),
+                                       p(class = "plot-card-subtitle",
+                                         "Each cell is one day. Click a day to highlight its profile."),
+                                       shinycssloaders::withSpinner(plotlyOutput("heatmapPlot", height = "620px"), type = 8),
+                                       div(class = "plot-card-actions",
+                                           downloadButton("downloadHeatmap", "Download Heatmap View (PNG)", class = "btn-default custom-dl-btn"))
+                                   )
+                               )
                            ),
                            
-                           # 2. SECOND MODULE: Cluster Occurrences Heatmap
-                           column(12,
-                                  div(style = "width:100%; text-align:center;",
-                                      div(class = "tooltip-container",
-                                          h3("Cluster Occurrences Heatmap", style = "display:inline-block; font-weight:bold; color:black;"),
-                                          span(class = "info-icon", "?"),
-                                          div(class = "tooltip-text", "Each cell on this chart represents a day assigned to a cluster based on the uploaded hourly profile. It helps you visually identify seasonal patterns, operational peaks, and baseline anomalies for each day of the year.")
-                                      )
-                                  ),
-                                  shinycssloaders::withSpinner(plotlyOutput("heatmapPlot", height = "500px"), type = 8),
-                                  div(style = "text-align: right; margin-top: 10px; margin-bottom: 25px; padding-right: 10px;",
-                                      downloadButton("downloadHeatmap", "Download Heatmap View (PNG)", class = "btn-default custom-dl-btn")),
-                                  hr()
-                           ),
-                           
-                           # 3. THIRD MODULE: Box and Whisker Plots (With Sub-Tabs)
-                           column(12,
-                                  div(style = "width:100%; text-align:center;",
-                                      div(class = "tooltip-container",
-                                          h3("Box and Whisker Plots", style = "display:inline-block; font-weight:bold; color:black;"),
-                                          span(class = "info-icon", "?"),
-                                          div(class = "tooltip-text", "Aggregated boxplots give you statistical insights about each cluster. Hovering over each cluster box shows you its minimum, median, and maximum daily average values. It helps you contrast the different profiles within your dataset and identify the clusters with high and low variability. You can switch to the Hourly Analysis tab to see hourly variability independent of clusters.")
-                                      )
-                                  ),
-                                  tabsetPanel(
-                                    id = "box_plot_tabs",
-                                    tabPanel("Cluster Analysis",
-                                             br(),
-                                             shinycssloaders::withSpinner(plotlyOutput("boxplotPlot", height = "480px"), type = 8)
-                                    ),
-                                    tabPanel("Hourly Analysis",
-                                             br(),
-                                             shinycssloaders::withSpinner(plotlyOutput("hourlyBoxplot", height = "480px"), type = 8)
-                                    )
-                                  ),
-                                  div(style = "text-align: right; margin-top: 15px; margin-bottom: 25px; padding-right: 10px;",
-                                      downloadButton("downloadBoxplot", "Download Box Plot View (PNG)", class = "btn-default custom-dl-btn"),
-                                      downloadButton("downloadBoxplotTable", "Download Chart Data (CSV)", class = "btn-default custom-dl-btn"))
+                           # ---- Row 2: Box and Whisker Plots (full width) ----
+                           div(class = "plot-card",
+                               div(class = "plot-card-header",
+                                   h3("Box and Whisker Plots"),
+                                   div(class = "tooltip-container",
+                                       span(class = "info-icon", "?"),
+                                       div(class = "tooltip-text", "Aggregated boxplots give you statistical insights about each cluster. Hovering over each cluster box shows you its minimum, median, and maximum daily average values. It helps you contrast the different profiles within your dataset and identify the clusters with high and low variability. You can switch to the Hourly Analysis tab to see hourly variability independent of clusters.")
+                                   )
+                               ),
+                               br(),
+                               tabsetPanel(
+                                 id = "box_plot_tabs",
+                                 tabPanel("Cluster Analysis",
+                                          br(),
+                                          shinycssloaders::withSpinner(plotlyOutput("boxplotPlot", height = "480px"), type = 8)
+                                 ),
+                                 tabPanel("Hourly Analysis",
+                                          br(),
+                                          shinycssloaders::withSpinner(plotlyOutput("hourlyBoxplot", height = "480px"), type = 8)
+                                 )
+                               ),
+                               div(class = "plot-card-actions",
+                                   downloadButton("downloadBoxplot", "Download Box Plot View (PNG)", class = "btn-default custom-dl-btn"),
+                                   downloadButton("downloadBoxplotTable", "Download Chart Data (CSV)", class = "btn-default custom-dl-btn"))
                            )
                          )
                 ),
@@ -308,18 +445,18 @@ ui <- fluidPage(
   
   # --- Universal Tool Suite Sticky Footer ---
   tags$div(
-    style = "position: fixed; bottom: 0; left: 0; width: 100%; background-color: #f8f8f8; text-align: center; display: flex; justify-content: center; align-items: center; padding: 15px 0; border-top: 1px solid #ddd; z-index: 1000; box-shadow: 0 -2px 5px rgba(0,0,0,0.1);",
+    style = "margin: 40px -15px 0 -15px; background-color: #f8f8f8; display: flex; justify-content: center; align-items: center; padding: 15px 0; border-top: 1px solid #ddd;",
     tags$div(
       style = "text-align: left; margin-right: 150px;",
       tags$img(src = "lbnl.png", style = "max-height: 50px;"),
       tags$p(tags$b("Prakash Rao"), style = "margin-top: 5px; margin-bottom: 0px;"),
-      tags$p("prao@lbl.gov", style = "margin-top: 0px;")
+      tags$p("prao@lbl.gov", style = "margin-top: 0px; margin-bottom: 0px;")
     ),
     tags$div(
       style = "text-align: left;",
       tags$img(src = "ucdavis_logo_gold.png", style = "max-height: 50px;"),
       tags$p(tags$b("Kelly Kissock"), style = "margin-top: 5px; margin-bottom: 0px;"),
-      tags$p("jkissock@ucdavis.edu", style = "margin-top: 0px;")
+      tags$p("jkissock@ucdavis.edu", style = "margin-top: 0px; margin-bottom: 0px;")
     )
   )
 )
@@ -343,12 +480,56 @@ server <- function(input, output, session) {
     kmm_results_summary(clustered_data()$full_data, unit_lbl())
   })
   
+  output$excludedDaysNote <- renderUI({
+    ex <- clustered_data()$excluded_dates
+    if (length(ex) == 0) return(NULL)
+    
+    shown <- format(head(ex, 5), "%b %d, %Y")
+    more  <- if (length(ex) > 5) paste0(", and ", length(ex) - 5, " more") else ""
+    
+    div(class = "excluded-note",
+        tags$b(paste0(length(ex), if (length(ex) == 1) " day was" else " days were", " excluded")),
+        paste0(" from clustering because they didn't have data for all 24 hours: ",
+               paste(shown, collapse = ", "), more, "."))
+  })
+  
+  # --- Click-to-Highlight State ---
+  selected_day <- reactiveVal(NULL)
+  
+  observeEvent(input$file1, selected_day(NULL))
+  observeEvent(input$clear_day, selected_day(NULL))
+  
+  # Clicked date arrives from the heatmap's JavaScript handler (see output$heatmapPlot)
+  observeEvent(input$heatmap_day, {
+    clicked <- suppressWarnings(as.Date(input$heatmap_day))
+    req(length(clicked) == 1, !is.na(clicked))
+    # Clicking the same day again clears the highlight
+    if (!is.null(selected_day()) && selected_day() == clicked) selected_day(NULL) else selected_day(clicked)
+  })
+  
+  output$selectedDayUI <- renderUI({
+    d <- selected_day()
+    if (is.null(d)) {
+      return(p(class = "selection-hint", "Tip: click any day on the heatmap to highlight it here."))
+    }
+    cl <- clustered_data()$matrix %>% filter(Date == d) %>% pull(Cluster)
+    div(class = "selection-banner",
+        "Highlighted: ", tags$b(format(d, "%a, %b %d, %Y")),
+        if (length(cl) == 1) paste0(" (Cluster ", cl, ")"),
+        actionLink("clear_day", "Clear", style = "margin-left: 10px;"))
+  })
+  
   # Reactive Visibility Track
   output$fileUploaded <- reactive({ !is.null(input$file1) })
   outputOptions(output, "fileUploaded", suspendWhenHidden = FALSE)
   
   # Reactive Storage for Precomputed Silhouette Scores Array (k = 2..10)
   silhouette_scores_val <- reactiveVal(NULL)
+  
+  # Wait 600 ms after the user stops typing before re-clustering
+  k_val <- debounce(reactive(suppressWarnings(as.numeric(input$k_clusters))), 600)
+  
+  k_is_valid <- function(k) length(k) == 1 && !is.na(k) && k == round(k) && k >= 2 && k <= 10
   
   # Reactive Unit Label Helper
   unit_lbl <- reactive({
@@ -364,8 +545,8 @@ server <- function(input, output, session) {
     filename = function() { "Custom_Hourly_Input_Sheet.xlsx" },
     content = function(file) {
       req(input$date_range)
-      st <- as.POSIXct(paste(input$date_range[1], "00:00:00"))
-      en <- as.POSIXct(paste(input$date_range[2], "23:00:00"))
+      st <- as.POSIXct(paste(input$date_range[1], "00:00:00"), tz = "UTC")
+      en <- as.POSIXct(paste(input$date_range[2], "23:00:00"), tz = "UTC")
       
       if (st > en) {
         tmp <- st
@@ -431,27 +612,23 @@ server <- function(input, output, session) {
     }
   )
   
-  # --- Multi-Format Processing Engine ---
+  # --- Multi-Format Processing Engine (file type auto-detected from extension) ---
   processed_data <- reactive({
     req(input$file1)
     path <- input$file1$datapath
+    ext  <- tolower(tools::file_ext(input$file1$name))
     
-    if (input$data_type == "Custom Hourly Input Template") {
-      df <- read_excel(path)
-      names(df)[1:2] <- c("Datetime", "Load")
-      df$Datetime <- as.POSIXct(df$Datetime, orders = "ymd_HMS")
-    } else {
-      loadpf <- read_xml(path)
-      ns <- c(espi = "http://naesb.org/espi")
-      readings <- xml_find_all(loadpf, ".//espi:IntervalReading", ns)
-      
-      starts <- as.integer(xml_text(xml_find_all(readings, ".//espi:timePeriod/espi:start", ns)))
-      values <- as.integer(xml_text(xml_find_all(readings, ".//espi:value", ns)))
-      
-      df <- data.frame(
-        Datetime = as.POSIXct(starts, origin = "1970-01-01"),
-        Load = values / 1000 
-      ) %>% distinct(Datetime, .keep_all = TRUE)
+    validate(need(ext %in% c("xlsx", "xls", "csv", "xml"),
+                  "Unsupported file type. Please upload an .xlsx, .xls, .csv, or .xml file."))
+    
+    df <- tryCatch(
+      if (ext == "xml") read_green_button(path) else read_tabular(path, ext),
+      error = function(e) e
+    )
+    
+    if (inherits(df, "error")) {
+      showNotification(conditionMessage(df), type = "error", duration = 10)
+      validate(need(FALSE, conditionMessage(df)))
     }
     
     df <- df %>%
@@ -463,7 +640,8 @@ server <- function(input, output, session) {
       ) %>%
       drop_na(Date, Load)
     
-    return(df)
+    validate(need(nrow(df) > 0, "No valid rows were found in the uploaded file."))
+    df
   })
   
   # --- Auto-Detect Optimal K Using Highest Average Silhouette Score ---
@@ -473,12 +651,7 @@ server <- function(input, output, session) {
     if (is.data.frame(df) && nrow(df) > 100) {
       
       tryCatch({
-        df_prep <- df %>%
-          mutate(Date = as.Date(Datetime), Hour = hour(Datetime)) %>%
-          drop_na(Date, Load) %>%
-          group_by(Date, Hour) %>%
-          summarise(Load = mean(Load, na.rm = TRUE), .groups = "drop") %>%
-          pivot_wider(names_from = Hour, values_from = Load, values_fill = 0)
+        df_prep <- build_daily_matrix(df)
         
         clustering_data <- df_prep %>% select(-Date)
         
@@ -534,7 +707,7 @@ server <- function(input, output, session) {
               div(class = "tooltip-text", "The tool analyzes the uploaded hourly profile and assigns it optimum number of clusters based on average silhouette score for k between 2 and 10. This option allows you to change the number of clusters to capture variations beyond the optimum k.")
           )
       ),
-      numericInput("k_clusters", "Number of Clusters (k):", value = 4, min = 1, max = 10, step = 1),
+      numericInput("k_clusters", "Number of Clusters (k):", value = 4, min = 2, max = 10, step = 1),
       
       # Dynamic Subtitle displaying Average Silhouette Score directly beneath k_clusters
       uiOutput("silhouette_subtitle_ui"),
@@ -546,89 +719,66 @@ server <- function(input, output, session) {
   
   # --- Dynamic Subtitle Output for Average Silhouette Score ---
   output$silhouette_subtitle_ui <- renderUI({
-    req(input$k_clusters)
-    k_curr <- as.numeric(input$k_clusters)
-    scores <- silhouette_scores_val()
+    k <- k_val()
+    req(length(k) == 1)
     
-    if (!is.null(scores) && !is.na(k_curr) && k_curr >= 2 && k_curr <= length(scores)) {
-      score_val <- scores[k_curr]
-      if (!is.na(score_val)) {
-        score_formatted <- sprintf("%.4f", score_val)
-        
-        opt_k <- which.max(scores)
-        is_opt <- (k_curr == opt_k)
-        badge_text <- if (is_opt) " (Optimum k)" else ""
-        
-        tags$p(
-          style = "margin-top: -5px; margin-bottom: 12px; font-size: 13px; color: #555;",
-          tags$span(style = "font-weight: 600; color: #2c3e50;", "Average Silhouette Score: "),
-          tags$span(style = "font-weight: 700; color: #16a085;", paste0(score_formatted, badge_text))
-        )
-      } else {
-        NULL
-      }
-    } else if (!is.null(clustered_data())) {
-      tryCatch({
-        df_matrix <- clustered_data()$matrix %>% select(-Date)
-        dist_mat <- dist(df_matrix)
-        set.seed(42)
-        km <- kmeans(df_matrix, centers = k_curr, nstart = 25)
-        ss <- cluster::silhouette(km$cluster, dist_mat)
-        score_val <- mean(ss[, 3])
-        score_formatted <- sprintf("%.4f", score_val)
-        
-        tags$p(
-          style = "margin-top: -5px; margin-bottom: 12px; font-size: 13px; color: #555;",
-          tags$span(style = "font-weight: 600; color: #2c3e50;", "Average Silhouette Score: "),
-          tags$span(style = "font-weight: 700; color: #16a085;", score_formatted)
-        )
-      }, error = function(e) { NULL })
-    } else {
-      NULL
+    if (!k_is_valid(k)) {
+      return(tags$p(style = "margin-top: -5px; margin-bottom: 12px; font-size: 13px; color: #c0392b; font-weight: 600;",
+                    "Please enter a whole number between 2 and 10."))
     }
+    
+    scores <- silhouette_scores_val()
+    if (is.null(scores) || is.na(scores[k])) return(NULL)
+    
+    badge_text <- if (k == which.max(scores)) " (Optimum k)" else ""
+    tags$p(
+      style = "margin-top: -5px; margin-bottom: 12px; font-size: 13px; color: #555;",
+      tags$span(style = "font-weight: 600; color: #2c3e50;", "Average Silhouette Score: "),
+      tags$span(style = "font-weight: 700; color: #16a085;", paste0(sprintf("%.4f", scores[k]), badge_text))
+    )
   })
   
-  # --- Core K-Means Execution Array ---
+  # --- Core K-Means Execution ---
   clustered_data <- reactive({
     df <- processed_data()
-    req(nrow(df) > 0, input$k_clusters)
+    k  <- k_val()
+    req(nrow(df) > 0, length(k) == 1)
+    validate(need(k_is_valid(k), "Number of clusters (k) must be a whole number between 2 and 10."))
+    k <- as.integer(k)
     
-    daily_matrix <- df %>%
-      group_by(Date) %>%
-      filter(n() == 24) %>% 
-      ungroup() %>%
-      group_by(Date, Hour) %>%
-      summarise(Load = mean(Load, na.rm = TRUE), .groups = "drop") %>%
-      pivot_wider(names_from = Hour, values_from = Load, values_fill = 0)
+    daily_matrix <- build_daily_matrix(df)
+    validate(need(nrow(daily_matrix) > k,
+                  paste0("Only ", nrow(daily_matrix), " complete days were found. At least ", k + 1,
+                         " complete days are needed for ", k, " clusters.")))
     
     clustering_data <- daily_matrix %>% select(-Date)
     
-    set.seed(42) 
-    k <- input$k_clusters
+    set.seed(42)
     kmeans_result <- kmeans(clustering_data, centers = k, nstart = 25)
     
     raw_counts <- table(kmeans_result$cluster)
     rank_order <- order(raw_counts, decreasing = TRUE)
     new_labels <- match(kmeans_result$cluster, rank_order)
-    
     daily_matrix$Cluster <- factor(new_labels, levels = 1:k)
     
     df_clustered <- df %>%
       left_join(daily_matrix %>% select(Date, Cluster), by = "Date") %>%
       drop_na(Cluster)
     
-    return(list(full_data = df_clustered, matrix = daily_matrix))
+    all_dates <- sort(unique(df$Date))
+    excluded_dates <- all_dates[!all_dates %in% daily_matrix$Date]
+    
+    list(full_data = df_clustered, matrix = daily_matrix, excluded_dates = excluded_dates)
   })
-  
   # =====================================================================
   # INTERACTIVE PLOT GENERATORS
   # =====================================================================
   
-  # 1. Cluster Profiles Chart (Centroids) 
   output$centroidPlot <- renderPlotly({
     req(clustered_data())
-    u <- unit_lbl()
-    df <- clustered_data()$full_data
+    u   <- unit_lbl()
+    df  <- clustered_data()$full_data
+    sel <- selected_day()
     
     cluster_counts <- df %>%
       select(Date, Cluster) %>%
@@ -643,13 +793,19 @@ server <- function(input, output, session) {
       group_by(Cluster_Label, Hour) %>%
       summarise(Centroid_Load = mean(Load, na.rm = TRUE), Cluster = dplyr::first(Cluster), .groups = 'drop')
     
+    hl <- if (!is.null(sel)) filter(df, Date == sel) else df[0, ]
+    
     p <- ggplot() + 
       geom_line(data = df, aes(x = Hour, y = Load, group = Date), color = "dimgray", alpha = 0.25) +
       geom_line(data = centroids, aes(x = Hour, y = Centroid_Load, color = Cluster, group = Cluster,
-                                      text = paste0("Hour: ", Hour, ":00\nMean Hourly Value: ", round(Centroid_Load, 1), " ", u)), linewidth = 0.8) +
+                                      text = paste0("Hour: ", Hour, ":00\nMean Hourly Value: ", round(Centroid_Load, 1), " ", u)),
+                linewidth = 0.8) +
+      { if (nrow(hl) > 0) geom_line(data = hl, aes(x = Hour, y = Load, group = Date,
+                                                   text = paste0("Selected day: ", format(Date, "%Y-%m-%d"),
+                                                                 "\nHour: ", Hour, ":00\nValue: ", round(Load, 1), " ", u)),
+                                    color = "black", linewidth = 1, linetype = "dashed") } +
       scale_color_manual(values = hc_colors) +
       scale_x_continuous(breaks = c(seq(0, 20, by = 5), 23), minor_breaks = 0:23, limits = c(0, 23)) +
-      # Train each panel on all its daily readings, including the gray lines.
       scale_y_continuous(expand = expansion(mult = 0.05)) +
       facet_wrap(~Cluster_Label, ncol = 1, scales = "free_y") +
       theme_minimal(base_size = 15) + 
@@ -663,11 +819,8 @@ server <- function(input, output, session) {
         panel.grid.major.x = element_line(color = "grey70", linewidth = 0.6)
       )
     
-    k <- length(levels(centroids$Cluster_Label))
-    calc_height <- k * 300 + 80
-    
-    # Keep each profile tall enough to read at the capped display width.
-    ggplotly(p, tooltip = "text", height = calc_height) %>% 
+    k <- nlevels(centroids$Cluster_Label)
+    ggplotly(p, tooltip = "text", height = k * 300 + 80) %>% 
       layout(hovermode = "x") %>% 
       config(displayModeBar = FALSE)
   })
@@ -675,20 +828,31 @@ server <- function(input, output, session) {
   # 2. Interactive Heatmap
   output$heatmapPlot <- renderPlotly({
     req(clustered_data())
-    u <- unit_lbl()
+    u   <- unit_lbl()
+    sel <- selected_day()
+    
     df <- clustered_data()$full_data %>% select(Date, DayOfWeek, WeekStart, Cluster) %>% distinct()
-    month_breaks <- seq(min(df$WeekStart, na.rm = TRUE), max(df$WeekStart, na.rm = TRUE), by = "1 month")
+    month_starts <- seq(floor_date(min(df$Date), "month"), max(df$Date), by = "1 month")
+    month_breaks <- floor_date(month_starts, "week")
     
-    # Ensure Cluster Median matches the Boxplot Cluster Median exactly
-    medians <- df_metrics_calculated()
-    df <- df %>% left_join(medians, by = "Cluster")
+    df <- df %>%
+      left_join(df_metrics_calculated(), by = "Cluster") %>%
+      mutate(
+        y     = as.numeric(WeekStart),
+        key   = as.character(Date),
+        hover = paste0(format(Date, "%Y-%m-%d"), " (", DayOfWeek, ")\n",
+                       "Cluster Assigned: ", Cluster, "\n",
+                       "Cluster Median: ", round(Median_Load, 1), " ", u, "\n",
+                       "Click to highlight")
+      )
+    sel_df <- if (!is.null(sel)) filter(df, Date == sel) else df[0, ]
     
-    p <- ggplot(df, aes(x = DayOfWeek, y = as.numeric(WeekStart), fill = Cluster,
-                        text = paste0(format(Date, "%Y-%m-%d"), "_", DayOfWeek, "\n",
-                                      "Cluster Assigned: ", Cluster, "\n",
-                                      "Cluster Median: ", round(Median_Load, 1), " ", u))) +
-      geom_tile(color = "white") +
-      scale_y_reverse(breaks = as.numeric(month_breaks), labels = format(month_breaks, "%b %d")) +
+    p <- ggplot(df, aes(x = DayOfWeek, y = y)) +
+      geom_tile(aes(fill = Cluster), color = "white") +
+      geom_point(aes(text = hover, key = key), alpha = 0, size = 3) +   # invisible hover/click targets
+      { if (nrow(sel_df) > 0) geom_tile(data = sel_df, fill = NA, color = "black", linewidth = 1.2) } +
+      scale_y_reverse(breaks = as.numeric(month_breaks), labels = format(month_starts, "%b"),
+                      expand = expansion(add = 3)) +
       scale_fill_manual(values = hc_colors) +
       theme_minimal(base_size = 15) + 
       labs(x = "Day of Week", y = "Week Starting Date") +
@@ -698,7 +862,35 @@ server <- function(input, output, session) {
         axis.title = element_text(size = 15, color = "black")   
       )
     
-    ggplotly(p, tooltip = "text") %>% config(displayModeBar = FALSE)
+    gp <- plotly_build(ggplotly(p, tooltip = "text"))
+    
+    # Only the invisible points respond to hover/click; they carry the date in customdata
+    gp$x$data <- lapply(gp$x$data, function(tr) {
+      if (identical(tr$mode, "markers") && !is.null(tr$key)) {
+        tr$customdata <- tr$key
+      } else {
+        tr$hoverinfo <- "skip"
+      }
+      tr
+    })
+    
+    gp %>%
+      config(displayModeBar = FALSE) %>%
+      htmlwidgets::onRender("
+        function(el) {
+          // Remove any handler from a previous render so clicks don't fire twice
+          if (el._dayHandler && el.removeListener) {
+            el.removeListener('plotly_click', el._dayHandler);
+          }
+          el._dayHandler = function(d) {
+            var pt = d.points && d.points[0];
+            if (!pt || pt.customdata === undefined || pt.customdata === null) return;
+            var day = Array.isArray(pt.customdata) ? pt.customdata[0] : pt.customdata;
+            Shiny.setInputValue('heatmap_day', day, {priority: 'event'});
+          };
+          el.on('plotly_click', el._dayHandler);
+        }
+      ")
   })
   
   # 3A. Box and Whisker Plot (Cluster Analysis)
@@ -879,9 +1071,9 @@ server <- function(input, output, session) {
   output$downloadCentroid <- downloadHandler(
     filename = function() { paste("cluster_profiles_", Sys.Date(), ".png", sep = "") },
     content = function(file) {
-      req(input$k_clusters)
       u <- unit_lbl()
       df_c <- clustered_data()$full_data
+      hl <- if (!is.null(selected_day())) filter(df_c, Date == selected_day()) else df_c[0, ]
       counts <- df_c %>% 
         select(Date, Cluster) %>% 
         distinct() %>% 
@@ -898,6 +1090,8 @@ server <- function(input, output, session) {
       p <- ggplot() + 
         geom_line(data = df_c, aes(x = Hour, y = Load, group = Date), color = "dimgray", alpha = 0.25) +
         geom_line(data = cents, aes(x = Hour, y = CLoad, color = Cluster), linewidth = 1.0) + 
+        { if (nrow(hl) > 0) geom_line(data = hl, aes(x = Hour, y = Load, group = Date),
+                                      color = "black", linewidth = 1, linetype = "dashed") } +
         scale_color_manual(values = hc_colors) +
         scale_x_continuous(breaks = c(seq(0, 20, by = 5), 23), minor_breaks = 0:23, limits = c(0, 23)) +
         scale_y_continuous(expand = expansion(mult = 0.05)) +
@@ -916,7 +1110,7 @@ server <- function(input, output, session) {
           panel.grid.major.x = element_line(color = "grey70", linewidth = 0.6)
         )
       
-      k <- as.numeric(input$k_clusters)
+      k <- nlevels(counts$CL)
       calc_height <- 3 * k + 1.5
       
       ggsave(filename = file, plot = p, device = "png", width = 10, height = calc_height, dpi = 300, bg = "white")
